@@ -1,0 +1,23 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# One free web service. Postgres lives on Neon: paste its connection string for DATABASE_URL.
+
+services:
+  - type: web
+    name: great-ife-life
+    runtime: python
+    plan: free
+    region: frankfurt # closest Render region to Nigeria; create the Neon database in Frankfurt too
+    buildCommand: bash build.sh
+    startCommand: bash start.sh
+    healthCheckPath: /api/health/
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PYTHON_VERSION
+        value: "3.13.5"
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false # Neon connection string

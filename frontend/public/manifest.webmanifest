@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Great Ife Life",
+  "short_name": "Great Ife",
+  "description": "Survive four years at Great Ife: lectures, hustles, NEPA, ASUU strikes and exams.",
+  "start_url": "/?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e3e6e2",
+  "theme_color": "#14603f",
+  "categories": ["games", "education", "entertainment"],
+  "lang": "en-NG",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
