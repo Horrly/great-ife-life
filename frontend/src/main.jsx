@@ -1,9 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import "@fontsource-variable/big-shoulders-display";
-import "@fontsource/atkinson-hyperlegible/400.css";
-import "@fontsource/atkinson-hyperlegible/700.css";
+import "@fontsource-variable/bricolage-grotesque";
+import "@fontsource-variable/figtree";
 import App from "./App";
 import { GameProvider } from "./lib/game";
 import "./index.css";

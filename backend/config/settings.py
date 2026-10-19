@@ -127,6 +127,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "new-game": os.environ.get("THROTTLE_NEW_GAME", "300/hour"),
         "act": os.environ.get("THROTTLE_ACT", "240/min"),
+        "sync": os.environ.get("THROTTLE_SYNC", "120/min"),
         "login": os.environ.get("THROTTLE_LOGIN", "10/min"),
     },
 }

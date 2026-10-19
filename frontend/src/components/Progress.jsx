@@ -8,26 +8,31 @@ export function Skills({ skills }) {
       <h2 id="skills-h" className="font-bold">
         Skills
       </h2>
-      <p className="text-xs text-muted">Gigs and practice level you up. Higher levels pay more and unlock bigger jobs.</p>
-      <ul className="mt-3 space-y-2.5">
+      <p className="text-xs text-muted">Ten bars each. Fill a bar to reach the next level. Higher levels pay more and unlock bigger jobs.</p>
+      <ul className="mt-3 space-y-3">
         {skills.map((s) => {
-          const pct = s.next === null ? 100 : Math.round(((s.xp - s.floor) / (s.next - s.floor)) * 100);
+          const max = s.max || 10;
+          const pct = s.next === null ? 1 : (s.xp - s.floor) / (s.next - s.floor);
           return (
             <li key={s.id}>
               <div className="flex items-baseline justify-between text-sm">
                 <span className="font-bold">{s.name}</span>
                 <span className="text-xs text-muted">
-                  Level <span className="font-bold text-ink">{s.level}</span>
-                  {s.next === null && " (max)"}
+                  Level <span className="font-bold text-ink">{s.level}</span>/{max}
                 </span>
               </div>
-              <div
-                className="mt-1 h-1.5 overflow-hidden rounded-full bg-line/70"
-                role="img"
-                aria-label={`${s.name}: level ${s.level}, ${pct}% to next level`}
-              >
-                <div className="h-full rounded-full bg-bulb" style={{ width: `${pct}%` }} />
+              <div className="mt-1 grid gap-0.5" style={{ gridTemplateColumns: `repeat(${max}, minmax(0, 1fr))` }}
+                role="img" aria-label={`${s.name}: level ${s.level} of ${max}, ${Math.round(pct * 100)}% of the way to the next`}>
+                {Array.from({ length: max }, (_, i) => {
+                  const fill = i < s.level - 1 ? 1 : i === s.level - 1 ? pct : 0;
+                  return (
+                    <span key={i} className="h-2 overflow-hidden rounded-sm bg-line/70">
+                      <span className={`block h-full ${i < s.level - 1 ? "bg-ife-500" : "bg-bulb"}`} style={{ width: `${fill * 100}%` }} />
+                    </span>
+                  );
+                })}
               </div>
+              {s.blurb && <p className="mt-0.5 text-xs text-muted">{s.blurb}</p>}
             </li>
           );
         })}

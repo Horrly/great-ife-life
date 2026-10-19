@@ -21,8 +21,19 @@
   --color-sky-afternoon: #9fcbe6;
   --color-sky-evening: #e88b5d;
   --color-sky-night: #1e2c4c;
-  --font-sans: "Atkinson Hyperlegible", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Big Shoulders Display Variable", "Arial Narrow", sans-serif;
+  /* Figtree for everything you read; Bricolage Grotesque for names, numbers and the clock. */
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Bricolage Grotesque Variable", "Figtree Variable", ui-sans-serif, sans-serif;
+  /* one type scale for the whole game: nothing on a phone is smaller than 12px */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.35;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.45;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --color-glass: rgb(9 28 20 / 0.8);
 }
 
 html,
@@ -48,15 +59,26 @@ body {
 
 @utility display {
   font-family: var(--font-display);
-  letter-spacing: -0.005em;
-  line-height: 0.92;
+  font-variation-settings: "opsz" 96;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  line-height: 1;
 }
 /* Numbers use the display face: the body font's slashed zero looks odd on money. */
 @utility num {
   font-family: var(--font-display);
+  font-variation-settings: "opsz" 48;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
+}
+/* the HUD floats over the 3D campus: dark glass, white text */
+@utility glass {
+  background: var(--color-glass);
+  color: white;
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
 }
 @utility btn {
   @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-[0.95rem] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45;

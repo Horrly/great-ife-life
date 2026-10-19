@@ -2,7 +2,10 @@ import pytest
 from rest_framework.test import APIClient
 
 from game import engine as E
+from game import views
 from game.models import Game
+
+from .bot import Bot
 
 pytestmark = pytest.mark.django_db
 
@@ -11,7 +14,8 @@ pytestmark = pytest.mark.django_db
 def fast_settings(settings, tmp_path):
     settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
     settings.REST_FRAMEWORK = {**settings.REST_FRAMEWORK, "DEFAULT_THROTTLE_RATES": {"new-game": "1000/min",
-                                                                                     "act": "100000/min"}}
+                                                                                     "act": "100000/min",
+                                                                                     "sync": "100000/min"}}
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "index.html").write_text(
@@ -65,9 +69,9 @@ def test_token_is_stored_hashed():
 def test_replayed_move_does_not_double_apply():
     client, game = start()
     game = clear(client, game)
-    first = client.post("/api/game/act/", {"action": "sell_data", "turn": game["turn"]}, format="json")
+    first = client.post("/api/game/act/", {"action": "bath", "turn": game["turn"]}, format="json")
     assert first.status_code == 200 and first.data["messages"]
-    replay = client.post("/api/game/act/", {"action": "sell_data", "turn": game["turn"]}, format="json")
+    replay = client.post("/api/game/act/", {"action": "bath", "turn": game["turn"]}, format="json")
     assert replay.status_code == 409
     assert replay.data["game"]["money"] == first.data["money"]
 
@@ -76,7 +80,7 @@ def test_illegal_move_is_refused_with_current_state():
     client, game = start()
     game = clear(client, game)
     res = client.post("/api/game/act/", {"action": "sleep", "turn": game["turn"]}, format="json")  # morning
-    assert res.status_code == 400 and "night" in res.data["detail"].lower()
+    assert res.status_code == 400 and "starts" in res.data["detail"].lower()
     assert res.data["game"]["turn"] == game["turn"]
     res = client.post("/api/game/act/", {"action": "print_money", "turn": game["turn"]}, format="json")
     assert res.status_code == 400
@@ -86,26 +90,15 @@ def test_client_cannot_send_its_own_state():
     client, game = start()
     game = clear(client, game)
     money = game["money"]
-    client.post("/api/game/act/", {"action": "scroll", "turn": game["turn"], "money": 99999999,
+    client.post("/api/game/act/", {"action": "bath", "turn": game["turn"], "money": 99999999,
                                    "state": {"money": 99999999}}, format="json")
-    assert client.get("/api/game/").data["money"] == money
+    after = client.get("/api/game/").data["money"]
+    assert money - 300 <= after <= money + 5_000  # bath may cost ₦300; missions and streaks pay a little
 
 
-def finish_degree(game_obj: Game, cgpa_bias=True):
-    """Fast-forward a game to graduation using the engine directly."""
-    s = game_obj.state
-    while s["status"] == "playing":
-        if s["phase"] == "event":
-            s, _ = E.choose(s, next(i for i, c in enumerate(s["pending"]["choices"]) if c["enabled"]))
-        elif s["phase"] == "results":
-            s, _ = E.continue_after_results(s)
-        else:
-            ids = [a["id"] for a in E.available_actions(s) if a["enabled"]]
-            pick = next((i for i in ("write_ca", "write_exam", "pay_fees") if i in ids), None)
-            if not pick:
-                pick = "sleep" if "sleep" in ids else ("hol_read" if cgpa_bias and "hol_read" in ids and s["needs"]["energy"] > 30
-                                                       else next(i for i in ("rice", "cook", "home_food", "nap", "scroll") if i in ids))
-            s, _ = E.act(s, pick)
+def finish_degree(game_obj: Game):
+    """Fast-forward a game to graduation with a bot that plays it properly."""
+    s = Bot(state=game_obj.state, style="balanced", now=(game_obj.state.get("last_sync") or 0) + 1).play()
     game_obj.save_state(s)
     return game_obj
 
@@ -134,7 +127,7 @@ def test_graduation_card_leaderboard_and_share_preview():
     assert APIClient().get("/api/leaderboard/").data == []
     assert APIClient().get(f"/api/cards/{g.share_code}/").status_code == 404
 
-    res = client.post("/api/game/act/", {"action": "scroll", "turn": data["turn"]}, format="json")
+    res = client.post("/api/game/act/", {"action": "bath", "turn": data["turn"]}, format="json")
     assert res.status_code == 400  # finished games can't be played on
 
 
@@ -161,13 +154,13 @@ def test_move_limit_is_per_game_not_per_ip(monkeypatch):
     game_a = clear(a, game_a)
     codes = []
     for _ in range(4):
-        res = a.post("/api/game/act/", {"action": "scroll", "turn": game_a["turn"]}, format="json")
+        res = a.post("/api/game/act/", {"action": "bath", "turn": game_a["turn"]}, format="json")
         codes.append(res.status_code)
         if res.status_code == 200:
             game_a = res.data
     assert codes.count(429) >= 1
     game_b = clear(b, game_b) if game_b["phase"] != "event" else game_b
-    res = b.post("/api/game/act/", {"action": "scroll", "turn": game_b["turn"]}, format="json")
+    res = b.post("/api/game/act/", {"action": "bath", "turn": game_b["turn"]}, format="json")
     assert res.status_code in (200, 400)  # not throttled by A's moves
 
 
@@ -183,7 +176,7 @@ def no_login_throttle(monkeypatch):
 def test_save_to_account_and_continue_on_another_phone(no_login_throttle):
     phone1, game = start(name="Tunde")
     game = clear(phone1, game)
-    game = phone1.post("/api/game/act/", {"action": "sell_data", "turn": game["turn"]}, format="json").data
+    game = phone1.post("/api/game/act/", {"action": "bath", "turn": game["turn"]}, format="json").data
     res = phone1.post("/api/account/register/", {"username": "tunde_b", "password": "greatife123"}, format="json")
     assert res.status_code == 201
     assert res.data["account"]["lives"][0]["status"] == "playing"
@@ -193,7 +186,7 @@ def test_save_to_account_and_continue_on_another_phone(no_login_throttle):
     assert login.status_code == 200 and login.data["game"]["money"] == game["money"]
     phone2.credentials(HTTP_X_GAME_TOKEN=login.data["game_token"])
     after = clear(phone2, phone2.get("/api/game/").data)
-    moved = phone2.post("/api/game/act/", {"action": "scroll", "turn": after["turn"]}, format="json")
+    moved = phone2.post("/api/game/act/", {"action": "bath", "turn": after["turn"]}, format="json")
     assert moved.status_code == 200
     # the first phone still works and sees the move made on the second
     assert phone1.get("/api/game/").data["turn"] == moved.data["turn"]
@@ -265,3 +258,79 @@ def test_assetlinks_for_play_store(settings):
     data = APIClient().get("/.well-known/assetlinks.json").json()
     assert data[0]["target"]["package_name"] == "app.greatifelife.twa"
     assert data[0]["target"]["sha256_cert_fingerprints"] == ["AB:CD:EF"]
+
+
+# --- The campus, the clock and getting around -----------------------------------------------------
+
+
+class FakeClock:
+    def __init__(self, monkeypatch, start=1_000_000.0):
+        self.t = start
+        monkeypatch.setattr(views, "now", lambda: self.t)
+
+
+def test_world_map_is_public_and_cached():
+    res = APIClient().get("/api/world/")
+    assert res.status_code == 200 and "max-age" in res["Cache-Control"]
+    data = res.data
+    assert "hol" in data["buildings"] and data["bus_route"][0] == "gate"
+    assert data["timing"]["rate"] == 1.0
+    assert set(APIClient().get("/api/config/").data["look_options"]) == {"skin", "hair", "top", "bottom", "style", "hall"}
+
+
+def test_clock_ticks_with_real_time(monkeypatch):
+    clock = FakeClock(monkeypatch)
+    client, game = start()
+    game = clear(client, game)
+    clock.t += 45
+    later = client.post("/api/game/sync/", {}, format="json").data
+    assert later["clock"] == game["clock"] + 45 and later["time"]
+    clock.t += 10_000  # phone in a drawer all day: only an hour passes
+    again = client.get("/api/game/").data
+    assert again["clock"] - later["clock"] <= E.IDLE_CAP + 1
+
+
+def test_plan_and_take_a_trip(monkeypatch):
+    clock = FakeClock(monkeypatch)
+    client, game = start()
+    game = clear(client, game)
+    plan = client.get("/api/game/plan/?to=sub").data
+    assert {"trek", "bus", "keke", "cab"} <= {o["mode"] for o in plan["options"]}  # plus "car" for a staff kid
+    trek = next(o for o in plan["options"] if o["mode"] == "trek")
+    res = client.post("/api/game/travel/", {"to": "sub", "mode": "trek", "turn": game["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    trip = res.data
+    assert trip["at"] in ("sub", None) and trip["clock"] == game["clock"] + trek["minutes"]
+    assert trip["last_trip"]["segments"] and trip["messages"][0].startswith("Trekked")
+    # while the journey plays back, the clock doesn't run on
+    clock.t += 3
+    assert client.post("/api/game/sync/", {}, format="json").data["clock"] == trip["clock"]
+    assert client.get("/api/game/plan/?to=nowhere").status_code == 400
+
+
+def test_walk_out_walk_in_and_no_teleporting(monkeypatch):
+    clock = FakeClock(monkeypatch)
+    client, game = start()
+    game = clear(client, game)
+    out = client.post("/api/game/exit/", {"turn": game["turn"]}, format="json").data
+    assert out["at"] is None
+    target = "sports" if out["home"] == "offcampus" else "offcampus"
+    door = {"sports": [380, 150], "offcampus": [-140, 150]}[target]
+    far = client.post("/api/game/enter/", {"building": target, "pos": door, "turn": out["turn"]},
+                      format="json")
+    assert far.status_code == 400
+    door = list(out["pos"])
+    back = client.post("/api/game/enter/", {"building": out["home"], "pos": door, "turn": out["turn"]},
+                       format="json")
+    assert back.status_code == 200 and back.data["at"] == out["home"]
+
+
+def test_choose_your_look(monkeypatch):
+    client, game = start()
+    look = {"skin": 1, "hair": 2, "top": 3, "bottom": 1, "style": 1, "hall": 1}
+    res = client.post("/api/game/look/", {"look": look, "turn": game["turn"]}, format="json")
+    assert res.status_code == 200 and res.data["look"] == look
+    bad = client.post("/api/game/look/", {"look": {"skin": 50}, "turn": res.data["turn"]}, format="json")
+    assert bad.status_code == 400
+    res = APIClient().post("/api/games/", {"department": "csc", "look": look}, format="json")
+    assert res.data["game"]["look"] == look

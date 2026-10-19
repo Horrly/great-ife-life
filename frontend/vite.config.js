@@ -13,5 +13,7 @@ export default defineConfig({
       "/api": { target: apiTarget, changeOrigin: true },
     },
   },
+  // three.js is one ~500 kB chunk (about 130 kB gzipped) that only loads when you start playing.
+  build: { chunkSizeWarningLimit: 600 },
   test: { environment: "node" },
 });

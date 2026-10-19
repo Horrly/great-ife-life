@@ -23,3 +23,15 @@ describe("format", () => {
     );
   });
 });
+
+import { clockText, duration } from "./format";
+
+it("clock and durations read like a Nigerian student would say them", () => {
+  expect(clockText(0)).toBe("12:00 AM");
+  expect(clockText(485)).toBe("8:05 AM");
+  expect(clockText(780)).toBe("1:00 PM");
+  expect(clockText(1440 + 61)).toBe("1:01 AM");
+  expect(duration(45)).toBe("45 min");
+  expect(duration(120)).toBe("2 hrs");
+  expect(duration(135)).toBe("2 hr 15 min");
+});

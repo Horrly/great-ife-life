@@ -1,4 +1,5 @@
 import re
+import time
 import uuid
 
 from django.db import transaction
@@ -11,6 +12,7 @@ from rest_framework.views import APIView
 
 from . import content as C
 from . import engine as E
+from . import world as W
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -36,8 +38,13 @@ def clean_name(raw: str) -> str:
     return name
 
 
-def payload(game: Game, messages=None) -> dict:
-    data = E.view(game.state)
+def now() -> float:
+    """Real time in seconds. The game clock runs off this (1 real second = 1 game minute)."""
+    return time.time()
+
+
+def payload(game: Game, messages=None, at: float | None = None) -> dict:
+    data = E.view(game.state, at if at is not None else now())
     data["share_code"] = game.share_code if game.status == "graduated" else None
     if messages is not None:
         data["messages"] = messages
@@ -74,7 +81,23 @@ class ConfigView(APIView):
         return Response({
             "departments": [{"id": k, "name": v["name"], "code": v["code"]} for k, v in C.DEPARTMENTS.items()],
             "profiles": [{"id": k, "name": v["name"], "tagline": v["tagline"]} for k, v in C.PROFILES.items()],
+            "look_options": C.LOOK_OPTIONS,
+            "traits": C.TRAITS,
+            "dreams": C.DREAMS,
         })
+
+
+class WorldView(APIView):
+    """The campus map: buildings, roads and the bus route, for the 3D client to draw."""
+
+    def get(self, request):
+        data = W.public_map()
+        data["timing"] = {"rate": E.RATE, "idle_cap": E.IDLE_CAP, "journey_speedup": E.JOURNEY_SPEEDUP,
+                          "journey_max_seconds": E.JOURNEY_MAX_SECONDS, "timelapse_seconds": E.TIMELAPSE_SECONDS,
+                          "door_radius": E.DOOR_RADIUS}
+        response = Response(data)
+        response["Cache-Control"] = "public, max-age=300"
+        return response
 
 
 class NewGameView(APIView):
@@ -84,7 +107,9 @@ class NewGameView(APIView):
     def post(self, request):
         name = clean_name(request.data.get("name", ""))
         try:
-            state = E.new_state(uuid.uuid4().hex, request.data.get("department", ""), name)
+            look = request.data.get("look")
+            state = E.new_state(uuid.uuid4().hex, request.data.get("department", ""), name, now=now(),
+                                look=E.clean_look(look) if look else None)
         except E.GameError as exc:
             raise ValidationError({"department": str(exc)})
         game, token = Game.create(state, name)
@@ -97,7 +122,14 @@ class NewGameView(APIView):
 
 class GameView(APIView):
     def get(self, request):
-        return Response(payload(game_for(request)))
+        """Opening the game catches the clock up (at most an hour passes while you were away)."""
+        with transaction.atomic():
+            game = game_for(request, lock=True)
+            t = now()
+            state, messages = E.sync(game.state, t)
+            if state != game.state:
+                game.save_state(state)
+        return Response(payload(game, messages, t))
 
 
 class PerGameThrottle(SimpleRateThrottle):
@@ -111,12 +143,52 @@ class PerGameThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": ident}
 
 
+class SyncThrottle(PerGameThrottle):
+    scope = "sync"
+
+
+class SyncView(APIView):
+    """Heartbeat while you walk around: the clock catches up and the server notes where you are."""
+
+    throttle_classes = [SyncThrottle]
+
+    def post(self, request):
+        with transaction.atomic():
+            game = game_for(request, lock=True)
+            t = now()
+            try:
+                state, messages = E.sync(game.state, t, request.data.get("pos"))
+            except E.GameError as exc:
+                return Response({"detail": str(exc), "game": payload(game, at=t)}, status=status.HTTP_400_BAD_REQUEST)
+            game.save_state(state)
+        return Response(payload(game, messages, t))
+
+
+class PlanView(APIView):
+    """Every way to get somewhere from here: trek, CNG bus, keke or cab, with times and fares."""
+
+    throttle_classes = [SyncThrottle]
+
+    def get(self, request):
+        game = game_for(request)
+        pos = None
+        if "x" in request.query_params and "z" in request.query_params:
+            try:
+                pos = [float(request.query_params["x"]), float(request.query_params["z"])]
+            except ValueError:
+                raise ValidationError({"pos": "Bad position."})
+        try:
+            return Response(E.plan(game.state, request.query_params.get("to", ""), pos, now()))
+        except E.GameError as exc:
+            raise ValidationError({"detail": str(exc)})
+
+
 class _MoveView(APIView):
     """Every move names the turn it was made on, so a double-tap or a replayed request can't act twice."""
 
     throttle_classes = [PerGameThrottle]
 
-    def move(self, state, data):
+    def move(self, state, data, t):
         raise NotImplementedError
 
     def post(self, request):
@@ -129,31 +201,57 @@ class _MoveView(APIView):
             if turn != game.turn:
                 return Response({"detail": "That move was already made.", "game": payload(game)},
                                 status=status.HTTP_409_CONFLICT)
+            t = now()
             try:
-                state, messages = self.move(game.state, request.data)
+                state, messages = self.move(game.state, request.data, t)
             except E.GameError as exc:
-                return Response({"detail": str(exc), "game": payload(game)}, status=status.HTTP_400_BAD_REQUEST)
+                # The clock still moved while you were deciding, so keep that.
+                state, _ = E.sync(game.state, t)
+                game.save_state(state)
+                return Response({"detail": str(exc), "game": payload(game, at=t)}, status=status.HTTP_400_BAD_REQUEST)
             game.save_state(state)
-        return Response(payload(game, messages))
+        return Response(payload(game, messages, t))
 
 
 class ActView(_MoveView):
-    def move(self, state, data):
-        return E.act(state, str(data.get("action", "")))
+    def move(self, state, data, t):
+        return E.act(state, str(data.get("action", "")), t)
 
 
 class ChooseView(_MoveView):
-    def move(self, state, data):
+    def move(self, state, data, t):
         try:
             index = int(data.get("choice"))
         except (TypeError, ValueError):
             raise E.GameError("Pick one of the options.")
-        return E.choose(state, index)
+        return E.choose(state, index, t)
 
 
 class ContinueView(_MoveView):
-    def move(self, state, data):
-        return E.continue_after_results(state)
+    def move(self, state, data, t):
+        return E.continue_after_results(state, t)
+
+
+class TravelView(_MoveView):
+    def move(self, state, data, t):
+        return E.travel(state, str(data.get("to", "")), str(data.get("mode", "")), data.get("pos"), t)
+
+
+class EnterView(_MoveView):
+    def move(self, state, data, t):
+        return E.enter_building(state, str(data.get("building", "")), data.get("pos"), t)
+
+
+class ExitView(_MoveView):
+    def move(self, state, data, t):
+        return E.exit_building(state, t)
+
+
+class LookView(_MoveView):
+    def move(self, state, data, t):
+        new = E.set_look(state, data.get("look"), data.get("traits"), data.get("dream"))
+        new["turn"] += 1
+        return new, []
 
 
 class LeaderboardView(APIView):

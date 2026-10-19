@@ -32,13 +32,13 @@ export function GameProvider({ children }) {
   useEffect(() => {
     if (!save.code) return;
     api("/game/")
-      .then(setGame)
+      .then((g) => setGame({ ...g, receivedAt: performance.now() }))
       .catch((err) => err.status === 404 && save.set(null))
       .finally(() => setLoading(false));
   }, []);
 
-  const start = useCallback(async ({ name, department }) => {
-    const res = await api("/games/", { method: "POST", body: { name, department }, code: null });
+  const start = useCallback(async ({ name, department, look }) => {
+    const res = await api("/games/", { method: "POST", body: { name, department, look }, code: null });
     save.set(res.token);
     setGame(res.game);
     setMessages([]);
@@ -53,30 +53,64 @@ export function GameProvider({ children }) {
     return g;
   }, []);
 
-  const move = useCallback(
-    async (path, body) => {
-      if (inFlight.current || !game) return; // one move at a time: no double taps
-      inFlight.current = true;
-      setBusy(true);
-      setError("");
-      try {
-        const g = await api(path, { method: "POST", body: { ...body, turn: game.turn } });
-        setGame(g);
-        setMessages(g.messages || []);
-      } catch (err) {
-        if (err.data?.game) setGame(err.data.game); // server sent the real state back
-        if (err.status !== 409) setError(err.message);
-      } finally {
-        inFlight.current = false;
-        setBusy(false);
-      }
-    },
-    [game],
-  );
+  const gameRef = useRef(null);
+  gameRef.current = game;
+
+  /** Every move returns the new game; the caller may animate it (a time-lapse or a journey). */
+  const move = useCallback(async (path, body) => {
+    const current = gameRef.current;
+    if (inFlight.current || !current) return null; // one move at a time: no double taps
+    inFlight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const g = await api(path, { method: "POST", body: { ...body, turn: current.turn } });
+      g.receivedAt = performance.now();
+      setGame(g);
+      setMessages(g.messages || []);
+      return g;
+    } catch (err) {
+      if (err.data?.game) setGame({ ...err.data.game, receivedAt: performance.now() }); // the real state
+      if (err.status !== 409) setError(err.message);
+      return null;
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }, []);
 
   const act = useCallback((action) => move("/game/act/", { action }), [move]);
   const choose = useCallback((choice) => move("/game/choose/", { choice }), [move]);
   const next = useCallback(() => move("/game/continue/", {}), [move]);
+  const travel = useCallback((to, mode, pos) => move("/game/travel/", { to, mode, pos }), [move]);
+  const enter = useCallback((building, pos) => move("/game/enter/", { building, pos }), [move]);
+  const leave = useCallback(() => move("/game/exit/", {}), [move]);
+  const setLook = useCallback((look, traits, dream) => move("/game/look/", { look, traits, dream }), [move]);
+
+  /** Heartbeat: the server's clock catches up and learns where you walked. Never blocks a move. */
+  const sync = useCallback(async (pos) => {
+    if (inFlight.current || !gameRef.current) return;
+    const turn = gameRef.current.turn;
+    try {
+      const g = await api("/game/sync/", { method: "POST", body: pos ? { pos } : {} });
+      if (!inFlight.current && gameRef.current && gameRef.current.turn === turn) {
+        g.receivedAt = performance.now();
+        setGame(g);
+        if (g.messages?.length) setMessages(g.messages);
+      }
+    } catch {
+      /* offline for a moment: the next heartbeat catches up */
+    }
+  }, []);
+
+  const plan = useCallback(async (to, pos) => {
+    const q = new URLSearchParams({ to });
+    if (pos) {
+      q.set("x", pos[0]);
+      q.set("z", pos[1]);
+    }
+    return api(`/game/plan/?${q}`);
+  }, []);
   /** Create an account; the game on this device is saved to it. */
   const register = useCallback(async (username, password) => {
     const res = await api("/account/register/", { method: "POST", body: { username, password }, accountToken: null });
@@ -125,7 +159,8 @@ export function GameProvider({ children }) {
 
   return (
     <GameContext.Provider
-      value={{ game, loading, busy, error, setError, messages, start, resume, act, choose, next, quit,
+      value={{ game, loading, busy, error, setError, messages, setMessages, start, resume, act, choose, next, quit,
+        travel, enter, leave, setLook, sync, plan,
         account, register, login, logout, resumeLife, refreshAccount }}
     >
       {children}
@@ -135,4 +170,14 @@ export function GameProvider({ children }) {
 
 export function useGame() {
   return useContext(GameContext);
+}
+
+let worldPromise = null;
+/** The campus map from the server, fetched once per visit. */
+export function loadWorld() {
+  worldPromise ||= api("/world/", { code: null, accountToken: null }).catch((err) => {
+    worldPromise = null;
+    throw err;
+  });
+  return worldPromise;
 }

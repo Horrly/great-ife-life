@@ -32,3 +32,18 @@ export function whatsapp(text) {
 export function tweet(text) {
   return `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
 }
+
+/** Game minutes after midnight -> "8:05 AM". */
+export function clockText(minutes) {
+  const m = ((Math.floor(minutes) % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60);
+  return `${h % 12 || 12}:${String(m % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** 135 -> "2 hr 15 min" */
+export function duration(minutes) {
+  const m = Math.round(minutes);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return m % 60 ? `${h} hr ${m % 60} min` : `${h} hr${h > 1 ? "s" : ""}`;
+}

@@ -1,21 +1,24 @@
+import { lazy, Suspense } from "react";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import OfflineBanner from "./components/OfflineBanner";
 import { useGame } from "./lib/game";
 import Account from "./pages/Account";
-import Admission from "./pages/Admission";
 import CardPage from "./pages/CardPage";
 import Graduation from "./pages/Graduation";
 import Leaderboard from "./pages/Leaderboard";
 import NewGame from "./pages/NewGame";
-import Play from "./pages/Play";
 import Privacy from "./pages/Privacy";
 import Title from "./pages/Title";
+
+// The 3D campus (three.js) only downloads when you start playing; the title page stays light.
+const Play = lazy(() => import("./pages/Play"));
+const Admission = lazy(() => import("./pages/Admission"));
 
 function NeedsGame({ children }) {
   const { game, loading } = useGame();
   if (loading) return <Loading />;
   if (!game) return <Navigate to="/" replace />;
-  return children;
+  return <Suspense fallback={<Loading />}>{children}</Suspense>;
 }
 
 export function Loading() {
