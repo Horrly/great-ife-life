@@ -1,5 +1,7 @@
-"""A bot that plays like a person: it keeps the timetable, walks or rides between buildings and looks
-after its needs. Tests use it to play whole degrees; styles: scholar, balanced, builder, lazy, neglect."""
+"""A bot that plays like a person on the real Lagos clock: it keeps the timetable, walks or rides between
+buildings, sleeps at night and looks after its needs. Each action plays out in a few seconds, so the bot
+waits real minutes in between, like a person who checks in now and then.
+Styles: scholar, balanced, builder, lazy, neglect."""
 import copy
 import random
 from collections import Counter
@@ -11,7 +13,7 @@ A = C.ACTIONS_BY_ID
 
 
 class Bot:
-    def __init__(self, seed="bot", dept="csc", profile=None, style="balanced", state=None, now=1_000_000.0):
+    def __init__(self, seed="bot", dept="csc", profile=None, style="balanced", state=None, now=1_792_387_800.0):
         self.now = now
         self.s = state if state is not None else E.new_state(seed, dept, "bot", profile=profile, now=self.now)
         self.style = style
@@ -70,8 +72,12 @@ class Bot:
             pick = options["keke"]
         if E.tod(self.s) >= C.H(21) and options["cab"]["available"] and money > 3000 and trek["minutes"] > 15:
             pick = options["cab"]
-        self.s, _ = E.travel(self.s, building, pick["mode"], now=self.now)
-        self.now += 0.01
+        try:
+            self.s, _ = E.travel(self.s, building, pick["mode"], now=self.now)
+        except E.GameError:
+            self.idle(1)
+            return False
+        self.now += self.s["playback"] + 2
         self.modes[pick["mode"]] += 1
         self.moves += 1
         return True
@@ -87,16 +93,28 @@ class Bot:
         v = E.view(self.s)
         ids = {a["id"]: a for a in v["actions"] + v["phone"]}
         if action_id in ids and ids[action_id]["enabled"]:
-            self.s, _ = E.act(self.s, action_id, now=self.now)
-            self.now += 0.01
+            try:
+                self.s, _ = E.act(self.s, action_id, now=self.now)
+            except E.GameError:
+                self.idle(1)  # the clock moved on while we were deciding
+                return False
+            self.now += self.s["playback"] + 2
             self.moves += 1
             return True
         return False
 
     def idle(self, minutes=20):
-        self.now += minutes
+        self.now += minutes * 60
         self.s, _ = E.sync(self.s, self.now)
         self.moves += 1
+
+    # How long each kind of player is willing to read in a day (real players aren't online all day).
+    BUDGET = {"scholar": 300, "balanced": 150, "builder": 100, "lazy": 50, "neglect": 0}
+
+    def brain_full(self):
+        f = self.s["flags"]
+        done = f.get("study_minutes", 0) if f.get("study_day") == self.s["total_days"] else 0
+        return done >= self.BUDGET[self.style]
 
     def step(self):
         s = self.s
@@ -110,14 +128,17 @@ class Bot:
         if s["phase"] == "results":
             self.s, _ = E.continue_after_results(s, now=self.now)
             return
+        if s.get("asleep"):
+            self.idle(30)
+            return
         t = E.tod(s)
         n = s["needs"]
         style = self.style
         # Tests and exams come first
         test = E._test_action(s) if E.test_today(s) else None
         if test and t <= C.TEST_DOORS_CLOSE and style != "neglect":
-            if t < C.H(6, 50):
-                if n["hunger"] < 50 and self.first(["home_food", "cook"]) and self.do(self.first(["home_food", "cook"])):
+            if t < C.H(7):
+                if n["hunger"] < 50 and self.first(["cook", "garri"]) and self.do(self.first(["cook", "garri"])):
                     return
                 self.idle(10)
                 return
@@ -151,7 +172,7 @@ class Bot:
             return
         # Needs
         if n["hunger"] < 38:
-            f = self.first(["home_food", "rice", "amala", "cook", "snacks"] if s["at"] != "buka" else ["rice", "amala"])
+            f = self.first(["rice", "amala", "cook", "snacks"] if s["at"] != "buka" else ["rice", "amala"])
             if f and self.do(f):
                 return
         if n["energy"] < 22:
@@ -169,17 +190,24 @@ class Bot:
                 if self.do("lecture"):
                     return
         if style == "neglect":
-            if self.do(self.first(["scroll", "gist", "hangout"]) or "scroll"):
+            if n["fun"] < 80 and self.do(self.first(["scroll", "gist", "hangout"]) or "scroll"):
                 return
             self.idle(30)
             return
         money_low = s["money"] < 2500 or (not s["fees_paid"] and s["money"] < C.SCHOOL_CHARGES)
         before_next = (lec["start"] - t) if lec else 999
         if money_low and before_next > 200:
-            h = self.first(["teach_tutorial", "braids", "design_gig", "business_centre", "sell_data", "call_home"])
+            h = self.first(["teach_tutorial", "braids", "design_gig", "business_centre", "sell_data", "fl_article"])
             if h and self.do(h):
                 return
-        if (n["fun"] < 28 or n["social"] < 22) and before_next > 150:
+            if not s["flags"].get("parents_week") == E.week_key(s) and s.get("phone") and C.H(7) <= t < C.H(22):
+                try:
+                    self.s, _ = E.ask_parents(s, 20_000, now=self.now)
+                    self.now += self.s["playback"] + 2
+                    return
+                except E.GameError:
+                    pass
+        if (n["fun"] < 28 or n["social"] < 22):
             f = self.first(["show", "football", "hangout", "gist", "scroll"])
             if f and self.do(f):
                 return
@@ -190,15 +218,15 @@ class Bot:
             g = self.first(["website_gig", "logo_gig", "bug_fix", "learn_coding", "learn_design"])
             if g and n["energy"] > 40 and self.do(g):
                 return
-        if style == "lazy" and self.rng.random() < 0.55:
+        if style == "lazy" and self.rng.random() < 0.55 and min(n["fun"], n["social"]) < 70:
             if self.do(self.first(["scroll", "gist", "hangout", "nap"]) or "scroll"):
                 return
-        if style == "balanced" and self.rng.random() < 0.2 and before_next > 150:
+        if style == "balanced" and self.rng.random() < 0.2 and min(n["fun"], n["social"]) < 60:
             f = self.first(["hangout", "football", "gist", "scroll"])
             if f and self.do(f):
                 return
-        if before_next > 140:
-            if n["energy"] > 30:
+        if before_next > 140 or lec is None:
+            if n["energy"] > 30 and not self.brain_full():
                 st = self.first(["hol_read", "study_group", "tutorial", "read_room"])
                 if st and self.do(st):
                     return

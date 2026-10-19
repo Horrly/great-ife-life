@@ -13,6 +13,31 @@ def new_share_code() -> str:
     return secrets.token_urlsafe(6)
 
 
+def new_room_code() -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I to misread
+    return "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+class Room(models.Model):
+    """A hall room (up to 4) or an off-campus place (landlords allow 2). Roommates are real players."""
+
+    kind = models.CharField(max_length=12)          # hostel, single, self_con, flat
+    building = models.CharField(max_length=20)      # the hall, or "offcampus"
+    area = models.CharField(max_length=40, blank=True)
+    number = models.CharField(max_length=12, blank=True)
+    capacity = models.PositiveSmallIntegerField()
+    rent = models.PositiveIntegerField(default=0)
+    gender = models.CharField(max_length=8, blank=True)
+    code = models.CharField(max_length=8, unique=True, default=new_room_code)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["kind", "building", "gender"])]
+
+    def __str__(self):
+        return f"{self.building} {self.number or self.area} ({self.kind})"
+
+
 class Game(models.Model):
     """One student's run from admission to graduation. The whole game lives in `state`."""
 
@@ -22,6 +47,7 @@ class Game(models.Model):
     display_name = models.CharField(max_length=20, blank=True)
     department = models.CharField(max_length=10)
     profile = models.CharField(max_length=20)
+    room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.SET_NULL, related_name="members")
     status = models.CharField(max_length=12, default="playing", db_index=True)
     state = models.JSONField()
     turn = models.PositiveIntegerField(default=0)
@@ -30,6 +56,10 @@ class Game(models.Model):
     final_class = models.CharField(max_length=30, blank=True)
     share_code = models.CharField(max_length=12, unique=True, default=new_share_code)
     hidden = models.BooleanField(default=False, help_text="Hide from the leaderboard (e.g. a rude name).")
+    account_number = models.CharField(max_length=10, unique=True, null=True, blank=True,
+                                      help_text="The player's in-game bank account number.")
+    bank = models.CharField(max_length=20, blank=True)
+    chat_muted = models.BooleanField(default=False, help_text="Stop this player sending chat messages.")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -39,6 +69,11 @@ class Game(models.Model):
 
     def __str__(self):
         return f"{self.display_name or 'Anonymous'} ({self.department}, {self.status})"
+
+    @property
+    def matric(self) -> str:
+        """A matric-style student number, shown in chat so students can find each other."""
+        return f"{self.department.upper()}/{self.created_at.year if self.created_at else 2026}/{self.pk:04d}"
 
     @classmethod
     def create(cls, state: dict, display_name: str) -> tuple["Game", str]:
@@ -87,3 +122,63 @@ class AccountSession(models.Model):
         token = new_token()
         cls.objects.create(token_hash=hash_token(token), user=user)
         return token
+
+
+class RoomNote(models.Model):
+    """A quick message on the room's notice board. Players pick from set messages (no free text)."""
+
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="notes")
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="room_notes")
+    note = models.PositiveSmallIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+
+class Transfer(models.Model):
+    """Money one student sent to another's account number. Credited when the receiver's game next loads."""
+
+    sender = models.ForeignKey(Game, null=True, on_delete=models.SET_NULL, related_name="sent_transfers")
+    receiver = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="received_transfers")
+    amount = models.PositiveIntegerField()
+    sender_label = models.CharField(max_length=60)
+    applied = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ChatMessage(models.Model):
+    """A chat message. thread is "room:<id>", "dept:<code>" or "dm:<low id>:<high id>"."""
+
+    thread = models.CharField(max_length=40, db_index=True)
+    sender = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="chat_messages")
+    text = models.CharField(max_length=300)
+    hidden = models.BooleanField(default=False, help_text="Hidden by a moderator.")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["thread", "id"])]
+
+    def __str__(self):
+        return f"{self.thread}: {self.text[:40]}"
+
+
+class ChatRead(models.Model):
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="chat_reads")
+    thread = models.CharField(max_length=40)
+    last_id = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["game", "thread"], name="one_read_marker_per_thread")]
+
+
+class ChatBlock(models.Model):
+    blocker = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="blocks")
+    blocked = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="blocked_by")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["blocker", "blocked"], name="block_once")]
+
+
+class ChatReport(models.Model):
+    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name="reports")
+    reporter = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="chat_reports")
+    created_at = models.DateTimeField(auto_now_add=True)
+    handled = models.BooleanField(default=False)

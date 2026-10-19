@@ -14,6 +14,14 @@ Inspired by the viral Nigerian life simulator *Lagos Life*, but built around the
 |---|---|---|
 | ![3D campus with shadows](docs/screenshots/campus.png) | ![Transport options](docs/screenshots/transport.png) | ![Riding the campus bus](docs/screenshots/cng-bus.png) |
 
+| Your hall room, with real roommates | Hall or off campus | After calling home |
+|---|---|---|
+| ![Hall room with roommates](docs/screenshots/room.png) | ![Choosing where to live](docs/screenshots/housing.png) | ![Room card and notice board](docs/screenshots/building.png) |
+
+| The Banking Area | Open an account | Send money | Gist with coursemates |
+|---|---|---|---|
+| ![Bank fronts, ATMs and a POS agent](docs/screenshots/banking-area.png) | ![Opening an account](docs/screenshots/bank.png) | ![Transfer with a name check](docs/screenshots/transfer.png) | ![Department chat](docs/screenshots/chat.png) |
+
 | Make your student | Ojaja market | Waiting for a keke | Graduation |
 |---|---|---|---|
 | ![Traits and dream at admission](docs/screenshots/traits.png) | ![New Market (Ojaja)](docs/screenshots/market.png) | ![Journey playback](docs/screenshots/journey.png) | ![Graduation card](docs/screenshots/graduation.png) |
@@ -24,15 +32,24 @@ Inspired by the viral Nigerian life simulator *Lagos Life*, but built around the
 
 ## How it plays
 
+- **Laid out like a phone life game.** The 3D campus fills the whole screen and every control floats over it as a small pill:
+  - **Top (things you read):** a clock pill with your mood face, a chevron that drops down a status drawer (date, semester day, cash and bank, readiness, students online, sound), the wallet pill, an inbox with a badge, today's missions and your next class.
+  - **Bottom (things you press):** your avatar, one pill showing your *lowest* need, a single context button ("Go inside Awo Hall", "Go outside", "📍 Where to?"), a floating Home · Class · Map bar, a ⋯ menu, and a round Phone button with a chat badge. On campus, the joystick takes the nav bar's place.
+  - **Places, then stations, then action cards.** Each building has a place card ("Moremi Hall · 2 here"). Tap it for station chips (👥 Roommates, 🏦 Money, 📚 Study, 🍲 Food, 💼 Hustle…) and cards showing an icon, real seconds, the price or "Free", and +Food / +Readiness tags. There's also a chat line for everyone in that place.
+  - Running actions shrink to a ring chip at the top-left. One toast shows at a time. Events arrive as cards at the bottom, and every menu is the same slide-up sheet with pill tabs.
+  - **Travel:** tap a pin on the map, see the place, pick a transport tile (🚶 Trek Free, 🛺 Keke ₦200…), then press "Go · ₦200".
+  - Sounds are made in the browser (no audio downloads), phones give a short vibration, and desktop has shortcuts (M map, P phone, S you, I inbox, H home, C class).
+- **Admission is a 5-step wizard:** your look, two traits, your dream, a slot-machine **status lottery**, then where you'll live.
+
 - **A 3D campus you walk around.** Low-poly Great Ife, with real names:
   - **Lecture theatres:** ODLT, the 1000 Seater LT, Ajose LT, the BOO theatres and Tech LT, plus faculty buildings with classrooms (Technology, Science, Social Sciences & Admin, Humanities). Each course has its own venues: CSC lectures are at the Faculty of Technology, Tech LT and the 1000 Seater.
-  - **Halls:** Awo, Fajuyi, ETF, Moremi, Akintola, Mozambique and Angola. You pick a male or female hall at admission, and freshers start in Angola or Mozambique.
+  - **Halls:** Awo, Fajuyi, ETF, Moremi, Akintola, Mozambique and Angola, with male and female halls.
   - **Around campus:** SUB, Oduduwa Hall, the Senate building, HOL, the Health Centre, Mama Put, the Amphitheatre, the Sports Complex, Road 7 staff quarters, **New Market (Ojaja)**, the GREAT IFE gate, and Asherifa's shops outside it.
 
   Walk with the joystick (or W A S D), tap the ground to walk there along the roads, and hold Run to go faster. Step into a yellow ring to go into a building. You get real-time shadows on most phones and computers; very old phones skip them. Other students trek to class, CNG buses run their loop and stop at the bus stops, and kekes and cabs drive past.
-- **A real clock.** 1 real second is 1 game minute, and the clock keeps ticking while you play.
-  - Days start at 6:30 AM. Night falls, windows light up and the street lamps come on.
-  - Activities take real time: amala takes 30 minutes, reading at HOL takes 2 hours. The clock fast-forwards with a time-lapse.
+- **The real Nigerian clock.** Like Lagos Life, game time is real Lagos time (WAT): if it's 2:30 PM in Ife, it's 2:30 PM on campus. An 8 AM lecture happens at 8 AM, night falls when it's night, and a 10-day semester takes two real weeks.
+  - Actions play out in seconds and don't move the clock: a plate of amala or two hours of reading at HOL finishes while you watch a short progress bar.
+  - So nobody reads 20 hours straight, there's a daily limit on studying and paid work. Sleep is real: you go to bed, and your needs keep changing while you're away.
 - **Lectures at fixed times.** Each semester has a timetable: two lectures every weekday, at 8, 10, 12 or 2, at your lecture theatres.
   - Doors open an hour before, and students come early to keep seats.
   - Come 20 minutes early and you keep a seat in front, which helps your readiness. Come on time and you sit at the back.
@@ -54,11 +71,23 @@ Inspired by the viral Nigerian life simulator *Lagos Life*, but built around the
   - **Your own ride:** a bicycle (from Ojaja) or a car (the Staff Pikin drives Daddy's Corolla; anyone rich enough can buy one on Jiji). Door to door, any time, with petrol at ₦100 to ₦200 a trip.
 
   Off-campus students take the **town bus** (₦200) from Asherifa to the gate first. Your journey then plays out on the road: you walk to the stop, queue, watch the bus pull in, and ride.
-- **Admission is fate.** You pick your course, and the game picks your life:
-  - **Staff Pikin:** big allowance, free food at home.
-  - **Scholarship Kid:** studies faster, but the stipend stops below a 3.50 CGPA.
-  - **Hustler Fresher:** no allowance, hard mode.
-  - **Off-Campus Student:** a quiet room for reading, but a long commute.
+- **Admission is a lottery.** You pick your course, and the game rolls your money status:
+  - **Lapo Baby** (common): arrives with ₦100,000 cash, a cracked itel, and hustles pay 30% more. Parents send ₦20,000 at most.
+  - **Nepo Baby:** ₦200,000 cash, an Infinix, a laptop, ₦10,000 every Monday, school charges paid. Parents send up to ₦100,000.
+  - **Odogwu** (rare): ₦300,000 cash, an iPhone, a laptop, your own Corolla and ₦40,000 a week. Even Odogwu's parents send ₦300,000 at most, however much you ask.
+- **Where you live.** Not everyone lives on campus:
+  - **Hall bunk** (₦30,000 a session): four to a room, and your roommates are **other real players**. Share a room code to make sure a friend lands in your room.
+  - **Off campus** in Asherifa, Damico, Mayfair, Parakin and more: a **single room** (₦120k–₦150k), a **self-contain** (₦250k–₦600k) or a **2-bedroom flat** (₦800k–₦1.5M), the highest a student can live. Landlords allow two tenants at most, and a flatmate pays half.
+  - What you can afford depends on your status: your parents put money towards your first year's rent. Rent falls due again each session.
+  - **Your room in 3D:** bunk beds, buckets, lockers and a clothes line in a hall room; a bed and a fan in a single room; a kitchenette or a parlour off campus. Your roommates sit on their beds with their names above them, or show as "out" or asleep. A notice board lets roommates leave each other short messages.
+- **Cash and the bank.** You arrive with cash. Open an account at any bank in the **Banking Area** (First Bank, GTBank, Access, UBA, Zenith, Wema: 8 AM to 4 PM on weekdays, ₦1,000 opening deposit and ₦1,000 for an instant debit card), or a fintech account (OPay, Moniepoint) on your smartphone.
+  - Parents, your weekly allowance and freelance clients pay **into your account number**, so until you open one, your parents hold your allowance.
+  - Get cash at the **ATM** (free at your own bank's ATM, ₦35 at another bank's, ₦100,000 a day, and sometimes "Unable to dispense cash") or from a **POS agent** in every hall, faculty, lecture theatre, the market and SUB: swipe your card or transfer to the agent, ₦100 for every ₦5,000, a little more at night in the hostel.
+  - Kekes, buses and cabs take cash only. Shops and Mama Put take cash or a transfer. The portal, Jiji and betting are paid from the bank.
+  - **Send money to other students** by account number from your bank app. It checks the name first, charges ₦10 to ₦50 like a real transfer, and they get a credit alert.
+  - Carrying lots of cash is risky: hostel rooms get broken into.
+- **Gist with other students.** A chat app with your roommates, your department, and one-to-one chats started from a student's matric number. You can share your account number in one tap.
+- **Ways to make money:** hustles (chin-chin, barbing, shoemaking), freelancing (flyers, articles, transcription, websites, bug fixing on your laptop), **calling home** once a week (parents often send less than you ask, sometimes after a lecture), and a **betting app** with virtual matches. The odds are honest, so the bookie keeps about 12% and you lose more than you win.
 
   Then you choose how your student looks: skin, hair (low cut, afro, braids, bun, dreads), clothes, and trousers or a skirt.
 - **Keep five needs up:** food, energy, hygiene, fun and social. They fall little by little (a good meal lasts most of the day), faster if you're awake past 1 AM. Let food or energy hit zero and you collapse and wake up at the Health Centre.
@@ -106,9 +135,9 @@ A semester is ten game days. Everything is saved on the server. **Create a free 
 
 ## Engineering highlights
 
-- **The server owns the clock, too.** Game time is worked out from real time on the server: 1 second is 1 minute, capped at an hour while the app is closed, and paused while a dialog is open.
-  - The browser shows a smooth clock, but it can't speed up time.
-  - Journeys and time-lapses push the server's clock forward, so watching them isn't free time.
+- **The server owns the clock.** Game time is real Lagos time, worked out on the server. Days, missed lectures, exams and needs while you were away are all worked out from real time when you come back, and the browser can't speed anything up.
+- **A real banking system, server-side.** Every account number is unique in the database. A transfer debits the sender inside their locked game row and queues a credit that lands the next time the receiver's game talks to the server, so it can't be applied twice or replayed.
+- **Real roommates.** Rooms are database rows shared between players. Moving in locks the room row, so two players can't take the last bed at once, and halls fill existing rooms before opening new ones so freshers get roommates.
 - **No teleporting.** When you walk into a building, the server checks you could have walked there from where it last saw you in the time that passed. Heartbeats with impossible positions are ignored.
 - **Honest travel quotes.** Bus queue lengths are seeded by the half hour, so the time you're quoted is the trip you get. The CNG bus planner tries every stop pair on the one-way loop, and Dijkstra's algorithm finds the roads.
 - **One map, two uses.** `game/world.py` defines the campus once. The server uses it for distances, fares and opening hours, and the three.js client draws it from `GET /api/world/`.
@@ -131,7 +160,11 @@ A semester is ten game days. Everything is saved on the server. **Create a free 
 - **Accounts that work for students.** Username and password only, with no email or phone number collected. Each device gets its own token (stored hashed), so signing in on a laptop doesn't log your phone out. Password guessing is rate-limited per username.
 - **An installable app (PWA).** It has a web app manifest, maskable icons and a service worker, so it installs to the home screen, opens full screen, and loads even offline. Game moves are never cached, so progress can't fork or be faked offline.
 - **Old saves keep working.** `engine.upgrade()` brings saved games up to the newest version when you open them, so updates never wipe anyone's progress.
-- **Safe for a student audience.** Many students are under 18, so there's no chat, dating, or money transfers between players. Leaderboard names are filtered, and admins can hide a game in Django admin.
+- **Safe for a student audience.** Many players are teenagers, so chat is built carefully:
+  - The server hides phone numbers, links, emails and social handles, so conversations stay in the game, and stars out rude words.
+  - Anyone can be blocked (neither of you sees the other) or reported. Three reports hide a message until a moderator looks, and moderators can hide messages or pause a player's chat in Django admin.
+  - Sending is rate-limited per player.
+  - Money transfers are game money only, with daily limits. Betting asks you to confirm you're 18 or over, and locks you out after 10 bets a day. Leaderboard names are filtered, and admins can hide a game in Django admin.
 
 - **Looks like Ife, not a toy town.** Walls are drawn at runtime with damp plaster, rain streaks under louvre windows, burglar-proof bars, the odd AC unit and red-earth splash at the base.
   - Roofs carry water tanks, roads have open gutters, and NEPA poles string sagging wires across campus.
@@ -250,12 +283,12 @@ The realistic route is to wrap the same React app with **Capacitor** and add nat
 
 ## Inspired by Lagos Life, made safe for students
 
-Great Ife Life borrows what makes Lagos Life fun: fast actions on a real clock, small choices inside lectures, daily missions and streaks, Rep titles, traits and moodlets. It deliberately leaves out Lagos Life's open job boards, open election promises, betting, crime and real-money trading, because many players will be under 18.
+Great Ife Life borrows what makes Lagos Life fun: fast actions on a real clock, small choices inside lectures, daily missions and streaks, Rep titles, traits and moodlets. It deliberately leaves out Lagos Life's open job boards, open election promises, crime and real-money trading. Betting is in, but it's 18+, capped per day, and shows honestly that the bookie wins in the long run.
 
 ## Ideas for what's next
 
 - Hall-mates: see other real players walking on campus and at HOL (Django Channels, already used in my Relay project)
-- Interiors you can walk into: the lecture theatre, your hall room, the HOL reading room
+- Interiors you can walk into: the lecture theatre and the HOL reading room
 - An SU election that players actually vote in, once a week
 - More departments, including 5- and 6-year courses
 - Cosmetic extras through Paystack, using my [django-paystack-kit](https://github.com/Horrly/django-paystack-kit)

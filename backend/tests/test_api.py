@@ -1,6 +1,7 @@
 import pytest
 from rest_framework.test import APIClient
 
+from game import chat as CH
 from game import engine as E
 from game import views
 from game.models import Game
@@ -15,7 +16,9 @@ def fast_settings(settings, tmp_path):
     settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
     settings.REST_FRAMEWORK = {**settings.REST_FRAMEWORK, "DEFAULT_THROTTLE_RATES": {"new-game": "1000/min",
                                                                                      "act": "100000/min",
-                                                                                     "sync": "100000/min"}}
+                                                                                     "sync": "100000/min",
+                                                                                     "chat": "100000/min",
+                                                                                     "chat-send": "100000/min"}}
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "index.html").write_text(
@@ -173,7 +176,8 @@ def no_login_throttle(monkeypatch):
     monkeypatch.setattr(AuthThrottle, "THROTTLE_RATES", {"login": "1000/min"})
 
 
-def test_save_to_account_and_continue_on_another_phone(no_login_throttle):
+def test_save_to_account_and_continue_on_another_phone(no_login_throttle, monkeypatch):
+    clock = FakeClock(monkeypatch)
     phone1, game = start(name="Tunde")
     game = clear(phone1, game)
     game = phone1.post("/api/game/act/", {"action": "bath", "turn": game["turn"]}, format="json").data
@@ -185,6 +189,7 @@ def test_save_to_account_and_continue_on_another_phone(no_login_throttle):
     login = phone2.post("/api/account/login/", {"username": "TUNDE_B", "password": "greatife123"}, format="json")
     assert login.status_code == 200 and login.data["game"]["money"] == game["money"]
     phone2.credentials(HTTP_X_GAME_TOKEN=login.data["game_token"])
+    clock.t += 60  # the first bath has played out
     after = clear(phone2, phone2.get("/api/game/").data)
     moved = phone2.post("/api/game/act/", {"action": "bath", "turn": after["turn"]}, format="json")
     assert moved.status_code == 200
@@ -264,7 +269,7 @@ def test_assetlinks_for_play_store(settings):
 
 
 class FakeClock:
-    def __init__(self, monkeypatch, start=1_000_000.0):
+    def __init__(self, monkeypatch, start=1_792_387_800.0):  # a Monday, 6:30 AM in Lagos
         self.t = start
         monkeypatch.setattr(views, "now", lambda: self.t)
 
@@ -274,7 +279,7 @@ def test_world_map_is_public_and_cached():
     assert res.status_code == 200 and "max-age" in res["Cache-Control"]
     data = res.data
     assert "hol" in data["buildings"] and data["bus_route"][0] == "gate"
-    assert data["timing"]["rate"] == 1.0
+    assert data["timing"]["rate"] == 1 / 60
     assert set(APIClient().get("/api/config/").data["look_options"]) == {"skin", "hair", "top", "bottom", "style", "hall"}
 
 
@@ -282,12 +287,13 @@ def test_clock_ticks_with_real_time(monkeypatch):
     clock = FakeClock(monkeypatch)
     client, game = start()
     game = clear(client, game)
-    clock.t += 45
+    assert game["time"] == "6:30 AM" and game["weekday"] == "Monday"
+    clock.t += 45 * 60
     later = client.post("/api/game/sync/", {}, format="json").data
-    assert later["clock"] == game["clock"] + 45 and later["time"]
-    clock.t += 10_000  # phone in a drawer all day: only an hour passes
+    assert later["clock"] == game["clock"] + 45 and later["time"] == "7:15 AM"
+    clock.t += 10 * 3600  # phone in a drawer all day: the real hours pass, gently
     again = client.get("/api/game/").data
-    assert again["clock"] - later["clock"] <= E.IDLE_CAP + 1
+    assert again["clock"] - later["clock"] == 600 and min(again["needs"].values()) >= E.AWAY_FLOOR - 1
 
 
 def test_plan_and_take_a_trip(monkeypatch):
@@ -300,11 +306,13 @@ def test_plan_and_take_a_trip(monkeypatch):
     res = client.post("/api/game/travel/", {"to": "sub", "mode": "trek", "turn": game["turn"]}, format="json")
     assert res.status_code == 200, res.data
     trip = res.data
-    assert trip["at"] in ("sub", None) and trip["clock"] == game["clock"] + trek["minutes"]
+    assert trip["at"] in ("sub", None) and trip["clock"] == game["clock"]
     assert trip["last_trip"]["segments"] and trip["messages"][0].startswith("Trekked")
-    # while the journey plays back, the clock doesn't run on
-    clock.t += 3
-    assert client.post("/api/game/sync/", {}, format="json").data["clock"] == trip["clock"]
+    assert trip["playback"] == trek["seconds"] and trip["busy_for"] == trek["seconds"]
+    # while the journey plays back you can't do anything else
+    clock.t += 2
+    res = client.post("/api/game/act/", {"action": "scroll", "turn": trip["turn"]}, format="json")
+    assert res.status_code == 400 and "busy" in res.data["detail"]
     assert client.get("/api/game/plan/?to=nowhere").status_code == 400
 
 
@@ -334,3 +342,193 @@ def test_choose_your_look(monkeypatch):
     assert bad.status_code == 400
     res = APIClient().post("/api/games/", {"department": "csc", "look": look}, format="json")
     assert res.data["game"]["look"] == look
+
+
+# --- Rooms, roommates, rent, parents and betting ------------------------------------------------------
+
+
+def boy(client_name="Ade"):
+    client = APIClient()
+    look = {"skin": 0, "hair": 0, "top": 0, "bottom": 0, "style": 0, "hall": 0}
+    res = client.post("/api/games/", {"name": client_name, "department": "csc", "look": look}, format="json")
+    client.credentials(HTTP_X_GAME_TOKEN=res.data["token"])
+    return client, res.data["game"]
+
+
+def test_hall_rooms_take_four_real_players(monkeypatch):
+    clock = FakeClock(monkeypatch)
+    first, g1 = boy("Ade")
+    hall = g1["housing"]["building"]
+    room = g1["room"]
+    assert room["capacity"] == 4 and [p["name"] for p in room["people"]] == ["Ade"] and room["people"][0]["you"]
+    friends = []
+    for name in ("Bayo", "Chidi", "Dami"):
+        c, g = boy(name)
+        g = clear(c, g)
+        friends.append(c)
+        if g["room"]["id"] == room["id"]:
+            continue  # the hall already put them in Ade's room (rooms fill up so people meet)
+        clock.t += 30
+        res = c.post("/api/game/housing/join/", {"code": room["code"], "turn": g["turn"]}, format="json")
+        assert res.status_code == 200, res.data
+        assert res.data["housing"]["building"] == hall and res.data["room"]["id"] == room["id"]
+    full = first.get("/api/game/").data["room"]
+    assert len(full["people"]) == 4 and full["people"][0]["name"] == "Ade"
+    c, g = boy("Emeka")
+    g = clear(c, g)
+    res = c.post("/api/game/housing/join/", {"code": room["code"], "turn": g["turn"]}, format="json")
+    assert res.status_code == 400 and "full" in res.data["detail"]
+    # roommates see each other's notes
+    assert first.post("/api/game/room/note/", {"note": 1}, format="json").status_code == 200
+    assert friends[0].get("/api/game/").data["room"]["notes"][0]["text"] == "Who finished my garri?! 😤"
+
+
+def test_off_campus_landlords_allow_two_and_split_the_rent(monkeypatch):
+    clock = FakeClock(monkeypatch)
+    rich, g = start(name="Ola")
+    g = clear(rich, g)
+    g["money"] and None
+    game = Game.objects.get(display_name="Ola")
+    state = dict(game.state)
+    state["money"] = 2_000_000
+    game.state = state
+    game.save()
+    opts = rich.get("/api/game/housing/").data
+    flat = next(l for l in opts["listings"] if l["kind"] == "self_con")
+    clock.t += 30
+    res = rich.post("/api/game/housing/move/", {"kind": "self_con", "listing": flat["id"], "turn": g["turn"]},
+                    format="json")
+    assert res.status_code == 200, res.data
+    moved = res.data
+    assert moved["housing"]["kind"] == "self_con" and moved["room"]["capacity"] == 2
+    assert abs(moved["money"] - (2_000_000 - flat["you"])) <= 1_000  # (plus the daily streak reward)
+    mate, g2 = start(name="Kemi")
+    g2 = clear(mate, g2)
+    game2 = Game.objects.get(display_name="Kemi")
+    st2 = dict(game2.state)
+    st2["money"] = 1_000_000
+    st2["total_days"] = 5  # past settling in: parents don't chip in
+    game2.state = st2
+    game2.save()
+    clock.t += 30
+    res = mate.post("/api/game/housing/join/", {"code": moved["room"]["code"], "turn": g2["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    assert abs(res.data["money"] - (1_000_000 - flat["rent"] // 2)) <= 1_000
+    host = rich.get("/api/game/").data
+    assert host["money"] == moved["money"] + flat["rent"] // 2 and len(host["room"]["people"]) == 2
+    third, g3 = start(name="Tobi")
+    g3 = clear(third, g3)
+    res = third.post("/api/game/housing/join/", {"code": moved["room"]["code"], "turn": g3["turn"]}, format="json")
+    assert res.status_code == 400 and "2 tenants" in res.data["detail"]
+
+
+def test_call_parents_and_bet(monkeypatch):
+    clock = FakeClock(monkeypatch, start=1_792_387_800.0 + 4 * 3600)  # 10:30 AM
+    client, g = start()
+    g = clear(client, g)
+    game = Game.objects.get(pk=Game.objects.latest("pk").pk)
+    st = dict(game.state)
+    st["phone"] = {"model": "samsung", "cracked": False}
+    game.state = st
+    game.save()
+    g = client.get("/api/game/").data
+    res = client.post("/api/game/parents/", {"amount": 5_000, "turn": g["turn"]}, format="json")
+    assert res.status_code == 400 and "account" in res.data["detail"]
+    res = client.post("/api/game/bank/open/", {"bank": "opay", "turn": res.data["game"]["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    g = res.data
+    assert g["bank"]["number"].startswith("8") and len(g["bank"]["number"]) == 10
+    clock.t += 30
+    st = Game.objects.get(pk=game.pk).state
+    res = client.post("/api/game/parents/", {"amount": 500_000, "turn": g["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    g = res.data
+    assert g["parents"]["called"] and g["total_money"] - E.total_money(st) <= g["parents"]["cap"]
+    game = Game.objects.get(pk=game.pk)
+    game.state["bank"]["balance"] += 10_000   # make sure there's something to stake
+    game.save()
+    g = client.get("/api/game/").data
+    clock.t += 30
+    bet = {"match": 0, "pick": "1", "stake": 1_000, "turn": g["turn"]}
+    res = client.post("/api/game/bet/", bet, format="json")
+    assert res.status_code == 400 and "18" in res.data["detail"]
+    res = client.post("/api/game/bet/", {**bet, "turn": res.data["game"]["turn"], "adult": True}, format="json")
+    assert res.status_code == 200, res.data
+    assert res.data["betting"]["last"]["score"] and res.data["betting"]["staked"] == 1_000
+
+
+def _with_account(client, g, bank="opay"):
+    game = Game.objects.get(token_hash=views.hash_token(client._credentials["HTTP_X_GAME_TOKEN"]))
+    st = dict(game.state)
+    st["phone"] = {"model": "samsung", "cracked": False}
+    game.state = st
+    game.save()
+    g = clear(client, client.get("/api/game/").data)
+    res = client.post("/api/game/bank/open/", {"bank": bank, "turn": g["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    return res.data, Game.objects.get(pk=game.pk)
+
+
+def test_students_send_each_other_money_by_account_number(monkeypatch):
+    clock = FakeClock(monkeypatch, start=1_792_387_800.0 + 4 * 3600)
+    a, ga = start("Tunde")
+    b, gb = start("Bisi")
+    ga, game_a = _with_account(a, ga)
+    gb, game_b = _with_account(b, gb, "moniepoint")
+    game_a.state["bank"]["balance"] = 20_000
+    game_a.save()
+    clock.t += 30
+    ga = a.get("/api/game/").data
+    look = a.get("/api/game/bank/lookup/", {"number": gb["bank"]["number"], "bank": "moniepoint"})
+    assert look.status_code == 200 and look.data["name"] == "BISI"
+    assert a.get("/api/game/bank/lookup/", {"number": "1234567890"}).status_code == 400
+    res = a.post("/api/game/bank/transfer/", {"number": gb["bank"]["number"], "bank": "moniepoint",
+                                              "amount": 5_000, "turn": ga["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    assert res.data["bank"]["balance"] == 20_000 - 5_000 - 10
+    clock.t += 30
+    gb2 = b.post("/api/game/sync/", {}, format="json").data
+    assert gb2["bank"]["balance"] == gb["bank"]["balance"] + 5_000
+    assert any("Credit alert" in m for m in gb2["messages"])
+    # credited once only
+    assert b.post("/api/game/sync/", {}, format="json").data["bank"]["balance"] == gb2["bank"]["balance"]
+    res = a.post("/api/game/bank/transfer/", {"number": ga["bank"]["number"], "amount": 500,
+                                              "turn": res.data["turn"]}, format="json")
+    assert res.status_code == 400 and "own account" in res.data["detail"]
+
+
+def test_chat_room_department_and_dms(monkeypatch):
+    FakeClock(monkeypatch, start=1_792_387_800.0 + 4 * 3600)
+    monkeypatch.setattr(CH, "MIN_GAP", 0)
+    a, ga = start("Tunde")
+    b, gb = start("Bisi")
+    threads = a.get("/api/chat/").data["threads"]
+    dept = next(t for t in threads if t["kind"] == "dept")
+    res = a.post("/api/chat/messages/", {"thread": dept["id"], "text": "Call me on 0803 123 4567 or ig @tunde_x, www.site.com"},
+                 format="json")
+    assert res.status_code == 201
+    text = res.data["messages"][-1]["text"]
+    assert "0803" not in text and "@tunde" not in text and "www" not in text and "[number hidden]" in text
+    assert b.get("/api/chat/").data["threads"][0]["unread"] >= 1 or any(
+        t["unread"] for t in b.get("/api/chat/").data["threads"])
+    assert b.get("/api/game/").data["chat_unread"] >= 1
+    # someone in another department can't read it
+    c, gc = start("Kemi", "ecn")
+    assert c.get("/api/chat/messages/", {"thread": dept["id"]}).status_code == 400
+    # start a DM by matric number
+    matric_b = b.get("/api/chat/").data["matric"]
+    dm = a.post("/api/chat/dm/", {"matric": matric_b}, format="json")
+    assert dm.status_code == 200, dm.data
+    thread = dm.data["thread"]["id"]
+    assert a.post("/api/chat/messages/", {"thread": thread, "text": "Far shit you dey?"}, format="json").status_code == 201
+    msgs = b.get("/api/chat/messages/", {"thread": thread}).data["messages"]
+    assert msgs[-1]["text"] == "Far s*** you dey?"
+    assert c.get("/api/chat/messages/", {"thread": thread}).status_code == 400
+    # block: Bisi stops seeing Tunde, and Tunde can't message Bisi
+    me_a = msgs[-1]["by_id"]
+    assert b.post("/api/chat/block/", {"game": me_a}, format="json").status_code == 200
+    assert a.post("/api/chat/messages/", {"thread": thread, "text": "hello?"}, format="json").status_code == 400
+    assert all(m["by_id"] != me_a for m in b.get("/api/chat/messages/", {"thread": dept["id"]}).data["messages"])
+    # reports
+    mid = a.get("/api/chat/messages/", {"thread": dept["id"]}).data["messages"][-1]["id"]
+    assert c.post("/api/chat/report/", {"message": mid}, format="json").status_code == 400  # can't see it

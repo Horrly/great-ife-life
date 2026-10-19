@@ -128,6 +128,8 @@ REST_FRAMEWORK = {
         "new-game": os.environ.get("THROTTLE_NEW_GAME", "300/hour"),
         "act": os.environ.get("THROTTLE_ACT", "240/min"),
         "sync": os.environ.get("THROTTLE_SYNC", "120/min"),
+        "chat": os.environ.get("THROTTLE_CHAT", "180/min"),
+        "chat-send": os.environ.get("THROTTLE_CHAT_SEND", "20/min"),
         "login": os.environ.get("THROTTLE_LOGIN", "10/min"),
     },
 }

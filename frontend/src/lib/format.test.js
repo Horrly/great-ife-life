@@ -17,9 +17,9 @@ describe("format", () => {
     expect(needTone(80)).toBe("ok");
   });
   it("writes the share message", () => {
-    const card = { name: "Tunde", class: "First Class", cgpa: 4.6, profile: "Hustler Fresher", department: "Economics" };
+    const card = { name: "Tunde", class: "First Class", cgpa: 4.6, profile: "Lapo Baby", department: "Economics" };
     expect(shareText(card, "https://x.test/c/abc")).toBe(
-      "Tunde just graduated from Great Ife Life with First Class (4.60) as a Hustler Fresher in Economics. Beat that: https://x.test/c/abc",
+      "Tunde just graduated from Great Ife Life with First Class (4.60) as a Lapo Baby in Economics. Beat that: https://x.test/c/abc",
     );
   });
 });

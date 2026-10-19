@@ -130,13 +130,15 @@ BUILDINGS = {
     "amphi": {"name": "Amphitheatre", "node": "amp", "x": 285, "z": 180, "w": 30, "d": 30, "h": 4,
               "style": "amphitheatre", "kind": "campus", "wall": "#cbbfa8", "roof": "#cbbfa8", "hours": (7 * H, 22 * H),
               "sign": "AMPHITHEATRE"},
+    "banks": {"name": "Banking Area", "node": "c", "x": 228, "z": 178, "w": 34, "d": 16, "h": 7, "style": "banks",
+              "kind": "bank", "wall": "#ece6da", "roof": "#7d8790", "hours": None, "sign": "BANKING AREA"},
     "sports": {"name": "Sports Complex", "node": "sport", "x": 410, "z": 190, "w": 44, "d": 56, "h": 6,
                "style": "sports", "kind": "campus", "wall": "#e0e0e0", "roof": "#2f6fae", "hours": (6 * H, 20 * H),
                "sign": "SPORTS COMPLEX"},
 }
 
 MAP_KINDS = {"lecture": "Lecture theatres", "faculty": "Faculties", "hall": "Halls", "home": "Home",
-             "food": "Food & market", "campus": "Around campus"}
+             "food": "Food & market", "bank": "Banks & ATMs", "campus": "Around campus"}
 
 # The CNG campus bus links the Main Gate, the halls, New Market and SUB. It doesn't go round the faculties:
 # it only drops you at one it passes in front of (ODLT, on the main road). Kekes carry people to their faculties.

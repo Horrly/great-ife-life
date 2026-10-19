@@ -1,7 +1,9 @@
 // Your phone, drawn as the phone you actually have: an iPhone, an Android (Tecno, Infinix, Samsung, itel)
 // or a torchlight Nokia. Cracked screens look cracked. Apps open the things you can do from your phone.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { clockText, duration, naira } from "../lib/format";
+import { BankApp } from "./Banking";
+import ChatApp from "./Chat";
 
 const WALLPAPER = {
   ios: "linear-gradient(160deg, #1f6f4a 0%, #0e4a30 40%, #f2a65a 100%)",
@@ -13,14 +15,18 @@ const WALLPAPER = {
 
 const APPS = [
   { id: "portal", name: "OAU Portal", icon: "🎓", color: "#14603f", actions: ["pay_fees"], always: true },
-  { id: "call", name: "Phone", icon: "📞", color: "#2fb34a", actions: ["call_home"] },
+  { id: "chat", name: "Gist", icon: "🗨️", color: "#25a35a", screen: "chat" },
+  { id: "bank", name: "Bank", icon: "🏦", color: "#2f5f9e", screen: "bank" },
+  { id: "call", name: "Call Mummy", icon: "📞", color: "#2fb34a", screen: "parents" },
+  { id: "houses", name: "Houses", icon: "🏠", color: "#c0612b", screen: "houses" },
+  { id: "freelance", name: "Freelance", icon: "🧑‍💻", color: "#1dbf73", actions: ["fl_article", "design_gig"] },
+  { id: "bet", name: "OgaBet", icon: "⚽", color: "#0f2f1f", screen: "bet", smart: true },
   { id: "data", name: "Data Plug", icon: "📶", color: "#f2c230", actions: ["sell_data"] },
-  { id: "canva", name: "Canva", icon: "🎨", color: "#19a7ce", actions: ["design_gig", "logo_gig"] },
+  { id: "canva", name: "Canva", icon: "🎨", color: "#19a7ce", actions: ["logo_gig"] },
   { id: "gigs", name: "Gigs", icon: "💼", color: "#6b4f2a", actions: ["bug_fix", "website_gig", "bridal_hair", "barb_wedding"] },
   { id: "social", name: "Socials", icon: "💬", color: "#d6336c", actions: ["scroll", "brand_deal"] },
   { id: "biz", name: "Business", icon: "🏪", color: "#b5482a", match: (id) => id.startsWith("buy_") && id !== "buy_car" || id.startsWith("sell_") && id !== "sell_data" },
   { id: "jiji", name: "Jiji", icon: "🚗", color: "#3db83a", actions: ["buy_car"] },
-  { id: "bank", name: "Bank", icon: "🏦", color: "#2f5f9e", screen: "bank" },
   { id: "timetable", name: "Timetable", icon: "🗓", color: "#7a3e9d", screen: "timetable" },
   { id: "maps", name: "Maps", icon: "🗺", color: "#e9c227", screen: "maps" },
 ];
@@ -80,23 +86,111 @@ function AppActions({ actions, onAct, busy }) {
   );
 }
 
-function AppScreen({ app, game, onAct, busy, onBack }) {
-  let body;
-  if (app.screen === "bank") {
-    body = (
+const ASK_LABEL = (n) => (n >= 1000 ? `₦${n / 1000}k` : `₦${n}`);
+
+function ParentsScreen({ game, busy, onParents }) {
+  const p = game.parents;
+  return (
+    <div className="space-y-3 p-4 text-white">
+      <div className="rounded-2xl bg-white/15 p-4">
+        <p className="text-xs opacity-80">Calling</p>
+        <p className="display text-3xl">Mummy 📞</p>
+        <p className="mt-1 text-xs opacity-90">
+          You're a {game.profile.name}. However much you ask, they won't send more than {naira(p.cap)}.
+        </p>
+      </div>
+      {!game.bank ? (
+        <p className="rounded-xl bg-black/25 px-3 py-2 text-sm">"Send me your account number." Open a bank account first so they can send money.</p>
+      ) : p.called ? (
+        <p className="rounded-xl bg-black/25 px-3 py-2 text-sm">You've called this week. Call again next Monday.</p>
+      ) : (
+        <>
+          <p className="text-sm font-bold">How much will you ask for?</p>
+          <div className="grid grid-cols-3 gap-2">
+            {p.asks.map((n) => (
+              <button key={n} disabled={busy} onClick={() => onParents(n)}
+                className="rounded-xl bg-white/95 px-2 py-3 text-base font-black text-ink shadow disabled:opacity-60">
+                {ASK_LABEL(n)}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs opacity-80">Once a week, between 7 AM and 10 PM. Parents rarely send everything you ask for.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BetScreen({ game, busy, onBet }) {
+  const b = game.betting;
+  const [adult, setAdult] = useState(b.adult);
+  const [stake, setStake] = useState(b.stakes[1]);
+  const net = b.won - b.staked;
+  if (!adult) {
+    return (
       <div className="space-y-3 p-4 text-white">
-        <div className="rounded-2xl bg-white/15 p-4">
-          <p className="text-xs opacity-80">Available balance</p>
-          <p className="num text-4xl">{naira(game.money)}</p>
-        </div>
-        <p className="text-xs opacity-80">Businesses have paid you {naira(game.business_income)} so far.</p>
-        <ul className="space-y-1 text-xs">
-          {game.log.filter((l) => /₦/.test(l.text)).slice(0, 6).map((l, i) => (
-            <li key={i} className="rounded-lg bg-black/20 px-2 py-1.5">{l.text}</li>
-          ))}
-        </ul>
+        <p className="display text-3xl">OgaBet ⚽</p>
+        <p className="text-sm">Virtual football: matches finish in seconds. The bookie keeps about 12% of every naira, so over time the app wins.</p>
+        <label className="flex items-start gap-2 rounded-xl bg-white/15 p-3 text-sm">
+          <input type="checkbox" className="mt-1 h-4 w-4" onChange={(e) => setAdult(e.target.checked)} />
+          I'm 18 or older
+        </label>
       </div>
     );
+  }
+  return (
+    <div className="space-y-2.5 p-3 text-white">
+      <div className="flex items-baseline justify-between rounded-xl bg-white/10 px-3 py-2 text-xs">
+        <span>Bets today: {b.today}/10</span>
+        <span className={net < 0 ? "font-bold text-[#ff9a8a]" : "font-bold text-[#8fe3a8]"}>
+          {b.staked ? `${net < 0 ? "Down" : "Up"} ${naira(Math.abs(net))} overall` : "No bets yet"}
+        </span>
+      </div>
+      {b.last && (
+        <p className={`rounded-xl px-3 py-2 text-sm font-bold ${b.last.won ? "bg-[#1f7a46]" : "bg-[#7a1f1f]"}`}>
+          {b.last.score} · {b.last.won ? "Won" : "Lost"}
+        </p>
+      )}
+      <div className="flex gap-1.5" role="radiogroup" aria-label="Stake">
+        {b.stakes.map((n) => (
+          <button key={n} role="radio" aria-checked={stake === n} onClick={() => setStake(n)}
+            className={`flex-1 rounded-lg px-1 py-1.5 text-xs font-black ${stake === n ? "bg-bulb text-ink" : "bg-white/15"}`}>
+            {ASK_LABEL(n)}
+          </button>
+        ))}
+      </div>
+      <ul className="space-y-2">
+        {b.fixtures.map((f) => (
+          <li key={f.index} className="rounded-xl bg-white/95 p-2.5 text-ink">
+            <p className="text-sm font-bold">{f.home} <span className="text-muted">vs</span> {f.away}</p>
+            <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+              {["1", "X", "2"].map((k) => (
+                <button key={k} disabled={busy || (game.bank?.balance ?? 0) < stake || b.today >= 10}
+                  onClick={() => onBet(f.index, k, stake, true)}
+                  className="rounded-lg bg-[#0f2f1f] px-1 py-1.5 text-white disabled:opacity-50">
+                  <span className="block text-[10px] opacity-70">{k === "1" ? "Home" : k === "X" ? "Draw" : "Away"}</span>
+                  <span className="num text-base">{f.odds[k].toFixed(2)}</span>
+                </button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] opacity-75">New matches every 10 minutes. Only bet what you can afford to lose.</p>
+    </div>
+  );
+}
+
+function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run }) {
+  let body;
+  if (app.screen === "chat") {
+    body = <ChatApp />;
+  } else if (app.screen === "parents") {
+    body = <ParentsScreen game={game} busy={busy} onParents={onParents} />;
+  } else if (app.screen === "bet") {
+    body = <BetScreen game={game} busy={busy} onBet={onBet} />;
+  } else if (app.screen === "bank") {
+    body = <BankApp game={game} run={run} />;
   } else if (app.screen === "timetable") {
     body = (
       <ul className="space-y-1.5 p-3 text-sm text-white">
@@ -134,14 +228,14 @@ function AppScreen({ app, game, onAct, busy, onBack }) {
         </button>
         <span className="font-bold">{app.name}</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">{body}</div>
+      <div className={`min-h-0 flex-1 ${app.screen === "chat" ? "flex flex-col" : "overflow-y-auto"}`}>{body}</div>
     </div>
   );
 }
 
-function SmartPhone({ info, game, minute, onAct, busy, onMaps }) {
+function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onParents, onBet, run }) {
   const [app, setAppState] = useState(null);
-  const setApp = (a) => (a?.screen === "maps" ? onMaps() : setAppState(a));
+  const setApp = (a) => (a?.screen === "maps" ? onMaps() : a?.screen === "houses" ? onHousing() : setAppState(a));
   const ios = info.os === "ios";
   const wall = ios ? WALLPAPER.ios : WALLPAPER[info.brand] || WALLPAPER.tecno;
   const visible = APPS.filter((a) => a.screen || a.always || game.phone.some((x) => (a.match ? a.match(x.id) : a.actions.includes(x.id))));
@@ -159,13 +253,13 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps }) {
         )}
         <StatusBar minute={minute} />
         {app ? (
-          <AppScreen app={app} game={game} onAct={onAct} busy={busy} onBack={() => setApp(null)} />
+          <AppScreen app={app} game={game} onAct={onAct} busy={busy} onBack={() => setApp(null)} onParents={onParents} onBet={onBet} run={run} />
         ) : (
           <>
             <div className="px-5 pb-2 pt-6 text-white">
               <p className="num text-5xl drop-shadow">{clockText(minute).replace(/ (AM|PM)/, "")}</p>
               <p className="text-xs font-bold opacity-90">
-                {game.weekday} · {naira(game.money)}
+                {game.weekday} · {naira(game.total_money ?? game.money)}
               </p>
             </div>
             {!ios && (
@@ -176,11 +270,16 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps }) {
                 <li key={a.id} className="text-center">
                   <button onClick={() => setApp(a)} className="w-full" aria-label={a.name}>
                     <span
-                      className={`mx-auto grid h-12 w-12 place-items-center text-2xl shadow-md ${ios ? "rounded-[0.9rem]" : "rounded-full"}`}
+                      className={`relative mx-auto grid h-12 w-12 place-items-center text-2xl shadow-md ${ios ? "rounded-[0.9rem]" : "rounded-full"}`}
                       style={{ background: a.color }}
                       aria-hidden
                     >
                       {a.icon}
+                      {a.id === "chat" && game.chat_unread > 0 && (
+                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-danger px-1 text-[11px] font-black text-white">
+                          {game.chat_unread}
+                        </span>
+                      )}
                     </span>
                     <span className="mt-1 block truncate text-[10px] font-bold text-white drop-shadow">{a.name}</span>
                   </button>
@@ -216,14 +315,14 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps }) {
   );
 }
 
-function KeypadPhone({ info, game, minute, onAct, busy }) {
+function KeypadPhone({ info, game, minute, onAct, busy, onParents }) {
   const [screen, setScreen] = useState("menu");
   const [torch, setTorch] = useState(false);
-  const call = game.phone.find((a) => a.id === "call_home");
   const snake = game.phone.find((a) => a.id === "snake");
   const items = [
-    { label: "Call Mummy", run: () => call && onAct(call), disabled: !call?.enabled, note: call?.enabled ? null : call?.reason },
+    { label: game.parents.called ? "Call Mummy (next week)" : "Call Mummy", run: () => setScreen("call"), disabled: game.parents.called },
     { label: "Snake", run: () => snake && onAct(snake), disabled: !snake?.enabled },
+    { label: "Bank (*894#)", run: () => setScreen("ussd") },
     { label: "Messages", run: () => setScreen("sms") },
     { label: torch ? "Torchlight: ON" : "Torchlight", run: () => setTorch((t) => !t) },
   ];
@@ -249,6 +348,34 @@ function KeypadPhone({ info, game, minute, onAct, busy }) {
             ))}
             <li className="pt-1 text-[10px]">No data. Pay fees at a SUB business centre.</li>
           </ul>
+        ) : screen === "ussd" ? (
+          <div className="mt-1 space-y-0.5 text-[11px]">
+            <button className="underline" onClick={() => setScreen("menu")}>‹ Back</button>
+            {game.bank ? (
+              <>
+                <p>{game.bank.name}</p>
+                <p>Acct: {game.bank.number}</p>
+                <p>Bal: {naira(game.bank.balance)}</p>
+                <p className="pt-1">Withdraw at any POS by transfer.</p>
+              </>
+            ) : (
+              <p>No account. Visit the Banking Area (8am-4pm, Mon-Fri).</p>
+            )}
+          </div>
+        ) : screen === "call" ? (
+          <div className="mt-1 space-y-0.5 text-[11px]">
+            <button className="underline" onClick={() => setScreen("menu")}>‹ Back</button>
+            <p>Ask Mummy for:</p>
+            {game.parents.asks.map((n) => (
+              <button key={n} disabled={busy} className="block w-full rounded px-1 text-left hover:bg-[#1d2b14] hover:text-[#b9d3a5]"
+                onClick={() => {
+                  onParents(n);
+                  setScreen("menu");
+                }}>
+                › {naira(n)}
+              </button>
+            ))}
+          </div>
         ) : (
           <div className="mt-1 h-[80%] space-y-1 overflow-y-auto text-[10px]">
             <button className="underline" onClick={() => setScreen("menu")}>‹ Back</button>
@@ -271,25 +398,35 @@ function KeypadPhone({ info, game, minute, onAct, busy }) {
 }
 
 /** The phone overlay. */
-export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMarket }) {
+export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMarket, onHousing, onParents, onBet, run }) {
   const info = game.phone_info;
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-ink/60 p-4 backdrop-blur-sm"
+    <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-center gap-2 bg-ink/45 p-4"
       role="dialog" aria-label={info ? `Your phone: ${info.name}` : "No phone"}>
+      <button className="absolute inset-0 cursor-default" aria-label="Put phone away" tabIndex={-1} onClick={onClose} />
+      <button className="float absolute right-4 top-[max(3.6rem,calc(env(safe-area-inset-top)+3rem))] z-10 rounded-full px-4 py-2 text-sm font-bold" onClick={onClose}>
+        × Close
+      </button>
       {info ? (
-        <>
+        <div className="slide-up relative flex flex-col items-center gap-2">
           {info.os === "keypad" ? (
-            <KeypadPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} />
+            <KeypadPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onParents={onParents} />
           ) : (
-            <SmartPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onMaps={onMaps} />
+            <SmartPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onMaps={onMaps}
+              onHousing={onHousing} onParents={onParents} onBet={onBet} run={run} />
           )}
           <p className="text-center text-xs font-bold text-white">
             {info.name}
             {info.cracked && " · cracked screen (fix it at Ojaja)"}
           </p>
-        </>
+        </div>
       ) : (
-        <div className="max-w-xs rounded-2xl bg-slab p-5 text-center">
+        <div className="slide-up relative max-w-xs rounded-3xl bg-white p-5 text-center">
           <p className="text-4xl" aria-hidden>📵</p>
           <h2 className="display mt-2 text-3xl font-black text-ife-900">No phone</h2>
           <p className="mt-2 text-sm text-muted">
@@ -300,9 +437,6 @@ export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMa
           </button>
         </div>
       )}
-      <button className="btn-ghost px-6" onClick={onClose}>
-        Put phone away
-      </button>
     </div>
   );
 }

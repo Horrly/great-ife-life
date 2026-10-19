@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AccountForm from "../components/AccountForm";
-import { EventDialog, ResultSlip, Sheet } from "../components/Dialogs";
+import { ResultSlip, Sheet } from "../components/Dialogs";
 import {
-  ActionList, Joystick, JourneyBar, Panel, RoundButton, TimeLapse, Timetable, Toasts, TodayPanel, TopBar, TravelPanel,
+  ActionCards, ActionChip, ambientFor, AvatarButton, Chevron, ClockPill, iconFor, InboxButton, Joystick, JourneyBar, MapSheet,
+  MoreMenu, NavBar, NeedsCard, NeedsPill, NextClassPill, PhoneButton, PlaceCard, PlaceSheet, RoundIcon, StatusDrawer, WalletPill,
 } from "../components/Hud";
-import { BadgesButton, Businesses, Skills } from "../components/Progress";
 import Phone from "../components/Phone";
-import { Needs } from "../components/Status";
+import PlacePanel from "../components/Place";
+import MeSheet, { InboxSheet } from "../components/MeSheet";
+import { HousingChooser, SleepOverlay } from "../components/Home";
+import { BottomSheet, DecisionCard, Toast } from "../components/ui";
+import { sfx } from "../lib/sfx";
 import CampusEngine from "../game3d/Engine";
 import { save } from "../lib/api";
-import { clockText, naira } from "../lib/format";
+import { clockText } from "../lib/format";
 import { loadWorld, useGame } from "../lib/game";
 
-/** The game clock as the player sees it: the server's time plus real seconds since, 1 second = 1 minute. */
-function useLiveClock(game, frozenUntil) {
+/** The game clock is real Lagos time: the server's minute plus the real seconds since it answered. */
+function useLiveClock(game) {
   const [, setTick] = useState(0);
   const seenAt = useRef(new WeakMap());
   useEffect(() => {
@@ -23,10 +27,10 @@ function useLiveClock(game, frozenUntil) {
   }, []);
   if (!game) return 0;
   if (!seenAt.current.has(game)) seenAt.current.set(game, game.receivedAt ?? performance.now());
-  if (!game.ticking) return game.clock;
-  const from = Math.max(seenAt.current.get(game), frozenUntil.current);
-  const elapsed = Math.max(0, (performance.now() - from) / 1000);
-  return game.clock + Math.min(Math.floor(elapsed * game.rate), game.idle_cap);
+  if (!game.ticking || !game.server_time) return game.clock;
+  const intoMinute = (game.server_time + 3600) % 60; // seconds past the minute when the server answered
+  const elapsed = Math.max(0, (performance.now() - seenAt.current.get(game)) / 1000);
+  return game.clock + Math.floor((intoMinute + elapsed) / 60);
 }
 
 function animate(seconds, onFrame) {
@@ -88,130 +92,56 @@ function SaveSheet({ onClose }) {
   );
 }
 
-function MePanel({ game, onClose, onSave, account, onTitle }) {
-  return (
-    <Panel title={game.name || "You"} subtitle={`${game.department.name}, ${game.level}`} onClose={onClose} tall label="Your stats">
-      <div className="space-y-4">
-        <section className="slab p-4">
-          <dl className="grid grid-cols-3 gap-2 text-center">
-            <div>
-              <dt className="text-xs text-muted">Readiness</dt>
-              <dd className="num text-3xl">{game.prep}%</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">Attendance</dt>
-              <dd className="num text-3xl">{game.attendance ?? "–"}{game.attendance !== null && "%"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">CGPA</dt>
-              <dd className="num text-3xl">{game.cgpa?.toFixed(2) ?? "–"}</dd>
-            </div>
-          </dl>
-          {game.upcoming.length > 0 && (
-            <ul className="mt-3 space-y-1 border-t border-line pt-3 text-sm">
-              {game.upcoming.map((u) => (
-                <li key={u} className="flex gap-2">
-                  <span className="text-ife-600" aria-hidden>▸</span>
-                  {u}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <section className="slab p-4">
-          <h3 className="font-bold">Timetable</h3>
-          <p className="text-xs text-muted">Doors open an hour before. Come 20 minutes early for a front seat; more than 15 minutes late and you stand by the window; after 40 they shut.</p>
-          <div className="mt-2">
-            <Timetable game={game} />
-          </div>
-          <p className="mt-2 text-xs text-muted">
-            Courses: {game.courses.map((c) => c.code + (c.carry ? " (carryover)" : "")).join(", ")}
-          </p>
-        </section>
-        <section className="slab p-4">
-          <h3 className="font-bold">Who you are</h3>
-          <ul className="mt-2 flex flex-wrap gap-1.5">
-            {game.traits.map((t) => (
-              <li key={t.id} title={t.text} className="rounded-full bg-ife-50 px-2.5 py-1 text-xs font-bold text-ife-700">
-                {t.emoji} {t.name}
-              </li>
-            ))}
-          </ul>
-          {game.dream && (
-            <p className="mt-3 text-sm">
-              <b>Dream:</b> {game.dream.emoji} {game.dream.name}{" "}
-              <span className={game.dream.done ? "font-bold text-ife-600" : "text-muted"}>
-                {game.dream.done ? "· achieved!" : `· ${game.dream.note}`}
-              </span>
-            </p>
-          )}
-          <div className="mt-3">
-            <div className="flex items-baseline justify-between text-sm">
-              <b>⭐ {game.rep.title}</b>
-              <span className="text-xs text-muted">Campus Rep level {game.rep.level}</span>
-            </div>
-            <div className="mt-1 h-2 overflow-hidden rounded-full bg-line/70">
-              <div className="h-full rounded-full bg-bulb" style={{ width: `${((game.rep.xp - game.rep.floor) / (game.rep.next - game.rep.floor)) * 100}%` }} />
-            </div>
-          </div>
-        </section>
-        <section className="slab p-4">
-          <h3 className="font-bold">Your things</h3>
-          <ul className="mt-2 space-y-1 text-sm">
-            <li>📱 {game.phone_info ? `${game.phone_info.name}${game.phone_info.cracked ? " (cracked screen)" : ""}` : "No phone (buy one at Ojaja)"}</li>
-            <li>🍚 Foodstuff for {game.pantry} meal{game.pantry === 1 ? "" : "s"}</li>
-            {game.items.map((i) => (
-              <li key={i.id}>{{ bike: "🚲", car: "🚗", clippers: "💈", cobbler_kit: "👞" }[i.id]} {i.name}</li>
-            ))}
-          </ul>
-        </section>
-        <Needs needs={game.needs} mood={game.mood} />
-        <Skills skills={game.skills} />
-        <Businesses businesses={game.businesses} income={game.business_income} />
-        <BadgesButton badges={game.badges} />
-        <section className="slab p-4">
-          <h3 className="font-bold">Recently</h3>
-          <ul className="mt-2 space-y-1.5 text-sm text-muted">
-            {game.log.slice(0, 8).map((line, i) => (
-              <li key={i}>
-                <span className="font-bold text-ink">{line.time}</span> {line.text}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-muted">You've trekked {game.trekked_km} km around campus.</p>
-        </section>
-        <div className="flex gap-2 text-sm">
-          <button className={`flex-1 py-2 ${account ? "btn-ghost" : "btn-bulb"}`} onClick={onSave}>
-            {account ? `Saved to @${account.username}` : "Save progress"}
-          </button>
-          <button className="btn-ghost flex-1 py-2" onClick={onTitle}>
-            Title screen
-          </button>
-        </div>
-      </div>
-    </Panel>
-  );
+
+const SEEN_KEY = "gil.inboxSeen";
+function useInbox(log) {
+  const key = (l) => (l ? `${l.day}|${l.time}|${l.text}` : "");
+  const [seen, setSeen] = useState(() => {
+    try {
+      return localStorage.getItem(SEEN_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
+  const idx = log.findIndex((l) => key(l) === seen);
+  const count = idx === -1 ? Math.min(log.length, 10) : idx;
+  const markSeen = () => {
+    const k = key(log[0]);
+    setSeen(k);
+    try {
+      localStorage.setItem(SEEN_KEY, k);
+    } catch {
+      /* private mode */
+    }
+  };
+  return [count, markSeen];
 }
 
 export default function Play() {
-  const { game, busy, error, setError, messages, setMessages, act, choose, next, travel, enter, leave, sync, plan, account } = useGame();
+  const { game, busy, error, setError, messages, setMessages, act, choose, next, travel, enter, leave, sync, plan, account,
+    askParents, bet, moveHome, joinRoom, housing, postNote } = useGame();
   const navigate = useNavigate();
   const host = useRef(null);
   const engine = useRef(null);
   const [world, setWorld] = useState(null);
   const [no3d, setNo3d] = useState(false);
   const [near, setNear] = useState(null);
-  const [panel, setPanel] = useState(null); // "travel" | "phone" | "laptop" | "me" | "save"
-  const [running, setRunning] = useState(false);
+  // one sheet at a time: "place" | "map" | "to" | "phone" | "me" | "inbox" | "laptop" | "housing" | "save"
+  const [panel, setPanel] = useState(null);
+  const [meTab, setMeTab] = useState("profile");
   const [travelTo, setTravelTo] = useState(null);
-  const [hideInside, setHideInside] = useState(false);
+  const [drawer, setDrawer] = useState(false);
+  const [clean, setClean] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [lookAround, setLookAround] = useState(false);
   const [journey, setJourney] = useState(null);
   const [jp, setJp] = useState({ p: 0, seg: null });
   const [lapse, setLapse] = useState(null);
   const [lp, setLp] = useState(0);
-  const frozenUntil = useRef(0);
-  const clock = useLiveClock(game, frozenUntil);
+  const [hint, setHint] = useState(true);
+  const clock = useLiveClock(game);
   const minute = ((clock % 1440) + 1440) % 1440;
+  const [inboxCount, markInboxSeen] = useInbox(game.log);
 
   useEffect(() => {
     if (game.phase === "graduated") navigate("/graduation", { replace: true });
@@ -254,17 +184,22 @@ export default function Play() {
   useEffect(() => engine.current?.setMinute(minute), [minute, world]);
   useEffect(() => {
     if (!journey) engine.current?.setInside(game.at, game.at ? null : game.pos);
-    setHideInside(false);
+    setLookAround(false);
+    if (!game.at && panel === "place") setPanel(null);
   }, [game.at]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => engine.current?.setLook(game.look), [game.look]);
+  useEffect(() => {
+    sync(game.at ? null : game.pos);
+    const id = setTimeout(() => setHint(false), 15000);
+    return () => clearTimeout(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Heartbeat every 15 seconds, plus right after midnight so the new day (or results) shows up.
+  // Heartbeat, plus right after midnight so the new day (or results) shows up.
   const playing = game.phase === "play" && !journey && !lapse;
   const pos = useCallback(() => (game.at ? null : engine.current?.playerPos() || null), [game.at]);
   useEffect(() => {
     if (!playing || !game.ticking) return undefined;
-    // inside a building what you can do changes by the minute, so check in more often
-    const every = game.at ? 5_000 : 12_000;
+    const every = game.asleep ? 60_000 : game.at ? 15_000 : 25_000;
     const id = setInterval(() => document.visibilityState === "visible" && sync(pos()), every);
     const onVisible = () => document.visibilityState === "visible" && sync(pos());
     document.addEventListener("visibilitychange", onVisible);
@@ -272,39 +207,64 @@ export default function Play() {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [playing, game.ticking, game.at, sync, pos]);
+  }, [playing, game.ticking, game.at, game.asleep, sync, pos]);
   const day = Math.floor(clock / 1440);
   useEffect(() => {
     if (playing && day > Math.floor(game.clock / 1440)) sync(pos());
   }, [day]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!messages.length) return undefined;
-    const id = setTimeout(() => setMessages([]), 6000);
-    return () => clearTimeout(id);
-  }, [messages, setMessages]);
-
-  async function onAct(action) {
-    const from = clock;
-    const g = await act(action.id);
-    setPanel((p) => (p === "phone" || p === "laptop" ? null : p));
-    if (!g) return;
-    const seconds = 2.5;
-    frozenUntil.current = performance.now() + seconds * 1000;
-    setLapse({ label: action.label, from, to: g.clock });
-    await animate(g.clock - from > 20 ? seconds : 0.8, setLp);
+  /** Actions play out in a few real seconds as a ring chip at the top; you can keep looking around. */
+  async function playback(label, g, icon) {
+    if (!g?.playback) return;
+    setLapse({ label, icon });
+    await animate(g.playback, setLp);
     setLapse(null);
   }
 
+  async function onAct(action) {
+    const g = await act(action.id);
+    setPanel((p) => (p === "phone" || p === "laptop" ? null : p));
+    if (!g || action.id === "sleep" || action.id === "wake") return;
+    await playback(action.label, g, iconFor(action));
+  }
+
+  async function onParents(amount) {
+    const g = await askParents(amount);
+    setPanel(null);
+    await playback("Calling Mummy", g, "📞");
+  }
+
+  async function onBet(match, pick, stake, adult) {
+    const g = await bet(match, pick, stake, adult);
+    if (g) await playback("The match is on…", g, "⚽");
+  }
+
+  /** Bank, ATM and POS moves: wait for the server, then play the few seconds it takes. */
+  async function runMove(promise, label) {
+    const g = await promise;
+    if (g) await playback(label, g, "🏦");
+    return g;
+  }
+
+  async function onMoveHome(body) {
+    const g = await (body.code ? joinRoom(body.code) : moveHome(body));
+    if (g) setPanel(null);
+  }
+
+  function goTo(id) {
+    if (!id) return;
+    setTravelTo(id);
+    setPanel("to");
+  }
+
   async function onGo(to, option) {
-    const from = clock;
+    const fromName = game.at ? (game.at === game.home ? "Home" : world.buildings[game.at].name) : "Here";
     const g = await travel(to, option.mode, pos());
     if (!g?.last_trip) return;
     setPanel(null);
     setTravelTo(null);
-    const seconds = Math.min(25, Math.max(4, option.minutes / 3));
-    frozenUntil.current = performance.now() + seconds * 1000;
-    const trip = { ...g.last_trip, toName: world.buildings[to].name, depart: from, arrive: g.clock };
+    const seconds = g.playback || option.seconds || 6;
+    const trip = { ...g.last_trip, mode: option.mode, fromName, toName: to === game.home ? "Home" : world.buildings[to].name };
     setJourney(trip);
     setJp({ p: 0, seg: trip.segments[0] });
     const done = () => {
@@ -320,9 +280,9 @@ export default function Play() {
     let last = 0;
     engine.current.playJourney(g.last_trip, seconds, {
       onProgress: (p, seg) => {
-        const now = performance.now();
-        if (now - last > 90 || p >= 1) {
-          last = now;
+        const t = performance.now();
+        if (t - last > 90 || p >= 1) {
+          last = t;
           setJp({ p, seg });
         }
       },
@@ -332,157 +292,257 @@ export default function Play() {
 
   async function onEnter() {
     if (!near) return;
+    sfx("open");
     await enter(near.id, engine.current?.playerPos());
   }
 
   async function onLeave() {
     const was = game.at;
+    setPanel(null);
     const g = await leave();
     if (g) engine.current?.stepOut(was);
   }
 
   const inside = game.at && !journey;
-  // during a journey or a time-lapse, the clock on top runs fast with it
-  const shownMinute = journey
-    ? (journey.depart + (journey.arrive - journey.depart) * jp.p) % 1440
-    : lapse
-      ? (lapse.from + (lapse.to - lapse.from) * lp) % 1440
-      : minute;
   const building = inside && world ? world.buildings[game.at] : null;
+  const atHome = inside && game.at === game.home;
+  const classTarget = game.test?.at || game.next_venue || game.faculty;
+
+  // your own room is drawn in 3D, with your roommates in it
+  const roomKey = JSON.stringify(game.room?.people?.map((p) => [p.id, p.where]) ?? null);
+  const noLight = game.moodlets?.some((m) => m.id === "no_light");
+  useEffect(() => {
+    const e = engine.current;
+    if (!e) return;
+    if (atHome && game.room) e.showRoom({ ...game.room, kind: game.housing.kind }, noLight);
+    else e.hideRoom();
+  }, [atHome, roomKey, noLight, world, game.housing.kind]); // eslint-disable-line react-hooks/exhaustive-deps
   const showGame = { ...game, minute };
-  const overlayOpen = game.phase !== "play" || lapse || journey;
+  const overlayOpen = game.phase !== "play" || journey;
+  const controls = game.phase === "play" && !journey && !game.asleep;
+  const close = useCallback(() => setPanel(null), []);
+  const openMe = (tab = "profile") => {
+    setMeTab(tab);
+    setPanel("me");
+    setDrawer(false);
+  };
+
+  // desktop shortcuts: M map, P phone, S you, I inbox, H home, C class
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target.closest?.("input, textarea, select") || e.metaKey || e.ctrlKey || !controls) return;
+      const k = e.key.toLowerCase();
+      if (k === "m") setPanel((p) => (p === "map" ? null : "map"));
+      else if (k === "p") setPanel((p) => (p === "phone" ? null : "phone"));
+      else if (k === "s") openMe();
+      else if (k === "i") setPanel("inbox");
+      else if (k === "h") goTo(game.home);
+      else if (k === "c") goTo(classTarget);
+      else return;
+      sfx("tap");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const navItems = [
+    { id: "home", label: "Home", icon: "🏠", active: atHome, onClick: () => (atHome ? setPanel("place") : goTo(game.home)) },
+    { id: "class", label: game.test ? "Test" : "Class", icon: game.test ? "✍️" : "📚", active: inside && game.at === classTarget,
+      onClick: () => (inside && game.at === classTarget ? setPanel("place") : goTo(classTarget)) },
+    { id: "map", label: "Map", icon: "🗺", onClick: () => setPanel("map") },
+  ];
+  const more = [
+    ...(game.has_laptop ? [{ icon: "💻", label: "Open your laptop", onClick: () => setPanel("laptop") }] : []),
+    { icon: "🎯", label: "Today's missions", onClick: () => openMe("goals") },
+    { icon: "🏠", label: "Houses (move or invite)", onClick: () => setPanel("housing") },
+    ...(!inside ? [{ icon: running ? "🚶" : "🏃", label: running ? "Walk" : "Run", onClick: () => {
+      engine.current?.setRun(!running);
+      setRunning(!running);
+    } }] : []),
+    { icon: "🙈", label: "Hide buttons", onClick: () => setClean(true) },
+  ];
+  const placeTitle = atHome ? (game.room?.label || game.home_name) : building?.name;
+  const placeSub = atHome
+    ? `${game.housing.name}${game.room ? ` · ${game.room.people.length}/${game.room.capacity} roommates` : ""}`
+    : game.at === "banks" ? "Banks 8 AM–4 PM weekdays · ATMs all day"
+      : building ? ambientFor(building.kind, minute) : "";
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-ife-900 select-none">
       <div ref={host} className="absolute inset-0" aria-label="The Great Ife campus" role="img" />
       {(!world || no3d) && (
-        <div className="absolute inset-0 grid place-items-center bg-[#7ea551] p-6 text-center text-white">
+        <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_center,#1c4a33,#0a2c1d)] p-6 text-center text-white">
           <p className="max-w-xs font-bold" role="status">
-            {no3d ? "Your phone can't show the 3D campus, but you can still play: use the map to get around." : "Loading campus…"}
+            {no3d ? "Your phone can't show the 3D campus, but you can still play: use the map to get around." : "Loading Great Ife…"}
           </p>
         </div>
       )}
 
-      <TopBar game={game} minute={shownMinute} onOpenMe={() => setPanel("me")}
-        buttons={!journey && !lapse && game.phase === "play" && !panel}
-        onMap={() => {
-          setTravelTo(null);
-          setPanel("travel");
-        }}
-        onToday={() => setPanel("today")} />
-      <Toasts messages={messages} error={error} onDismiss={() => setError("")} />
-
-      {/* Outside: walk, go in, open the map */}
-      {!inside && !journey && game.phase === "play" && (
-        <>
-          {!no3d && <Joystick onMove={(x, y) => engine.current?.setJoystick(x, y)} />}
-          {!no3d && (
-            <button
-              className={`pointer-events-auto absolute bottom-40 left-9 z-10 rounded-full px-4 py-2 text-sm font-black shadow-lg sm:bottom-40 ${running ? "bg-bulb text-ink" : "bg-ink/60 text-white"}`}
-              aria-pressed={running}
-              onClick={() => {
-                engine.current?.setRun(!running);
-                setRunning(!running);
-              }}
-            >
-              🏃 {running ? "Running" : "Run"}
-            </button>
-          )}
-          <div className="pointer-events-none absolute bottom-5 right-4 z-10 flex flex-col items-end gap-2 sm:bottom-6 sm:right-6">
-            <RoundButton icon={game.phone_info ? "📱" : "📵"} label="Phone" onClick={() => setPanel("phone")} />
-            <RoundButton icon="🎒" label="Me" onClick={() => setPanel("me")} />
-          </div>
-          {near && (
-            <button
-              className="btn-bulb pointer-events-auto absolute bottom-40 left-1/2 z-10 -translate-x-1/2 px-6 py-3.5 text-lg shadow-xl sm:bottom-10"
-              onClick={onEnter}
-              disabled={busy}
-            >
-              Enter {near.name}
-              {!game.open[near.id] && <span className="text-sm font-normal"> (closed)</span>}
-            </button>
-          )}
-          {!near && !panel && (
-            <p className="pointer-events-none absolute bottom-56 left-4 right-24 z-0 mx-auto w-fit rounded-full bg-ink/55 px-3 py-1 text-center text-xs font-bold text-white sm:bottom-8">
-              Tap the ground to walk there · yellow rings are doors
-            </p>
-          )}
-        </>
-      )}
-
-      {/* Inside a building: what you can do here */}
-      {building && game.phase === "play" && !lapse && !panel && (
-        hideInside ? (
-          <button className="btn-primary pointer-events-auto absolute bottom-5 left-1/2 z-20 -translate-x-1/2 shadow-xl" onClick={() => setHideInside(false)}>
-            Back to {building.name}
-          </button>
-        ) : (
-          <Panel
-            title={building.name}
-            subtitle={building.hours ? `Open ${clockText(building.hours[0])} to ${clockText(building.hours[1])}` : game.at === game.home ? "Home" : "Open all day"}
-            label={building.name}
-          >
-            <ActionList actions={game.actions} onAct={onAct} busy={busy} />
-            <div className={`sticky bottom-0 -mx-4 mt-3 grid ${game.has_laptop ? "grid-cols-5" : "grid-cols-4"} gap-1.5 border-t border-line bg-slab px-4 pt-3`}>
-              <button className="btn-primary px-2 text-sm" onClick={onLeave} disabled={busy}>
-                Go outside
-              </button>
-              <button className="btn-ghost px-2 text-sm" onClick={() => setPanel("travel")}>
-                🗺 Map
-              </button>
-              <button className="btn-ghost px-2 text-sm" onClick={() => setPanel("phone")}>
-                📱 Phone
-              </button>
-              {game.has_laptop && (
-                <button className="btn-ghost px-2 text-sm" onClick={() => setPanel("laptop")}>
-                  💻 Laptop
-                </button>
+      {/* Top band: things you read */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.6rem,env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-5xl items-start justify-between gap-2">
+          <ClockPill game={game} minute={minute} onClick={() => setDrawer((d) => !d)} />
+          <Chevron open={drawer} onClick={() => {
+            sfx("tap");
+            setDrawer((d) => !d);
+          }} />
+          <WalletPill game={game} onClick={() => {
+            setDrawer(false);
+            setPanel("phone");
+          }} />
+        </div>
+        {!clean && (
+          <div className="mx-auto mt-2 flex max-w-5xl items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-col items-start gap-2">
+              {lapse && <ActionChip lapse={lapse} progress={lp} />}
+              {controls && !lapse && (
+                <div className="flex items-center gap-2">
+                  <RoundIcon icon="🎯" label="Today's missions" badge={game.missions.filter((m) => !m.done).length || null} onClick={() => openMe("goals")} />
+                  <NextClassPill game={game} onClick={() => goTo(classTarget)} />
+                </div>
               )}
-              <button className="btn-ghost px-2 text-sm" onClick={() => setPanel("me")}>
-                🎒 Me
-              </button>
+              {controls && <div className="hidden lg:block"><NeedsCard needs={game.needs} onClick={() => openMe("needs")} /></div>}
             </div>
-            <button className="mt-2 w-full text-xs font-bold text-muted underline" onClick={() => setHideInside(true)}>
-              Hide this to look at the campus
-            </button>
-          </Panel>
-        )
-      )}
-
-      {panel === "travel" && world && !overlayOpen && (
-        <TravelPanel world={world} game={showGame} onPlan={(to) => plan(to, pos())} onGo={onGo} busy={busy}
-          onClose={() => setPanel(null)} playerPos={game.at ? world.nodes[world.buildings[game.at].node] : engine.current?.playerPos() || game.pos}
-          initial={travelTo} />
-      )}
-      {panel === "phone" && !overlayOpen && (
-        <Phone game={game} minute={minute} onAct={onAct} busy={busy} onClose={() => setPanel(null)}
-          onMaps={() => setPanel("travel")}
-          onMarket={() => {
-            setTravelTo("market");
-            setPanel("travel");
+            <InboxButton count={inboxCount} onClick={() => {
+              markInboxSeen();
+              setPanel("inbox");
+            }} />
+          </div>
+        )}
+      </div>
+      {drawer && (
+        <StatusDrawer game={game} minute={minute} onNeeds={() => openMe("needs")} onStudies={() => openMe("studies")}
+          onBank={() => {
+            setDrawer(false);
+            setPanel("phone");
           }} />
       )}
-      {panel === "today" && !overlayOpen && <TodayPanel game={game} onClose={() => setPanel(null)} />}
-      {panel === "laptop" && !overlayOpen && (
-        <Panel title="Your laptop" subtitle="Code, design and take gigs from here" onClose={() => setPanel(null)} tall label="Laptop">
-          <div className="mb-3 rounded-lg bg-[#1e1e2e] p-3 font-mono text-xs text-[#a6e3a1]">
-            <p>
-              <span className="text-[#89b4fa]">~/great-ife</span> $ coding --level {game.skills.find((s) => s.id === "coding")?.level}
-            </p>
-            <p className="text-[#cdd6f4]">Keep practising: every level up pays more and unlocks bigger gigs.</p>
+      <Toast messages={messages} error={error} onDismiss={() => setError("")} onDone={() => setMessages([])} top={clean ? "3.6rem" : "6.6rem"} />
+
+      {/* Bottom band: things you press */}
+      {controls && clean && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between p-3">
+          <button className="float pointer-events-auto rounded-full px-4 py-2.5 text-sm font-semibold" onClick={() => setClean(false)}>☰ Show buttons</button>
+          <div className="flex gap-2">
+            <RoundIcon icon="🗺" label="Map" onClick={() => setPanel("map")} />
+            <PhoneButton game={game} onClick={() => setPanel("phone")} />
           </div>
-          <ActionList actions={game.laptop} onAct={onAct} busy={busy} />
-        </Panel>
+        </div>
+      )}
+
+      {controls && !clean && !inside && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-5xl items-end justify-between gap-2">
+            <div className="flex flex-col items-start gap-3">
+              <div className="flex items-center gap-2">
+                <AvatarButton game={game} onClick={() => openMe()} />
+                <NeedsPill needs={game.needs} onClick={() => openMe("needs")} />
+              </div>
+              {!no3d && <Joystick onMove={(x, y) => {
+                engine.current?.setJoystick(x, y);
+                if (hint && (x || y)) setHint(false);
+              }} />}
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {near ? (
+                <button className="pointer-events-auto rounded-full bg-go px-5 py-3 text-base font-bold text-white shadow-lg" onClick={onEnter} disabled={busy}>
+                  🚪 Go inside {near.name}{!game.open[near.id] && <span className="text-sm font-normal"> (closed)</span>}
+                </button>
+              ) : (
+                <button className="float pointer-events-auto rounded-full px-5 py-3 text-base font-semibold" onClick={() => setPanel("map")}>📍 Where to?</button>
+              )}
+              <div className="flex items-end gap-2">
+                <MoreMenu items={more} />
+                <PhoneButton game={game} onClick={() => setPanel("phone")} />
+              </div>
+            </div>
+          </div>
+          {hint && !near && (
+            <p className="pointer-events-none mx-auto mt-2 w-fit rounded-full bg-ink/55 px-3 py-1 text-center text-xs font-semibold text-white">
+              Drag the joystick or tap the ground to walk · yellow rings are doors
+            </p>
+          )}
+        </div>
+      )}
+
+      {controls && !clean && inside && building && panel !== "place" && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-[560px] flex-col gap-2">
+            {!lookAround ? (
+              <PlaceCard name={placeTitle} sub={placeSub} here={game.here_count} onOpen={() => setPanel("place")} />
+            ) : (
+              <button className="float pointer-events-auto self-center rounded-full px-5 py-2.5 text-sm font-semibold" onClick={() => setLookAround(false)}>
+                ↩ Back to {atHome ? "your room" : building.name}
+              </button>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AvatarButton game={game} onClick={() => openMe()} />
+                <NeedsPill needs={game.needs} onClick={() => openMe("needs")} />
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="float pointer-events-auto rounded-full px-4 py-2.5 text-sm font-semibold" onClick={onLeave} disabled={busy}>🚪 Go outside</button>
+                <MoreMenu items={more} />
+              </div>
+            </div>
+            <div className="flex items-end justify-between gap-2">
+              <NavBar items={navItems} />
+              <PhoneButton game={game} onClick={() => setPanel("phone")} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sheets */}
+      {panel === "place" && building && controls && (
+        <PlacePanel game={game} building={game.at} atHome={atHome} title={placeTitle} sub={placeSub} onAct={onAct} run={runMove}
+          busy={busy} onClose={close} onLeave={onLeave} onMap={() => setPanel("map")} onHome={() => goTo(game.home)}
+          onHide={() => {
+            setPanel(null);
+            setLookAround(true);
+          }}
+          onLaptop={() => setPanel("laptop")} postNote={postNote} />
+      )}
+      {panel === "map" && world && !overlayOpen && (
+        <MapSheet world={world} game={showGame} onPick={goTo} onClose={close}
+          playerPos={game.at ? world.nodes[world.buildings[game.at].node] : engine.current?.playerPos() || game.pos} />
+      )}
+      {panel === "to" && world && travelTo && !overlayOpen && (
+        <PlaceSheet world={world} game={showGame} to={travelTo} onPlan={(to) => plan(to, pos())} onGo={onGo} busy={busy}
+          onClose={close} onBack={() => setPanel("map")} />
+      )}
+      {panel === "phone" && !journey && game.phase === "play" && (
+        <Phone game={game} minute={minute} onAct={onAct} busy={busy} onClose={close}
+          onMaps={() => setPanel("map")}
+          onMarket={() => goTo("market")}
+          onHousing={() => setPanel("housing")} onParents={onParents} onBet={onBet} run={runMove} />
+      )}
+      {panel === "housing" && !overlayOpen && (
+        <BottomSheet title="Houses" subtitle="Halls, off-campus places, and moving in with friends" onClose={close}>
+          <HousingChooser game={game} load={housing} onMove={onMoveHome} onJoin={(code) => onMoveHome({ code })} busy={busy} />
+        </BottomSheet>
+      )}
+      {panel === "laptop" && !overlayOpen && (
+        <BottomSheet title="💻 Your laptop" subtitle="Practise coding and design, and take gigs" onClose={close}>
+          <div className="mb-3 rounded-2xl bg-[#1e1e2e] p-3 font-mono text-xs text-[#a6e3a1]">
+            <p><span className="text-[#89b4fa]">~/great-ife</span> $ coding --level {game.skills.find((s) => s.id === "coding")?.level}</p>
+            <p className="text-[#cdd6f4]">Every level up pays more and unlocks bigger gigs.</p>
+          </div>
+          <ActionCards actions={game.laptop} onAct={onAct} busy={busy} />
+        </BottomSheet>
       )}
       {panel === "me" && !overlayOpen && (
-        <MePanel game={game} account={account} onClose={() => setPanel(null)} onSave={() => setPanel("save")} onTitle={() => navigate("/")} />
+        <MeSheet game={game} account={account} tab={meTab} onClose={close} onSave={() => setPanel("save")} onTitle={() => navigate("/")} />
       )}
-      {panel === "save" && <SaveSheet onClose={() => setPanel(null)} />}
+      {panel === "inbox" && <InboxSheet game={game} onClose={close} />}
+      {panel === "save" && <SaveSheet onClose={close} />}
 
-      {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} onSkip={() => engine.current?.endJourney(true)} />}
-      {lapse && <TimeLapse lapse={lapse} progress={lp} />}
+      {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} fromName={journey.fromName} />}
+      {game.asleep && game.phase === "play" && !journey && (
+        <SleepOverlay game={game} minute={minute} busy={busy} onWake={() => act("wake")} />
+      )}
 
-      {!journey && !lapse && game.phase === "event" && game.pending && <EventDialog event={game.pending} onChoose={choose} busy={busy} />}
+      {!journey && !lapse && game.phase === "event" && game.pending && <DecisionCard event={game.pending} onChoose={choose} busy={busy} />}
       {!journey && !lapse && game.phase === "results" && game.last_result && (
         <ResultSlip
           result={game.last_result}

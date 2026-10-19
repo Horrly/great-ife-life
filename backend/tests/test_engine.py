@@ -12,8 +12,44 @@ from .bot import Bot
 H = C.H
 
 
-def new(profile="staff_pikin", dept="csc", seed="t1", now=0.0):
-    return E.new_state(seed, dept, "Tester", profile=profile, now=now)
+MONDAY = 1_792_387_800.0   # Monday 19 October 2026, 6:30 AM in Lagos
+
+
+HOMES = {
+    "staff": {"kind": "flat", "building": "staff", "area": "Road 7", "rent": 0, "room": None,
+              "label": "Staff Quarters (Road 7)", "session": 99},
+    "offcampus": {"kind": "self_con", "building": "offcampus", "area": "Asherifa", "rent": 250_000, "room": None,
+                  "label": "Self-contain in Asherifa", "session": 1},
+}
+
+
+def new(profile="odogwu", dept="csc", seed="t1", now=MONDAY, home="staff"):
+    """A test student. By default they live in the Staff Quarters, so tests can say where="staff" for home."""
+    s = E.new_state(seed, dept, "Tester", profile=profile, now=now)
+    if home in HOMES:
+        s["housing"] = dict(HOMES[home])
+        s["at"] = home
+        s["pos"] = E._door(home)
+    return s
+
+
+def banked(s, balance=0, bank="gtbank"):
+    """Give the test student a bank account (and a card)."""
+    s["bank"] = {"bank": bank, "number": "0123456789", "balance": balance, "card": not C.BANKS[bank]["app"],
+                 "history": []}
+    return s
+
+
+def t_of(s):
+    """The real timestamp that matches the state's clock."""
+    return s["epoch"] + s["clock"] * 60
+
+
+def later(s, minutes):
+    """Let real minutes pass with the app open."""
+    now = t_of(s)
+    s = {**s, "last_tick": now + minutes * 60 - 60}
+    return E.sync(s, now + minutes * 60)
 
 
 def clear_event(s):
@@ -35,7 +71,7 @@ def at(s, hour, minute=0, where=KEEP, day=None):
     if where is not KEEP:
         s["at"] = where
         s["pos"] = E._door(where) if where else s["pos"]
-    s["pos_clock"] = s["clock"]
+    s["pos_time"] = None
     s["last_sync"] = None
     return s
 
@@ -87,48 +123,70 @@ def test_every_activity_is_somewhere_real():
 # --- The clock ------------------------------------------------------------------------------------
 
 
-def test_one_real_second_is_one_game_minute():
-    s = clear_event(new(now=1000))
+def test_clock_is_real_lagos_time():
+    s = clear_event(new(now=MONDAY))
+    assert E.tod(s) == H(6, 30) and s["dow"] == 0 and s["day"] == 1
     start = s["clock"]
-    s, _ = E.sync(s, 1030)
-    assert s["clock"] == start + 30
-    s, _ = E.sync(s, 1030.5)  # half a second: nothing yet, but it isn't lost
-    s, _ = E.sync(s, 1031)
-    assert s["clock"] == start + 31
+    s, _ = E.sync(s, MONDAY + 59)
+    assert s["clock"] == start
+    s, _ = E.sync(s, MONDAY + 60)
+    assert s["clock"] == start + 1
+    s, _ = E.sync(s, MONDAY + 3 * 3600)
+    assert E.tod(s) == H(9, 30)
+    saturday = E.new_state("sat", "csc", now=MONDAY - 2 * 86_400)
+    assert saturday["dow"] == 5 and saturday["day"] == 0 and E.lectures_today(saturday) == []
 
 
-def test_closed_app_only_loses_an_hour():
-    s = clear_event(new(now=1000))
-    start = s["clock"]
-    s, _ = E.sync(s, 1000 + 86_400)
-    assert s["clock"] == start + E.IDLE_CAP
+def test_while_you_are_away_life_goes_on_gently():
+    s = clear_event(new(now=MONDAY))
+    s = at(s, 12, where="hol")
+    s["last_tick"] = t_of(s)
+    s, msgs = E.sync(s, t_of(s) + 26 * 3600)   # gone until 2 PM tomorrow
+    assert s["total_days"] == 2 and E.tod(s) == H(14)
+    assert all(v >= E.AWAY_FLOOR - 0.01 for v in s["needs"].values())
+    assert s["needs"]["energy"] > 50          # the night counted as sleep
+    assert s["at"] == "staff" and any("went back" in m for m in msgs)
 
 
-def test_clock_stops_while_a_dialog_is_open():
-    s = clear_event(new(now=0))
-    s["last_sync"] = 0
+def test_clock_catches_up_after_a_dialog():
+    s = clear_event(new(now=MONDAY))
     E._queue_event(s, "aunty")
     clock = s["clock"]
-    s, _ = E.sync(s, 40)
+    s, _ = E.sync(s, MONDAY + 600)
     assert s["clock"] == clock
-    s, _ = E.choose(s, 0, now=50)
-    s, _ = E.sync(s, 60)
-    assert s["clock"] == clock + 10
+    s, _ = E.choose(s, 0, now=MONDAY + 650)
+    s, _ = E.sync(s, MONDAY + 660)
+    assert s["clock"] == clock + 11
 
 
-def test_needs_fall_with_time_and_sleep_restores_energy():
+def test_actions_play_in_seconds_and_sleep_takes_real_hours():
     s = at(new(), 14, where="staff")
     s["needs"]["energy"] = 50.0
     before = dict(s["needs"])
-    s, _ = E.act(s, "nap")
+    clock = s["clock"]
+    s, _ = E.act(s, "nap", now=t_of(s))
+    assert s["clock"] == clock and 3 <= s["playback"] <= 16
     assert s["needs"]["hunger"] < before["hunger"] and s["needs"]["energy"] > before["energy"]
+    with pytest.raises(E.GameError, match="still busy"):
+        E.act(s, "bath", now=t_of(s) + 1)
     s = at(s, 22, where="staff")
     s["needs"]["energy"] = 20
     day = s["total_days"]
-    s, msgs = E.act(s, "sleep")
-    s = clear_event(s)
-    assert s["total_days"] == day + 1 and E.tod(s) == C.WAKE_UP
-    assert s["needs"]["energy"] > 85
+    s, msgs = E.act(s, "sleep", now=t_of(s))
+    assert s["asleep"] and [a["id"] for a in E.available_actions(s)] == ["wake"]
+    with pytest.raises(E.GameError, match="asleep"):
+        E.act(s, "bath", now=t_of(s) + 60)
+    s, msgs = later(s, 9 * 60)       # 7 AM
+    assert not s["asleep"] and s["total_days"] == day + 1
+    assert s["needs"]["energy"] >= 80 and any("alarm" in m or "rested" in m for m in msgs)
+
+
+def test_you_can_wake_up_early():
+    s = at(new(), 23, where="staff")
+    s, _ = E.act(s, "sleep", now=t_of(s))
+    s, _ = later(s, 60)
+    s, msgs = E.act(s, "wake", now=t_of(s) + 30)
+    assert not s["asleep"] and "got up" in msgs[0]
 
 
 def test_sleeping_is_for_night():
@@ -143,7 +201,7 @@ def test_activities_take_time_and_happen_in_their_building():
     s = at(s, 10, where="hol")
     clock, prep = s["clock"], s["prep"]
     s, _ = E.act(s, "hol_read")
-    assert s["clock"] == clock + 120 and s["prep"] > prep
+    assert s["clock"] == clock and s["prep"] > prep
 
 
 def test_phone_works_anywhere():
@@ -175,7 +233,7 @@ def test_late_nights_drain_energy_faster():
     b = at(new(), 2, where="staff")
     a, _ = E.act(a, "scroll")
     b, _ = E.act(b, "scroll")
-    assert 100 - b["needs"]["energy"] > 0 and (a["needs"]["energy"] - b["needs"]["energy"]) > 1
+    assert 100 - b["needs"]["energy"] > 0 and (a["needs"]["energy"] - b["needs"]["energy"]) > 0.5
 
 
 # --- Lectures, tests and exams --------------------------------------------------------------------
@@ -214,7 +272,7 @@ def test_lecture_only_when_its_on_and_late_costs_you():
 
 def test_lectures_held_count_up_at_midnight():
     s = at(new(seed="held"), 23, 50, where="staff")
-    s, _ = E.sync({**s, "last_sync": 0}, 20 * 60)
+    s, _ = later(s, 20)
     assert s["lectures_held"] == 2 and s["day"] == 2
 
 
@@ -228,7 +286,7 @@ def test_ca_test_is_at_nine_in_your_exam_hall():
     assert "Doors open" in action(f, "write_ca")["reason"]
     f = at(s, 8, 40, where=hall)
     f, msgs = E.act(f, "write_ca")
-    assert f["ca"] is not None and E.tod(f) == H(10)
+    assert f["ca"] is not None and E.tod(f) == H(8, 40)
     late = at(s, 9, 45, where=hall)
     assert not action(late, "write_ca")["enabled"]
 
@@ -236,12 +294,12 @@ def test_ca_test_is_at_nine_in_your_exam_hall():
 def test_missing_the_ca_test_scores_zero():
     s = at(new(seed="missca"), 23, 50, where="staff", day=C.CA_TEST_DAY)
     s["dow"] = 3
-    s, msgs = E.sync({**s, "last_sync": 0}, 20 * 60)
+    s, msgs = later(s, 20)
     assert s["ca"] is None and any("missed the CA test" in m for m in msgs)
 
 
 def test_unpaid_fees_means_no_exams():
-    s = at(new(profile="hustler", seed="fees"), 8, 30, where=C.DEPARTMENTS["csc"]["exams"], day=C.EXAM_DAYS[0])
+    s = at(new(profile="lapo_baby", seed="fees"), 8, 30, where=C.DEPARTMENTS["csc"]["exams"], day=C.EXAM_DAYS[0])
     s["dow"] = 1
     assert not s["fees_paid"]
     s, msgs = E.act(s, "write_exam")
@@ -250,8 +308,8 @@ def test_unpaid_fees_means_no_exams():
 
 
 def test_good_student_does_well_and_neglect_fails():
-    good = Bot("good", "csc", "staff_pikin", "scholar").play()
-    bad = Bot("bad", "csc", "staff_pikin", "neglect").play()
+    good = Bot("good", "csc", "odogwu", "scholar").play()
+    bad = Bot("bad", "csc", "odogwu", "neglect").play()
     assert good["status"] == bad["status"] == "graduated"
     assert good["final"]["cgpa"] >= 3.5
     assert bad["final"]["cgpa"] < 1.0
@@ -276,7 +334,7 @@ def test_carryovers_are_capped_and_cleared():
 
 
 def test_every_way_to_get_there_is_quoted():
-    s = at(new(profile="hustler", seed="plan"), 11, where="awo")
+    s = at(new(profile="lapo_baby", seed="plan"), 11, where="awo")
     p = E.plan(s, "market")
     modes = {o["mode"]: o for o in p["options"]}
     assert set(modes) == {"trek", "bus", "keke", "cab"}
@@ -288,7 +346,7 @@ def test_every_way_to_get_there_is_quoted():
 
 
 def test_the_cng_bus_skips_the_faculties_so_you_take_a_keke():
-    s = at(new(profile="hustler", seed="faculty"), 11, where="awo")
+    s = at(new(profile="lapo_baby", seed="faculty"), 11, where="awo")
     modes = {o["mode"]: o for o in E.plan(s, "techlt")["options"]}
     assert modes["keke"]["available"] and modes["keke"]["minutes"] < modes["trek"]["minutes"]
     if modes["bus"]["available"]:  # it can only drop you at a stop on its roads, then you walk
@@ -312,17 +370,17 @@ def test_keke_fares_go_by_distance_and_never_pass_200():
 
 
 def test_the_quote_is_the_trip():
-    s = at(new(profile="hustler", seed="quote"), 11, where="awo")
+    s = at(new(profile="lapo_baby", seed="quote"), 11, where="awo")
     for mode in ("trek", "bus", "keke"):
         quote = next(o for o in E.plan(s, "booc")["options"] if o["mode"] == mode)
         after, msgs = E.travel(s, "booc", mode)
-        assert after["clock"] == s["clock"] + quote["minutes"]
+        assert after["clock"] == s["clock"] and after["playback"] == quote["seconds"]
         assert after["money"] == s["money"] - quote["cost"]
         assert after["at"] == "booc" and after["last_trip"]["mode"] == mode
 
 
 def test_trekking_tires_you_more_than_riding():
-    s = at(new(profile="hustler", seed="tired"), 11, where="awo")
+    s = at(new(profile="lapo_baby", seed="tired"), 11, where="awo")
     s["money"] = 10_000
     walked, _ = E.travel(s, "sports", "trek")
     rode, _ = E.travel(s, "sports", "keke")
@@ -341,7 +399,7 @@ def test_cng_rides_follow_the_roads_both_ways():
 
 
 def test_off_campus_trips_take_the_town_bus():
-    s = at(new(profile="off_campus", seed="town"), 11, where="offcampus")
+    s = at(new(profile="nepo_baby", seed="town"), 11, where="offcampus")
     bus = next(o for o in E.plan(s, "market")["options"] if o["mode"] == "bus")
     assert bus["available"] and any(seg["mode"] == "town_bus" for seg in bus["segments"])
     assert bus["cost"] == W.MODES["town_bus"]["fare"] + W.MODES["bus"]["fare"]
@@ -357,7 +415,7 @@ def test_night_cabs_only_run_between_the_gate_and_bus_stops():
     assert out["available"] and 250 <= out["cost"] <= 300
     rides = [seg for seg in out["segments"] if seg["kind"] == "ride"]
     assert len(rides) == 1 and rides[0]["points"][-1] == list(W.NODES["gate"])
-    home = at(new(profile="off_campus", seed="nightin"), 22, where="offcampus")
+    home = at(new(profile="nepo_baby", seed="nightin"), 22, where="offcampus")
     inbound = next(o for o in E.plan(home, "moremi")["options"] if o["mode"] == "cab")
     assert inbound["available"] and 250 <= inbound["cost"] <= 300
     ride = next(seg for seg in inbound["segments"] if seg["kind"] == "ride")
@@ -374,13 +432,13 @@ def test_rush_hour_means_longer_queues():
 
 
 def test_arriving_after_closing_leaves_you_outside():
-    s = at(new(seed="closed"), 15, 55, where="staff")
+    s = at(new(seed="closed"), 16, 5, where="staff")
     s, msgs = E.travel(s, "senate", "trek")
     assert s["at"] is None and any("closed" in m for m in msgs)
 
 
 def test_cant_pay_cant_ride():
-    s = at(new(profile="hustler", seed="broke"), 11, where="awo")
+    s = at(new(profile="lapo_baby", seed="broke"), 11, where="awo")
     s["money"] = 50
     keke = next(o for o in E.plan(s, "techlt")["options"] if o["mode"] == "keke")
     assert not keke["available"] and keke["reason"] == "Not enough money"
@@ -405,19 +463,19 @@ def test_walk_out_and_in():
 
 def test_no_teleporting():
     s = at(new(seed="tele"), 12, where="staff")
-    s, _ = E.exit_building(s)
+    t = t_of(s)
+    s, _ = E.exit_building(s, now=t)
     with pytest.raises(E.GameError, match="that fast"):
-        E.enter_building(s, "offcampus", E._door("offcampus"))
+        E.enter_building(s, "offcampus", E._door("offcampus"), now=t + 2)
     # a heartbeat with an impossible position is ignored
-    s["last_sync"] = 0
-    s2, _ = E.sync(s, 1, pos=E._door("offcampus"))
+    s2, _ = E.sync(s, t + 1, pos=E._door("offcampus"))
     assert s2["pos"] == s["pos"]
-    s3, _ = E.sync(s, 10, pos=[s["pos"][0] + 30, s["pos"][1]])
+    s3, _ = E.sync(s, t + 10, pos=[s["pos"][0] + 30, s["pos"][1]])
     assert s3["pos"] == [s["pos"][0] + 30, s["pos"][1]]
     with pytest.raises(E.GameError):
-        E.sync(s, 10, pos=["a", 1])
+        E.sync(s, t + 10, pos=["a", 1])
     with pytest.raises(E.GameError):
-        E.sync(s, 10, pos=[1e9, 0])
+        E.sync(s, t + 10, pos=[1e9, 0])
 
 
 def test_travel_from_where_you_stand():
@@ -433,12 +491,12 @@ def test_travel_from_where_you_stand():
 
 
 def test_hustle_income_counts_only_hustles():
-    s = at(new(profile="hustler"), 12)
+    s = at(new(profile="lapo_baby"), 12)
     s, _ = E.act(s, "sell_data")
     assert s["stats"]["hustle_income"] > 0
     assert "Already done today" in action(s, "sell_data")["reason"]
-    s2 = at(new(profile="staff_pikin"), 12)
-    s2, _ = E.act(s2, "call_home")
+    s2 = banked(at(new(profile="odogwu"), 12))
+    s2, _ = E.ask_parents(s2, 20_000)
     assert s2["stats"]["hustle_income"] == 0
 
 
@@ -479,38 +537,54 @@ def test_strike_pauses_the_semester():
     assert E.lectures_today(s) == [] and "lecture" not in ids(s)
     day = s["day"]
     s = at(s, 23, 50, where="staff")
-    s, _ = E.sync({**s, "last_sync": 0}, 20 * 60)
+    s, _ = later(s, 20)
     assert s["day"] == day and s["strike_days"] == 1
 
 
 def test_fees_deadline_offers_a_costly_loan():
-    s = at(new(profile="hustler", seed="loan"), 5, 50, day=C.EXAM_DAYS[0] - 2)
+    s = banked(at(new(profile="lapo_baby", seed="loan"), 5, 50, day=C.EXAM_DAYS[0] - 2))
     s["money"] = 3_000
     s["flags"]["seen"] = [e["id"] for e in C.EVENTS]
-    s, _ = E.sync({**s, "last_sync": 0}, 20 * 60)
+    s, _ = later(s, 20)
     assert s["pending"]["id"] == "fees_deadline"
     short = s["pending"]["short"]
-    money = s["money"]
+    money = E.total_money(s)
     s, msgs = E.choose(s, 1)
-    assert s["money"] == money + short
+    assert E.total_money(s) == money + short
     assert s["flags"]["debt"] == round(short * 1.3 / 50) * 50
+    s["bank"]["balance"] += s["money"]   # deposit the cash, then pay on the portal
+    s["money"] = 0
     s, _ = E.act(s, "pay_fees")
     assert s["fees_paid"]
     s["money"] = 500
+    s["bank"]["balance"] = 0
     E._start_of_day(s, random.Random(1), [])
-    assert s["money"] == 0 and s["flags"]["debt"] == round(short * 1.3 / 50) * 50 - 500
+    assert E.total_money(s) == 0 and s["flags"]["debt"] == round(short * 1.3 / 50) * 50 - 500
 
 
-def test_scholarship_stipend_stops_below_350():
-    s = new(profile="scholarship", seed="sch")
-    s["results"] = [{"courses": [{"points": 2, "grade": "C"}] * 5, "gpa": 2.0}]
-    s["day"] = C.SEMESTER_DAYS + 1
-    E._compute_results(s, [])
-    assert s["flags"]["scholarship"] is False and "stipend" in s["last_result"]["note"]
+def test_parents_send_some_money_but_never_more_than_their_cap():
+    for profile, cap in (("lapo_baby", 20_000), ("nepo_baby", 100_000), ("odogwu", 300_000)):
+        sent = []
+        for i in range(30):
+            s = at(new(profile=profile, seed=f"ask{profile}{i}"), 12)
+            s["phone"] = s["phone"] or {"model": "itel", "cracked": False}  # a random event may have taken it
+            banked(s)
+            s, msgs = E.ask_parents(s, 500_000)
+            sent.append(E.bank_balance(s))
+            with pytest.raises(E.GameError, match="already called"):
+                E.ask_parents(s, 5_000)
+        assert max(sent) <= cap and max(sent) > 0
+        assert any(x == 0 for x in sent) or profile == "odogwu"
+    s = at(new(profile="nepo_baby", seed="late"), 23)
+    with pytest.raises(E.GameError, match="account number"):
+        E.ask_parents(at(new(profile="nepo_baby", seed="noacct"), 12), 5_000)
+    banked(s)
+    with pytest.raises(E.GameError, match="too late"):
+        E.ask_parents(s, 5_000)
 
 
 def test_practice_levels_up_skills_and_unlocks_gigs():
-    s = at(new(profile="staff_pikin", seed="skill"), 12, where="hol")
+    s = banked(at(new(profile="odogwu", seed="skill"), 12, where="hol"))
     assert E.skill_level(s, "coding") == 1
     assert action(s, "bug_fix")["locked"] and "level 3" in action(s, "bug_fix")["reason"]
     s["skills"]["coding"] = C.SKILL_LEVELS[2] - 5
@@ -520,7 +594,7 @@ def test_practice_levels_up_skills_and_unlocks_gigs():
 
 
 def test_higher_skill_level_pays_more():
-    s = new(profile="staff_pikin", seed="pay")
+    s = new(profile="odogwu", seed="pay")
     low = E._hustle_pay(s, 2_500, "design")
     s["skills"]["design"] = C.SKILL_LEVELS[-1]
     assert E.skill_level(s, "design") == 10
@@ -528,34 +602,36 @@ def test_higher_skill_level_pays_more():
 
 
 def test_big_gigs_are_weekly():
-    s = at(new(profile="staff_pikin", seed="weekly"), 9)
+    s = at(new(profile="odogwu", seed="weekly"), 9)
     s["skills"]["coding"] = C.SKILL_LEVELS[4]
-    money = s["money"]
+    assert "open a bank account" in action(s, "website_gig")["reason"]
+    banked(s)
     s, _ = E.act(s, "website_gig")
-    assert s["money"] > money
+    assert E.bank_balance(s) > 0  # clients pay into your account
     assert "Once a week" in action(at(s, 9), "website_gig")["reason"]
 
 
 def test_business_pays_every_night_and_resells_for_60_percent():
-    s = at(new(profile="staff_pikin", seed="biz"), 9)
-    s["money"] = 100_000
+    s = banked(at(new(profile="odogwu", seed="biz"), 9), 100_000)
+    s["money"] = 0
+    s["flags"]["seen"] = [e["id"] for e in C.EVENTS]
     s, msgs = E.act(s, "buy_kiosk")
-    assert "kiosk" in s["businesses"] and s["money"] == 70_000
+    assert "kiosk" in s["businesses"] and E.bank_balance(s) == 70_000
     assert "Badge unlocked: Oga at the top!" in msgs
     names = [a["id"] for a in E.available_actions(s)]
     assert "buy_kiosk" not in names and "sell_kiosk" in names
-    s = at(s, 22, where="staff")
-    s, msgs = E.act(s, "sleep")
+    s = at(s, 23, 50, where="staff")
+    s, msgs = later(s, 20)
     assert any("business" in m.lower() for m in msgs)
     s = at(s, 10)
     s["needs"] = {k: 90.0 for k in s["needs"]}
-    money = s["money"]
+    money = E.total_money(s)
     s, _ = E.act(s, "sell_kiosk")
-    assert s["money"] == money + 18_000 and "kiosk" not in s["businesses"]
+    assert E.total_money(s) == money + 18_000 and "kiosk" not in s["businesses"]
 
 
 def test_badges_are_awarded_once():
-    s = at(new(profile="staff_pikin", seed="badge"), 22, where="hol")
+    s = at(new(profile="odogwu", seed="badge"), 22, where="hol")
     s["stats"]["tdb"] = 4
     s, msgs = E.act(s, "hol_tdb")
     assert "night_crawler" in s["badges"] and "Badge unlocked: Night crawler!" in msgs
@@ -574,24 +650,27 @@ def test_burnout_slows_reading():
 # --- Saves ----------------------------------------------------------------------------------------
 
 
-def test_v2_saves_are_upgraded_to_the_clock():
-    s = clear_event(new(profile="hustler", seed="old"))
-    for key in ("clock", "at", "pos", "pos_clock", "last_sync", "timetable", "look", "last_trip"):
+def test_old_saves_are_upgraded_to_real_time():
+    s = clear_event(new(profile="lapo_baby", seed="old"))
+    for key in ("clock", "at", "pos", "pos_time", "last_sync", "timetable", "look", "last_trip", "housing", "epoch",
+                "last_tick", "busy_until", "asleep"):
         s.pop(key)
+    s["profile"] = "hustler"
     s["flags"].pop("attended_keys")
     s["stats"].pop("trekked")
     s["slot"] = 2
     s["version"] = 2
     s["needs"] = {k: int(v) for k, v in s["needs"].items()}
     v = E.view(s)
-    assert v["at"] == v["home"] and v["minute"] == H(17)
-    s2, _ = E.act(s, "scroll")
-    assert s2["version"] == E.VERSION and "slot" not in s2
+    assert v["at"] == v["home"] and v["profile"]["name"] == "Lapo Baby"
+    s2, _ = E.act(s, "scroll", now=MONDAY + 3600)
+    assert s2["version"] == E.VERSION and "slot" not in s2 and E.tod(s2) == H(7, 30)
+    assert s2["housing"]["kind"] == "hostel"
 
 
 def test_whole_degrees_keep_invariants():
     """Fuzz: bots with different habits play whole degrees; nothing crashes or goes out of range."""
-    for i, (profile, style) in enumerate([("hustler", "lazy"), ("off_campus", "balanced"), ("scholarship", "builder")]):
+    for i, (profile, style) in enumerate([("lapo_baby", "lazy"), ("nepo_baby", "balanced"), ("nepo_baby", "builder")]):
         bot = Bot(f"fuzz{i}", "mcb", profile, style)
         while bot.s["status"] == "playing" and bot.moves < 40_000:
             bot.step()
@@ -599,6 +678,7 @@ def test_whole_degrees_keep_invariants():
             assert s["money"] >= 0 and 0 <= s["prep"] <= 100
             assert all(0 <= v <= 100 for v in s["needs"].values())
             assert s["total_days"] == s["clock"] // 1440 + 1
+            assert s["clock"] <= E.real_clock(s, bot.now) + 1
         assert s["status"] == "graduated", (profile, style)
         assert C.SEMESTERS <= s["final"]["semesters"] <= C.SEMESTERS + C.MAX_EXTRA_SEMESTERS
         E.view(s)
@@ -608,13 +688,15 @@ def test_whole_degrees_keep_invariants():
 
 
 def test_halls_follow_your_choice():
-    girl = E.new_state("hall1", "csc", profile="hustler", look={**E.random_look("x"), "hall": 1})
-    boy = E.new_state("hall2", "csc", profile="hustler", look={**E.random_look("x"), "hall": 0})
-    assert girl["at"] == "mozambique" and boy["at"] == "angola"
+    for i in range(10):
+        girl = E.new_state(f"hall{i}", "csc", profile="lapo_baby", look={**E.random_look("x"), "hall": 1})
+        boy = E.new_state(f"hall{i}", "csc", profile="lapo_baby", look={**E.random_look("x"), "hall": 0})
+        assert girl["at"] in C.HALLS["female"] and boy["at"] in C.HALLS["male"]
+        assert girl["housing"]["kind"] == boy["housing"]["kind"] == "hostel"
 
 
 def test_no_phone_no_phone_apps_until_you_buy_one():
-    s = at(new(profile="tecno" and "scholarship", seed="lost"), 12, where="sub")
+    s = at(new(profile="tecno" and "nepo_baby", seed="lost"), 12, where="sub")
     E._queue_event(s, "phone_stolen")
     s, _ = E.choose(s, 0)
     assert s["phone"] is None and E.view(s)["phone"] == []
@@ -629,11 +711,12 @@ def test_no_phone_no_phone_apps_until_you_buy_one():
 
 
 def test_a_torchlight_phone_can_call_home_but_not_do_gigs():
-    s = at(new(profile="hustler", seed="nokia"), 12)
+    s = at(new(profile="lapo_baby", seed="nokia"), 12)
     s["at"] = E.home_building(s)
     s["phone"] = {"model": "nokia", "cracked": False}
     phone = {a["id"]: a for a in E.view(s)["phone"]}
-    assert phone["call_home"]["enabled"] and phone["snake"]["enabled"]
+    assert phone["snake"]["enabled"]
+    s2, _ = E.ask_parents(banked(copy.deepcopy(s)), 5_000)  # any phone can call home
     assert phone["design_gig"]["reason"] == "Needs a smartphone"
     assert not phone["pay_fees"]["enabled"]
     s = at(s, 12, where="sub")
@@ -643,7 +726,7 @@ def test_a_torchlight_phone_can_call_home_but_not_do_gigs():
 
 
 def test_cracked_screens_get_fixed_at_the_market():
-    s = at(new(profile="hustler", seed="crack"), 12, where="market")
+    s = at(new(profile="lapo_baby", seed="crack"), 12, where="market")
     assert s["phone"]["cracked"]
     s["money"] = 50_000
     s, _ = E.act(s, "fix_screen")
@@ -664,7 +747,7 @@ def test_foodstuff_makes_cooking_free():
 
 
 def test_your_own_ride_goes_door_to_door():
-    s = at(new(profile="staff_pikin", seed="car"), 11, where="staff")
+    s = at(new(profile="odogwu", seed="car"), 11, where="staff")
     modes = {o["mode"]: o for o in E.plan(s, "techlt")["options"]}
     assert "car" in modes and "bike" not in modes
     car = modes["car"]
@@ -672,7 +755,7 @@ def test_your_own_ride_goes_door_to_door():
     assert car["minutes"] < modes["trek"]["minutes"]
     night = at(s, 23, where="staff")
     assert next(o for o in E.plan(night, "techlt")["options"] if o["mode"] == "car")["available"]
-    b = at(new(profile="hustler", seed="bike"), 11, where="market")
+    b = at(new(profile="lapo_baby", seed="bike"), 11, where="market")
     b["money"] = 60_000
     b, msgs = E.act(b, "buy_bike")
     assert "bike" in b["items"] and "own_ride" in b["badges"]
@@ -681,14 +764,14 @@ def test_your_own_ride_goes_door_to_door():
 
 
 def test_campus_hustles_need_their_tools():
-    s = at(new(profile="hustler", seed="barb"), 12, where=None)
+    s = at(new(profile="lapo_baby", seed="barb"), 12, where=None)
     s["at"] = E.home_building(s)
     barb = action(s, "barb")
     assert not barb["enabled"] and "clippers" in barb["reason"]
     s["items"].append("clippers")
     s, msgs = E.act(s, "barb")
     assert s["stats"]["hustle_income"] > 0 and s["skills"]["barbing"] > 0
-    c = at(new(profile="hustler", seed="chin"), 12)
+    c = at(new(profile="lapo_baby", seed="chin"), 12)
     c["at"] = E.home_building(c)
     c["money"] = 5_000
     c, _ = E.act(c, "chinchin")
@@ -719,7 +802,7 @@ def test_needs_fall_slowly():
 
 
 def test_coding_needs_a_laptop():
-    s = at(new(profile="hustler", seed="laptop"), 12)
+    s = at(new(profile="lapo_baby", seed="laptop"), 12)
     s["at"] = E.home_building(s)
     assert E.view(s)["laptop"] == [] and not E.view(s)["has_laptop"]
     s = at(s, 12, where="market")
@@ -733,7 +816,7 @@ def test_coding_needs_a_laptop():
 
 
 def test_hustles_train_hustling_and_it_pays():
-    s = at(new(profile="hustler", seed="hus"), 12, where="market")
+    s = at(new(profile="lapo_baby", seed="hus"), 12, where="market")
     low = E._hustle_pay(s, 2_000)
     s, msgs = E.act(s, "shop_assistant") if E.is_weekday(s) else E.act(s, "puff")
     assert s["skills"]["hustling"] >= C.HUSTLE_XP or not E.is_weekday(s)
@@ -743,6 +826,7 @@ def test_hustles_train_hustling_and_it_pays():
 
 def test_being_social_trains_charisma():
     s = at(new(seed="cha"), 19, where="staff")
+    s["needs"]["social"] = 20
     s, msgs = E.act(s, "gist")
     assert s["skills"]["charisma"] > 0
 
@@ -761,14 +845,14 @@ def test_traits_and_dream_are_chosen_on_day_one_only():
         E.set_look(s, s["look"], ["tech"], "nope")
     later = dict(s2, day=3)
     with pytest.raises(E.GameError):
-        E.set_look(later, s["look"], ["hustler", "foodie"], "odogwu")
+        E.set_look(later, s["look"], ["lapo_baby", "foodie"], "odogwu")
 
 
 def test_traits_change_how_needs_fall():
     a = at(new(seed="clean"), 9, where="staff")
     b = copy.deepcopy(a)
     a["traits"] = ["clean_pikin", "tech"]
-    b["traits"] = ["hustler", "tech"]
+    b["traits"] = ["lapo_baby", "tech"]
     a, _ = E.act(a, "scroll")
     b, _ = E.act(b, "scroll")
     assert a["needs"]["hygiene"] > b["needs"]["hygiene"]
@@ -798,10 +882,8 @@ def test_daily_missions_pay_and_the_bonus_comes_once():
 def test_new_missions_every_morning():
     s = at(new(seed="newday"), 23, 50, where="staff")
     day = s["missions"]["day"]
-    s["last_sync"] = 0
-    s, _ = E.sync(s, 60 * 60)
     for _ in range(8):
-        s, _ = E.sync(s, s["last_sync"] + 60 * 60)
+        s, _ = later(s, 60)
     s = clear_event(s)
     assert s["missions"]["day"] == day + 1 and len(s["missions"]["list"]) == 3
 
@@ -852,3 +934,144 @@ def test_quiz_answers_are_valid():
     for dept, bank in C.QUIZZES.items():
         for q, options, answer in bank:
             assert 0 <= answer < len(options) and len(set(options)) == len(options), (dept, q)
+
+
+# --- Banking -------------------------------------------------------------------------------------
+
+
+def test_you_start_with_cash_by_status():
+    for profile, cash in (("lapo_baby", 100_000), ("nepo_baby", 200_000), ("odogwu", 300_000)):
+        s = new(profile=profile, seed=f"cash{profile}")
+        assert s["bank"] is None
+        assert s["money"] + s["stats"]["spent"] - s["stats"]["earned"] + 0 >= 0
+        assert E.new_state(f"cash{profile}", "csc", profile=profile, now=MONDAY)["money"] <= cash
+
+
+def test_open_account_at_a_branch_in_banking_hours():
+    s = at(new(profile="lapo_baby", seed="bank1"), 10, where="banks")
+    s["money"] = 5_000
+    s, msgs = E.open_account(s, "gtbank", "0111111111")
+    assert s["bank"]["balance"] == C.BANK_OPEN_DEPOSIT and s["bank"]["card"]
+    assert s["money"] == 5_000 - C.BANK_OPEN_DEPOSIT - C.CARD_FEE and "0111111111" in msgs[0]
+    with pytest.raises(E.GameError, match="already have"):
+        E.open_account(s, "uba", "2000000000")
+    late = at(new(seed="bank2"), 17, where="banks")
+    with pytest.raises(E.GameError, match="8:00 AM to 4:00 PM"):
+        E.open_account(late, "uba", "2000000000")
+    away = at(new(seed="bank3"), 10, where="sub")
+    with pytest.raises(E.GameError, match="Banking Area"):
+        E.open_account(away, "uba", "2000000000")
+
+
+def test_fintech_accounts_open_on_a_smartphone_without_a_card():
+    s = at(new(profile="lapo_baby", seed="fin"), 22, where="staff")
+    s["phone"] = {"model": "samsung", "cracked": False}
+    s, _ = E.open_account(s, "opay", "8012345678")
+    assert s["bank"]["balance"] == 0 and not s["bank"]["card"]
+    s["phone"] = {"model": "nokia", "cracked": False}
+    t = at(new(seed="fin2"), 12)
+    t["phone"] = {"model": "nokia", "cracked": False}
+    with pytest.raises(E.GameError, match="smartphone"):
+        E.open_account(t, "moniepoint", "5012345678")
+
+
+def test_held_allowance_arrives_when_you_open_an_account():
+    s = at(new(profile="nepo_baby", seed="held"), 23, 50)
+    s["dow"] = 6
+    s, msgs = later(s, 400)  # into Monday morning
+    held = s["flags"].get("held_allowance", 0)
+    assert held >= C.PROFILES["nepo_baby"]["allowance"]
+    s = at(s, 10, where="banks")
+    s["money"] = 10_000
+    s, msgs = E.open_account(s, "wema", "0299999999")
+    assert E.bank_balance(s) == C.BANK_OPEN_DEPOSIT + held and any("Credit alert" in m for m in msgs)
+
+
+def test_atm_needs_a_card_has_limits_and_sometimes_fails():
+    s = banked(at(new(seed="atm"), 21, where="banks"), 300_000)
+    s["money"] = 0
+    got, fails = 0, 0
+    for i in range(12):
+        s["turn"] += 1
+        before = s["money"]
+        try:
+            s, msgs = E.atm_withdraw(s, 20_000)
+        except E.GameError as exc:
+            assert "limit" in str(exc)
+            break
+        if s["money"] == before:
+            fails += 1
+        got = s["money"]
+    assert got == C.ATM_DAILY and fails >= 0
+    fin = banked(at(new(seed="atm2"), 12, where="banks"), 50_000, bank="opay")
+    with pytest.raises(E.GameError, match="no card"):
+        E.atm_withdraw(fin, 5_000)
+    nowhere = banked(at(new(seed="atm3"), 12, where="hol"), 50_000)
+    with pytest.raises(E.GameError, match="no ATM"):
+        E.atm_withdraw(nowhere, 5_000)
+
+
+def test_atm_at_sub_charges_other_banks():
+    s = banked(at(new(seed="subatm"), 12, where="sub"), 50_000, bank="uba")
+    s["seed"] = "subatm-ok"
+    for i in range(20):  # find a turn where the ATM works
+        try:
+            t, _ = E.atm_withdraw(s, 5_000)
+        except E.GameError:
+            raise
+        if t["money"] > s["money"]:
+            assert E.bank_balance(t) == 50_000 - 5_000 - C.ATM_OTHER_BANK_FEE
+            return
+        s["turn"] += 1
+    raise AssertionError("ATM never worked")
+
+
+def test_pos_agents_charge_and_take_card_or_transfer():
+    s = banked(at(new(seed="pos"), 21, where="awo"), 30_000)
+    s["money"] = 0
+    s, msgs = E.pos_cash(s, "withdraw", 10_000, "card")
+    night = C.POS_NIGHT_FEE if W.BUILDINGS["awo"]["kind"] == "hall" else 0
+    assert s["money"] == 10_000 and E.bank_balance(s) == 30_000 - 10_000 - 200 - night
+    fin = banked(at(new(seed="pos2"), 12, where="market"), 30_000, bank="moniepoint")
+    with pytest.raises(E.GameError, match="no card"):
+        E.pos_cash(fin, "withdraw", 5_000, "card")
+    fin["money"] = 0
+    fin, _ = E.pos_cash(fin, "withdraw", 5_000, "transfer")
+    assert fin["money"] == 5_000 and E.bank_balance(fin) == 30_000 - 5_000 - 100 - C.transfer_fee(5_000)
+    fin["money"] = 10_200
+    fin, _ = E.pos_cash(fin, "deposit", 10_000)
+    assert fin["money"] == 0
+    closed = banked(at(new(seed="pos3"), 23, 30, where="market"), 30_000)
+    with pytest.raises(E.GameError, match="closed"):
+        E.pos_cash(closed, "withdraw", 5_000, "card")
+
+
+def test_fares_are_cash_but_shops_take_transfers():
+    s = banked(at(new(profile="lapo_baby", seed="fare", home="awo"), 12, where="awo"), 50_000)
+    s["money"] = 0
+    trip = E.plan_trip(s, "tech", "keke")
+    assert not trip["available"] and "cash" in trip["reason"].lower()
+    s = at(s, 12, where="market")
+    s, _ = E.act(s, "foodstuff")  # paid by transfer
+    assert E.bank_balance(s) < 50_000
+
+
+def test_transfers_between_students():
+    s = banked(at(new(seed="send"), 12), 20_000)
+    s, msgs = E.send_transfer(s, 5_000, "Bisi (UBA)")
+    assert E.bank_balance(s) == 20_000 - 5_000 - C.transfer_fee(5_000)
+    with pytest.raises(E.GameError, match="Insufficient"):
+        E.send_transfer(s, 20_000, "Bisi (UBA)")
+    r = banked(new(seed="recv"))
+    r, line = E.receive_transfer(r, 5_000, "Tunde (GTBank)")
+    assert E.bank_balance(r) == 5_000 and "Credit alert" in line
+
+
+def test_lots_of_cash_can_get_stolen():
+    stolen = 0
+    for i in range(80):
+        s = new(seed=f"thief{i}")
+        s["money"] = 200_000
+        E._start_of_day(s, random.Random(i), [])
+        stolen += s["money"] < 200_000
+    assert 0 < stolen < 20

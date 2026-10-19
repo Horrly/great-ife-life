@@ -33,7 +33,15 @@
   --text-base--line-height: 1.5;
   --text-lg: 1.125rem;
   --text-xl: 1.25rem;
-  --color-glass: rgb(9 28 20 / 0.8);
+  --color-glass: rgb(9 28 20 / 0.86);
+  /* needs: one colour each, used for bars, tags and the needs pill */
+  --color-need-hunger: #f08a24;
+  --color-need-energy: #3b82f6;
+  --color-need-hygiene: #14a89a;
+  --color-need-fun: #e0a800;
+  --color-need-social: #e2467f;
+  --color-chip: #eef1ee;
+  --color-go: #1c9a5e;
 }
 
 html,
@@ -80,6 +88,12 @@ body {
   -webkit-backdrop-filter: blur(10px) saturate(1.2);
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
 }
+/* buttons that float over the campus: white pills with a hairline highlight */
+@utility float {
+  background: rgb(255 255 255 / 0.97);
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.9), 0 6px 18px rgb(10 44 29 / 0.18);
+}
 @utility btn {
   @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-[0.95rem] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45;
 }
@@ -109,6 +123,66 @@ body {
   .bump {
     animation: bump 380ms ease-out;
   }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .slide-up {
+    animation: slide-up 420ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+  }
+  .drop-down {
+    animation: drop-down 300ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+  }
+  .pop {
+    animation: pop 620ms cubic-bezier(0.25, 1.6, 0.4, 1) both;
+  }
+  .toast-in {
+    animation: toast-in 260ms ease-out both;
+  }
+}
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes drop-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3) rotate(-20deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* horizontal chip rows scroll without a scrollbar, and fade at the edge so you can tell there's more */
+.chip-row {
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, black 88%, transparent);
+}
+.chip-row::-webkit-scrollbar {
+  display: none;
 }
 @keyframes reveal {
   from {

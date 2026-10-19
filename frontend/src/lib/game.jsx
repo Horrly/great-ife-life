@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { account as accountStore, api, save } from "./api";
 
 const GameContext = createContext(null);
@@ -86,6 +86,37 @@ export function GameProvider({ children }) {
   const enter = useCallback((building, pos) => move("/game/enter/", { building, pos }), [move]);
   const leave = useCallback(() => move("/game/exit/", {}), [move]);
   const setLook = useCallback((look, traits, dream) => move("/game/look/", { look, traits, dream }), [move]);
+  const askParents = useCallback((amount) => move("/game/parents/", { amount }), [move]);
+  const bet = useCallback((match, pick, stake, adult) => move("/game/bet/", { match, pick, stake, adult }), [move]);
+  const moveHome = useCallback((body) => move("/game/housing/move/", body), [move]);
+  const joinRoom = useCallback((code) => move("/game/housing/join/", { code }), [move]);
+  const housing = useCallback(() => api("/game/housing/"), []);
+  // banking: every money move goes through the server, like everything else
+  const openBank = useCallback((bank) => move("/game/bank/open/", { bank }), [move]);
+  const bankCounter = useCallback((kind, amount) => move("/game/bank/counter/", { kind, amount }), [move]);
+  const atm = useCallback((amount) => move("/game/bank/atm/", { amount }), [move]);
+  const pos = useCallback((kind, amount, method) => move("/game/bank/pos/", { kind, amount, method }), [move]);
+  const transfer = useCallback((number, bank, amount) => move("/game/bank/transfer/", { number, bank, amount }), [move]);
+  const lookupAccount = useCallback((number, bank) => api(`/game/bank/lookup/?${new URLSearchParams({ number, bank })}`), []);
+  // chat
+  const chat = useMemo(() => ({
+    threads: () => api("/chat/"),
+    messages: (thread, after = 0) => api(`/chat/messages/?${new URLSearchParams({ thread, after })}`),
+    send: (thread, text, after = 0, shareAccount = false) =>
+      api("/chat/messages/", { method: "POST", body: { thread, text, after, share_account: shareAccount } }),
+    dm: (who) => api("/chat/dm/", { method: "POST", body: who }),
+    block: (gameId) => api("/chat/block/", { method: "POST", body: { game: gameId } }),
+    report: (messageId) => api("/chat/report/", { method: "POST", body: { message: messageId } }),
+  }), []);
+  const postNote = useCallback(async (note) => {
+    try {
+      const g = await api("/game/room/note/", { method: "POST", body: { note } });
+      g.receivedAt = performance.now();
+      setGame(g);
+    } catch (err) {
+      setError(err.message);
+    }
+  }, []);
 
   /** Heartbeat: the server's clock catches up and learns where you walked. Never blocks a move. */
   const sync = useCallback(async (pos) => {
@@ -160,7 +191,8 @@ export function GameProvider({ children }) {
   return (
     <GameContext.Provider
       value={{ game, loading, busy, error, setError, messages, setMessages, start, resume, act, choose, next, quit,
-        travel, enter, leave, setLook, sync, plan,
+        travel, enter, leave, setLook, sync, plan, askParents, bet, moveHome, joinRoom, housing, postNote,
+        openBank, bankCounter, atm, pos, transfer, lookupAccount, chat,
         account, register, login, logout, resumeLife, refreshAccount }}
     >
       {children}

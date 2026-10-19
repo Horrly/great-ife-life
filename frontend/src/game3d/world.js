@@ -681,6 +681,86 @@ function hills() {
 /**
  * buildWorld(map) -> { group, doors, colliders, lamps, nightMaterials, labels }
  */
+/** The Banking Area: a row of bank fronts, each with its own sign and an ATM outside. */
+function bankRow(b, banks, door) {
+  const g = new THREE.Group();
+  const base = block(b.w, b.h, b.d, b.wall, b.roof, 1);
+  base.position.set(b.x, b.h / 2, b.z);
+  g.add(base);
+  const roof = box(b.w + 1.2, 0.6, b.d + 1.2, mat(b.roof));
+  roof.position.set(b.x, b.h + 0.3, b.z);
+  g.add(roof);
+  const [nx, nz] = door.normal;
+  const along = nx ? [0, 1] : [1, 0];           // the facade runs this way
+  const span = nx ? b.d : b.w;
+  const branches = Object.values(banks || {}).filter((x) => !x.app);
+  const seg = span / Math.max(1, branches.length);
+  const face = (t, out, y) => [b.x + nx * (b.w / 2 + out) + along[0] * t, y, b.z + nz * (b.d / 2 + out) + along[1] * t];
+  branches.forEach((bank, i) => {
+    const t = -span / 2 + seg * (i + 0.5);
+    // fascia board in the bank's colours
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(seg * 0.92, seg * 0.92 * 0.16),
+      new THREE.MeshLambertMaterial({ map: signTexture(bank.name.toUpperCase(), { bg: bank.color, fg: bank.fg, border: bank.fg, width: 768 }) }));
+    sign.position.set(...face(t, 0.35, b.h - 1.3));
+    sign.rotation.y = door.angle;
+    g.add(sign);
+    // glass door and a strip of colour at the base
+    const glass = box(seg * 0.5, 3.2, 0.2, mat("#3b5560", { roughness: 0.2 }));
+    glass.position.set(...face(t, 0.15, 1.6));
+    glass.rotation.y = door.angle;
+    g.add(glass);
+    const band = box(seg * 0.96, 0.5, 0.25, mat(bank.color));
+    band.position.set(...face(t, 0.2, 3.6));
+    band.rotation.y = door.angle;
+    g.add(band);
+    // the ATM, under a little canopy, with a queue line painted on the floor
+    const atm = new THREE.Group();
+    const body = box(1.3, 2.3, 0.9, mat("#c9ccd0"));
+    body.position.y = 1.15;
+    const screen = box(0.8, 0.5, 0.05, new THREE.MeshBasicMaterial({ color: "#3ec1ff" }));
+    screen.position.set(0, 1.65, 0.46);
+    const top = box(1.5, 0.35, 1.1, mat(bank.color));
+    top.position.y = 2.45;
+    atm.add(body, screen, top);
+    atm.position.set(...face(t + seg * 0.32, 1.2, 0));
+    atm.rotation.y = door.angle;
+    g.add(atm);
+  });
+  // fintech agents don't have branches: their POS umbrellas stand outside
+  Object.values(banks || {}).filter((x) => x.app).forEach((bank, i) => {
+    const stand = posStand(bank.color);
+    stand.position.set(...face((i ? 1 : -1) * (span / 2 + 3), 4, 0));
+    stand.rotation.y = door.angle;
+    g.add(stand);
+  });
+  return g;
+}
+
+/** A POS agent: a small table under a branded umbrella, with a POS machine and a plastic chair. */
+function posStand(color = "#1dbf8d") {
+  const g = new THREE.Group();
+  const pole = box(0.12, 2.8, 0.12, mat("#dddddd"));
+  pole.position.y = 1.4;
+  const umb = new THREE.Mesh(new THREE.ConeGeometry(2.1, 0.9, 8), mat(color));
+  umb.position.y = 3.0;
+  const table = box(1.8, 0.12, 1.0, mat("#f1f1f1"));
+  table.position.y = 1.0;
+  for (const [x, z] of [[-0.8, -0.4], [0.8, -0.4], [-0.8, 0.4], [0.8, 0.4]]) {
+    const leg = box(0.08, 1.0, 0.08, mat("#9aa0a6"));
+    leg.position.set(x, 0.5, z);
+    g.add(leg);
+  }
+  const machine = box(0.35, 0.12, 0.5, mat("#222"));
+  machine.position.set(0.3, 1.12, 0);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.42),
+    new THREE.MeshLambertMaterial({ map: signTexture("POS", { bg: color, fg: "#ffffff", border: "#ffffff", width: 384 }) }));
+  sign.position.set(0, 0.62, 0.52);
+  const chair = box(0.6, 0.08, 0.6, mat("#d23b3b"));
+  chair.position.set(0, 0.55, -1.0);
+  g.add(pole, umb, table, machine, sign, chair);
+  return g;
+}
+
 export function buildWorld(map) {
   const group = new THREE.Group();
   const colliders = [];
@@ -705,14 +785,23 @@ export function buildWorld(map) {
 
   for (const [id, b] of Object.entries(map.buildings)) {
     const node = map.nodes[b.node];
-    const make = STYLES[b.style] || STYLES.hall;
+    const make = b.style === "banks" ? (bb) => bankRow(bb, map.banks, doorFor(bb, node)) : STYLES[b.style] || STYLES.hall;
     const mesh = make(b);
     mesh.traverse((o) => o.material && [o.material].flat().forEach((m) => m.userData?.night && nightMaterials.add(m)));
     group.add(mesh);
     const door = doorFor(b, node);
-    if (!["amphitheatre", "sports", "buka", "market"].includes(b.style)) {
+    if (!["amphitheatre", "sports", "buka", "market", "banks"].includes(b.style)) {
       entrance(group, door, b.wall);
       addSign(group, b.sign, door, Math.min(b.h - 1.5, 6.8), Math.min(18, Math.max(b.w, b.d) * 0.6));
+    }
+    if (b.style === "banks") addSign(group, b.sign, { ...door, x: door.x - door.normal[0] * 0.2, z: door.z - door.normal[1] * 0.2 }, b.h + 1.6, 14);
+    // a POS agent by the door of every hall, faculty, lecture theatre and the market
+    if (map.pos?.includes(id) && b.style !== "banks") {
+      const stand = posStand(["#1dbf8d", "#0a4bd6"][id.length % 2]);
+      const side = id.length % 2 ? 1 : -1;
+      stand.position.set(door.x + door.normal[0] * 3 - door.normal[1] * 7 * side, 0, door.z + door.normal[1] * 3 + door.normal[0] * 7 * side);
+      stand.rotation.y = door.angle;
+      group.add(stand);
     }
     if (!["amphitheatre", "sports"].includes(b.style)) {
       colliders.push({ id, h: b.style === "tower" ? b.h + 4 : b.h + 2, x0: b.x - b.w / 2 - 0.5, x1: b.x + b.w / 2 + 0.5, z0: b.z - b.d / 2 - 0.5, z1: b.z + b.d / 2 + 0.5 });

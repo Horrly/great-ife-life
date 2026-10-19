@@ -1,99 +1,253 @@
-// Everything drawn over the 3D campus: clock, needs, money, joystick, and the sheets you open.
+// Everything drawn over the 3D campus, arranged like a phone game should be: status at the top in dark
+// pills you read, and everything you press in the bottom thumb zone. The middle of the screen stays campus.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { clockText, duration, effectChips, naira, NEED_LABELS, needTone } from "../lib/format";
+import { clockText, duration, naira, nairaShort } from "../lib/format";
+import { setSound, sfx, soundOn } from "../lib/sfx";
+import { BottomSheet, Ring } from "./ui";
 
-const NEED_ORDER = ["hunger", "energy", "hygiene", "fun", "social"];
-const BAR = { ok: "bg-ife-500", low: "bg-bulb", critical: "bg-danger" };
+export const NEEDS = {
+  hunger: { label: "Food", icon: "🍲", color: "var(--color-need-hunger)", tint: "#fde9d3" },
+  energy: { label: "Energy", icon: "⚡", color: "var(--color-need-energy)", tint: "#dfeafe" },
+  hygiene: { label: "Hygiene", icon: "🚿", color: "var(--color-need-hygiene)", tint: "#d5f1ee" },
+  fun: { label: "Fun", icon: "🎉", color: "var(--color-need-fun)", tint: "#fbf0c8" },
+  social: { label: "Social", icon: "💬", color: "var(--color-need-social)", tint: "#fbdde8" },
+};
+const TAG = { ...NEEDS, prep: { label: "Readiness", color: "#1c9a5e", tint: "#dcf3e6" } };
 
-const NEED_ICON = { hunger: "🍲", energy: "⚡", hygiene: "🚿", fun: "🎉", social: "💬" };
-const RING = { ok: "#3fbf7f", low: "#f2c230", critical: "#ff5a4a" };
+export function moodOf(mood) {
+  if (mood >= 80) return { label: "Very happy", face: "😄", color: "#22c55e" };
+  if (mood >= 62) return { label: "Happy", face: "🙂", color: "#4ade80" };
+  if (mood >= 45) return { label: "Fine", face: "😐", color: "#facc15" };
+  if (mood >= 30) return { label: "Uneasy", face: "😕", color: "#fb923c" };
+  return { label: "Miserable", face: "😫", color: "#ef4444" };
+}
 
-const SHORT = { hygiene: "Clean" };
+function needTone(v) {
+  return v < 20 ? "#d64535" : v < 40 ? "#c98a00" : "#1c9a5e";
+}
 
-function NeedRing({ need, value }) {
-  const tone = needTone(value);
-  const r = 17;
-  const c = 2 * Math.PI * r;
+// --- Top band: what you read ---------------------------------------------------------------------
+
+export function ClockPill({ game, minute, onClick }) {
+  const night = minute < 360 || minute >= 1140;
+  const m = moodOf(game.mood);
+  const [time, ampm] = clockText(minute).split(" ");
   return (
-    <div className="flex min-w-0 flex-col items-center" title={`${NEED_LABELS[need]}: ${value}`}>
-      <span className="relative grid h-11 w-11 place-items-center" role="img" aria-label={`${NEED_LABELS[need]} ${value} of 100`}>
-        <svg viewBox="0 0 40 40" className="absolute inset-0 -rotate-90">
-          <circle cx="20" cy="20" r={r} fill="none" stroke="rgb(255 255 255 / 0.16)" strokeWidth="4" />
-          <circle cx="20" cy="20" r={r} fill="none" stroke={RING[tone]} strokeWidth="4" strokeLinecap="round"
-            strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} style={{ transition: "stroke-dashoffset .7s" }} />
-        </svg>
-        <span aria-hidden className={`text-[1.05rem] ${tone === "critical" ? "animate-pulse" : ""}`}>{NEED_ICON[need]}</span>
+    <button onClick={onClick} className="glass pointer-events-auto flex h-[38px] items-center gap-1.5 rounded-full pl-3 pr-2"
+      aria-label={`Game time ${clockText(minute)}, ${m.label}. More`}>
+      <span aria-hidden className="text-sm">{night ? "🌙" : "☀️"}</span>
+      <span className="num text-[1.05rem] leading-none">{time}</span>
+      <span className="text-[0.7rem] font-bold text-white/70">{ampm}</span>
+      <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full text-sm" style={{ background: m.color }}>{m.face}</span>
+    </button>
+  );
+}
+
+export function WalletPill({ game, onClick }) {
+  return (
+    <button onClick={onClick} className="glass pointer-events-auto flex h-[38px] items-center gap-2 rounded-full pl-3.5 pr-1.5"
+      aria-label={`Cash ${naira(game.cash ?? game.money)}${game.bank ? `, ${game.bank.name} ${naira(game.bank.balance)}` : ""}. Open your bank`}>
+      <span className="num text-[1.05rem] leading-none">{nairaShort(game.cash ?? game.money)}</span>
+      {game.bank && <span className="num text-xs text-white/70">🏦 {nairaShort(game.bank.balance)}</span>}
+      <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full bg-go text-base font-black leading-none text-white">+</span>
+    </button>
+  );
+}
+
+export function Chevron({ open, onClick }) {
+  return (
+    <button onClick={onClick} aria-expanded={open} aria-label={open ? "Close" : "More: date, wallet, sound"}
+      className={`pointer-events-auto flex h-8 items-center rounded-full px-3 text-sm font-bold ${open ? "bg-white text-ink shadow" : "glass"}`}>
+      {open ? "Close" : <span aria-hidden className="text-xs">⌄</span>}
+    </button>
+  );
+}
+
+/** The drawer under the chevron: everything you sometimes want to know, out of the way the rest of the time. */
+export function StatusDrawer({ game, minute, onNeeds, onBank, onStudies }) {
+  const [sound, setS] = useState(soundOn());
+  const m = moodOf(game.mood);
+  const [time, ampm] = clockText(minute).split(" ");
+  const Row = ({ icon, title, sub, onClick, right }) => (
+    <button onClick={onClick} disabled={!onClick} className="flex w-full items-center gap-3 border-t border-white/10 py-2.5 text-left">
+      <span aria-hidden className="w-6 text-center text-lg">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-semibold">{title}</span>
+        {sub && <span className="block truncate text-xs text-white/60">{sub}</span>}
       </span>
-      <span className={`mt-0.5 max-w-full truncate text-[0.7rem] font-semibold tracking-tight ${tone === "critical" ? "text-[#ff8a7e]" : "text-white/75"}`}>{SHORT[need] ?? NEED_LABELS[need]}</span>
+      {right ?? (onClick && <span aria-hidden className="text-white/50">›</span>)}
+    </button>
+  );
+  return (
+    <div className="drop-down glass pointer-events-auto absolute inset-x-4 top-14 z-[26] mx-auto max-w-md rounded-3xl px-4 pb-2 pt-4">
+      <p className="num text-5xl leading-none">{time}<span className="ml-1 text-lg text-white/70">{ampm}</span></p>
+      <p className="mt-1 text-sm text-white/75">
+        {game.weekday} · {game.strike_days ? "ASUU strike" : game.day === 0 ? "no lectures today" : `Day ${game.day} of ${game.days_in_semester}`} · {game.level}
+      </p>
+      <div className="mt-3">
+        <Row icon={m.face} title={m.label} sub="See what you need" onClick={onNeeds} />
+        <Row icon="💵" title={`${naira(game.cash ?? game.money)} cash`}
+          sub={game.bank ? `${game.bank.name}: ${naira(game.bank.balance)}` : "No bank account yet"} onClick={onBank} />
+        <Row icon="📖" title={`Readiness ${game.prep}%${game.cgpa != null ? ` · CGPA ${game.cgpa.toFixed(2)}` : ""}`}
+          sub={game.upcoming[0]} onClick={onStudies} />
+        <Row icon="🟢" title={`${game.online ?? 1} student${game.online === 1 ? "" : "s"} on campus now`} sub={`Streak: day ${game.streak} of 7`} />
+        <Row icon="🔊" title="Sounds" sub="Taps, credit alerts and warnings"
+          right={
+            <span role="switch" aria-checked={sound} tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSound(!sound);
+                setS(!sound);
+              }}
+              className={`relative h-6 w-11 rounded-full ${sound ? "bg-go" : "bg-white/25"}`}>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${sound ? "left-[1.4rem]" : "left-0.5"}`} />
+            </span>
+          } />
+      </div>
     </div>
   );
 }
 
-export function TopBar({ game, minute, onOpenMe, onMap, onToday, buttons = true }) {
-  const night = minute < 360 || minute >= 1140;
-  const done = game.missions?.filter((m) => m.done).length ?? 0;
+export function InboxButton({ count, onClick }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2 sm:p-3">
-      <div className="glass pointer-events-auto mx-auto flex max-w-3xl items-stretch gap-3 rounded-2xl px-3 py-2.5">
-        <button
-          onClick={onOpenMe}
-          className="shrink-0 text-left"
-          aria-label={`It's ${clockText(minute)}, ${game.weekday}. Open your timetable and stats`}
-        >
-          <span className="flex items-baseline gap-1.5">
-            <span className="num text-[2.15rem] leading-none" aria-hidden>
-              {clockText(minute).replace(/ (AM|PM)/, "")}
-            </span>
-            <span className="text-sm font-bold text-bulb" aria-hidden>
-              {minute < 720 ? "am" : "pm"} {night ? "☾" : "☀"}
-            </span>
+    <button onClick={onClick} className="float pointer-events-auto relative grid h-10 w-12 place-items-center rounded-full text-lg"
+      aria-label={`Inbox${count ? `, ${count} new` : ""}`}>
+      <span aria-hidden>✉️</span>
+      {count > 0 && <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-danger px-1 text-center text-[11px] font-black text-white">{count > 9 ? "9+" : count}</span>}
+    </button>
+  );
+}
+
+/** A running action: icon in a progress ring, top-left. You can keep looking around while it plays. */
+export function ActionChip({ lapse, progress }) {
+  return (
+    <div className="float pointer-events-auto flex h-11 max-w-[60vw] items-center gap-2 rounded-full py-1 pl-1 pr-3.5" role="status" aria-live="polite">
+      <Ring value={progress} size={36} stroke={3.5}>
+        <span className="text-base">{lapse.icon || "⏳"}</span>
+      </Ring>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold">{lapse.label}</span>
+        <span className="block text-[11px] text-muted">{progress < 1 ? "In progress…" : "Done"}</span>
+      </span>
+    </div>
+  );
+}
+
+export function RoundIcon({ icon, label, onClick, badge, dark = false, active = false }) {
+  return (
+    <button onClick={onClick} aria-label={label} title={label}
+      className={`pointer-events-auto relative grid h-11 w-11 place-items-center rounded-full text-lg shadow ${dark ? "glass" : active ? "bg-ink text-white" : "float"}`}>
+      <span aria-hidden>{icon}</span>
+      {badge ? <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-danger px-1 text-center text-[11px] font-black text-white">{badge}</span> : null}
+    </button>
+  );
+}
+
+export function NextClassPill({ game, onClick }) {
+  const next = game.today?.find((l) => !l.attended && !l.missed);
+  const text = game.test ? `✍️ ${game.test.label}` : next ? `📚 ${next.code} · ${next.time} · ${next.venue_name}` : null;
+  if (!text) return null;
+  return (
+    <button onClick={onClick} className="float pointer-events-auto h-11 max-w-[58vw] truncate rounded-full px-3.5 text-sm font-semibold">
+      {text}
+    </button>
+  );
+}
+
+// --- Bottom band: what you press ------------------------------------------------------------------
+
+export function AvatarButton({ game, onClick }) {
+  const female = game.look?.hall === "female";
+  return (
+    <button onClick={onClick} aria-label="You: profile, needs, studies and skills"
+      className="float pointer-events-auto grid h-[50px] w-[50px] shrink-0 place-items-center rounded-full text-2xl ring-[3px] ring-go">
+      <span aria-hidden>{female ? "👩🏾‍🎓" : "🧑🏾‍🎓"}</span>
+    </button>
+  );
+}
+
+/** One pill with your lowest need. The rest are one tap away. */
+export function NeedsPill({ needs, onClick, flash }) {
+  const [key, value] = Object.entries(needs).sort((a, b) => a[1] - b[1])[0];
+  const n = NEEDS[key];
+  return (
+    <button onClick={onClick} aria-label={`${n.label} ${value}%. Open needs`}
+      className={`float pointer-events-auto flex h-11 items-center gap-1.5 rounded-full py-1 pl-1 pr-3 ${flash ? "bump" : ""}`}>
+      <span aria-hidden className="grid h-9 w-9 place-items-center rounded-full text-base" style={{ background: n.tint }}>{n.icon}</span>
+      <span className="num text-[0.95rem]" style={{ color: needTone(value) }}>{value}%</span>
+    </button>
+  );
+}
+
+/** All five needs as mini bars: on wide screens this sits in the left column. */
+export function NeedsCard({ needs, onClick }) {
+  return (
+    <button onClick={onClick} className="float pointer-events-auto grid w-[230px] grid-cols-5 gap-2 rounded-2xl p-2.5" aria-label="Your needs">
+      {Object.entries(NEEDS).map(([k, n]) => (
+        <span key={k} className="flex flex-col items-center gap-1" title={`${n.label} ${needs[k]}%`}>
+          <span aria-hidden className="text-base">{n.icon}</span>
+          <span className="h-1.5 w-full overflow-hidden rounded-full bg-chip">
+            <span className="block h-full rounded-full" style={{ width: `${needs[k]}%`, background: n.color }} />
           </span>
-          <span className="mt-1 block text-sm font-semibold text-white/80">
-            {game.strike_days ? "ASUU strike" : `${game.weekday}, day ${game.day} of ${game.days_in_semester}`}
-          </span>
+        </span>
+      ))}
+    </button>
+  );
+}
+
+export function NavBar({ items }) {
+  return (
+    <nav className="float pointer-events-auto flex items-center gap-1 rounded-[26px] p-1.5" aria-label="Go to">
+      {items.map((it) => (
+        <button key={it.id} onClick={() => {
+          sfx("tap");
+          it.onClick();
+        }} disabled={it.disabled} aria-current={it.active ? "page" : undefined}
+          className={`flex h-12 min-w-[4.6rem] flex-col items-center justify-center rounded-[20px] px-2 disabled:opacity-35 ${it.active ? "bg-ink text-white" : "text-muted"}`}>
+          <span aria-hidden className="text-lg leading-none">{it.icon}</span>
+          <span className="mt-0.5 text-[11px] font-semibold">{it.label}</span>
         </button>
-        <div className="min-w-0 flex-1">
-          <div className="ml-auto grid max-w-[21rem] grid-cols-5 gap-1.5">
-            {NEED_ORDER.map((k) => <NeedRing key={k} need={k} value={game.needs[k]} />)}
-          </div>
-        </div>
-      </div>
-      <div className="mx-auto mt-2 flex max-w-3xl items-start gap-2">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="glass pointer-events-auto inline-flex max-w-full items-center gap-3 rounded-full px-3.5 py-1.5">
-            <span className="num text-lg leading-none">{naira(game.money)}</span>
-            <span className="text-sm font-semibold text-white/80">📖 {game.prep}%</span>
-            {game.rep && <span className="truncate text-sm font-semibold text-bulb">⭐ {game.rep.title}</span>}
-          </div>
-          {game.moodlets?.length > 0 && (
-            <div className="pointer-events-auto flex flex-wrap gap-1" aria-label="How you feel">
-              {game.moodlets.slice(0, 4).map((m) => (
-                <span key={m.id} title={`${m.name} (${m.value > 0 ? "+" : ""}${m.value} mood)`}
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold shadow ${m.value > 0 ? "bg-[#e3f5ea] text-ife-700" : "bg-[#fde2dd] text-danger"}`}>
-                  {m.emoji} {m.name}
-                </span>
-              ))}
-            </div>
-          )}
-          {game.upcoming[0] && (
-            <p className="glass inline-block max-w-full truncate rounded-full px-3 py-1.5 text-sm font-medium">
-              {game.upcoming[0]}
-            </p>
-          )}
-        </div>
-        {buttons && (
-          <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-2">
-            <button className="flex items-center gap-1.5 rounded-full bg-bulb px-4 py-2.5 text-base font-bold text-ink shadow-lg" onClick={onMap}>
-              <span aria-hidden>🗺</span> Map
+      ))}
+    </nav>
+  );
+}
+
+export function PhoneButton({ game, onClick }) {
+  const n = game.chat_unread || 0;
+  return (
+    <button onClick={() => {
+      sfx("open");
+      onClick();
+    }} aria-label={`Phone${n ? `, ${n} unread messages` : ""}`}
+      className="float pointer-events-auto relative grid h-[54px] w-[54px] place-items-center rounded-full text-2xl">
+      <span aria-hidden>{game.phone_info ? "📱" : "📵"}</span>
+      {n > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-5 rounded-full bg-danger px-1 text-center text-[11px] font-black text-white">{n > 9 ? "9+" : n}</span>}
+    </button>
+  );
+}
+
+/** The ⋯ button and its little menu of rarely used things. */
+export function MoreMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="pointer-events-auto relative">
+      {open && (
+        <div className="drop-down float absolute bottom-14 right-0 w-56 rounded-2xl p-1.5">
+          {items.map((it) => (
+            <button key={it.label} onClick={() => {
+              setOpen(false);
+              it.onClick();
+            }} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold hover:bg-chip">
+              <span aria-hidden>{it.icon}</span>
+              {it.label}
             </button>
-            {game.missions?.length > 0 && (
-              <button className="glass flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold" onClick={onToday}>
-                📋 Today {done}/{game.missions.length}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
+      <button onClick={() => setOpen((o) => !o)} aria-label={open ? "Close menu" : "More"} aria-expanded={open}
+        className={`grid h-11 w-11 place-items-center rounded-full text-lg font-black shadow ${open ? "bg-ink text-white" : "float"}`}>
+        {open ? "×" : "⋯"}
+      </button>
     </div>
   );
 }
@@ -104,10 +258,8 @@ export function Joystick({ onMove }) {
   const id = useRef(null);
   function update(e) {
     const r = base.current.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    let dx = (e.clientX - cx) / (r.width / 2);
-    let dy = (e.clientY - cy) / (r.height / 2);
+    let dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
+    let dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
     const len = Math.hypot(dx, dy);
     if (len > 1) {
       dx /= len;
@@ -122,9 +274,8 @@ export function Joystick({ onMove }) {
     onMove(0, 0);
   }
   return (
-    <div
-      ref={base}
-      className="pointer-events-auto absolute bottom-5 left-5 z-10 h-32 w-32 touch-none rounded-full border-2 border-white/60 bg-ink/25 backdrop-blur-sm sm:bottom-6 sm:left-6"
+    <div ref={base}
+      className="pointer-events-auto relative h-[7.5rem] w-[7.5rem] touch-none rounded-full border-2 border-white/70 bg-ink/20 backdrop-blur-sm"
       onPointerDown={(e) => {
         id.current = e.pointerId;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -134,338 +285,356 @@ export function Joystick({ onMove }) {
       onPointerUp={end}
       onPointerCancel={end}
       role="application"
-      aria-label="Joystick: drag to walk. On a keyboard use W A S D or the arrow keys."
-    >
-      <span
-        className={`absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-white/80 shadow ${knob.on ? "" : "transition-transform"}`}
-        style={{ transform: `translate(calc(-50% + ${knob.x * 36}px), calc(-50% + ${knob.y * 36}px))` }}
-      />
+      aria-label="Joystick: drag to walk. On a keyboard use W A S D or the arrow keys.">
+      <span className={`absolute left-1/2 top-1/2 h-12 w-12 rounded-full bg-white shadow ${knob.on ? "" : "transition-transform"}`}
+        style={{ transform: `translate(calc(-50% + ${knob.x * 34}px), calc(-50% + ${knob.y * 34}px))` }} />
     </div>
   );
 }
 
-export function RoundButton({ label, icon, onClick, className = "", badge }) {
+// --- Places: the place card, stations and action cards -------------------------------------------
+
+export const STATIONS = {
+  room: ["👥", "Roommates"], class: ["🎓", "Class"], study: ["📚", "Study"], food: ["🍲", "Food"], care: ["🚿", "Wash"],
+  rest: ["🛏", "Rest"], fun: ["🎉", "Gist & fun"], hustle: ["💼", "Hustle"], shop: ["🛍", "Shop"], money: ["🏦", "Money"],
+};
+
+const ICONS = [
+  [/lecture|class/, "🎓"], [/write|exam|ca test|test/, "✍️"], [/tdb|night/, "🌙"], [/tutorial|teach/, "🧑🏾‍🏫"],
+  [/group/, "👥"], [/read|study|hol/, "📖"], [/cook|noodle/, "🍳"], [/amala|ewedu/, "🍲"], [/rice|jollof/, "🍛"],
+  [/garri/, "🥣"], [/puff|snack|meat pie/, "🥟"], [/foodstuff/, "🛒"], [/bath|water/, "🚿"], [/sleep|lights/, "🛏"],
+  [/nap/, "😴"], [/check|nurse|health/, "🩺"], [/gist/, "💬"], [/hang|owambe|party/, "🎉"], [/show|concert|amphi/, "🎤"],
+  [/football|ball/, "⚽"], [/jog|gym|run/, "🏃"], [/scroll|twitter|tiktok/, "📱"], [/snake/, "🐍"], [/chin/, "🍪"],
+  [/barb|clipper/, "💈"], [/braid|hair/, "💇🏾‍♀️"], [/shoe|cobbler|slipper/, "👞"], [/data/, "📶"], [/logo|design|flyer|canva/, "🎨"],
+  [/bug|code|coding|website|landing/, "💻"], [/article|write-up|blog/, "✍️"], [/transcri/, "🎧"], [/business centre|print/, "🖨"],
+  [/kiosk|shop|stall|business/, "🏪"], [/phone|iphone|tecno|infinix|samsung|itel|nokia/, "📱"], [/bike|bicycle/, "🚲"],
+  [/car|corolla/, "🚗"], [/laptop/, "💻"], [/screen/, "🔧"], [/fees|charges|portal/, "🧾"], [/skit|video/, "🎬"],
+  [/brand/, "📸"], [/clearance|sweep|clean/, "🧹"], [/assistant/, "🧾"], [/wake/, "⏰"],
+];
+
+export function iconFor(a) {
+  const text = `${a.id} ${a.label}`.toLowerCase();
+  for (const [re, icon] of ICONS) if (re.test(text)) return icon;
+  return STATIONS[a.station]?.[0] || "✨";
+}
+
+const AMBIENT = {
+  hall: ["📻 Somebody's radio is playing Fuji", "🪣 The queue for the tap is long today", "🍳 Someone is frying plantain on the corridor"],
+  home: ["🔌 NEPA just brought light", "🐓 A neighbour's cock won't stop crowing"],
+  lecture: ["🪑 People are keeping seats with bags", "📢 The class rep is shouting about attendance"],
+  faculty: ["📌 New results on the notice board", "📚 Final years are arguing about projects"],
+  food: ["🔥 Fresh ewedu just came out of the pot", "🧾 Mama is collecting transfers today", "🥤 Zobo is cold"],
+  bank: ["🏧 The ATM queue is moving small small", "💳 Someone's card just got swallowed"],
+  campus: ["🌳 It's breezy under the trees", "🎶 Choir practice somewhere close"],
+};
+
+export function ambientFor(kind, minute) {
+  const list = AMBIENT[kind] || AMBIENT.campus;
+  return list[Math.floor(minute / 3) % list.length];
+}
+
+/** The collapsed place card above the controls: tap to see what you can do here. */
+export function PlaceCard({ name, sub, onOpen, here }) {
   return (
-    <button
-      onClick={onClick}
-      className={`glass pointer-events-auto relative flex h-16 w-16 flex-col items-center justify-center rounded-2xl ${className}`}
-    >
-      <span aria-hidden className="text-2xl leading-none">{icon}</span>
-      <span className="mt-1 text-xs font-semibold">{label}</span>
-      {badge ? <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-danger" aria-label="New" /> : null}
+    <button onClick={() => {
+      sfx("open");
+      onOpen();
+    }} className="float pointer-events-auto flex w-full items-center gap-3 rounded-3xl px-4 py-3 text-left">
+      <span className="min-w-0 flex-1">
+        <span className="display block truncate text-xl text-ink">{name} <span className="text-muted">›</span></span>
+        <span className="mt-0.5 block truncate text-sm text-muted">
+          <span className="mr-1 inline-block h-2 w-2 rounded-full bg-go align-middle" aria-hidden />
+          {here > 1 ? `${here} here · ` : ""}{sub}
+        </span>
+      </span>
+      <span className="shrink-0 rounded-full bg-ink px-3 py-1.5 text-sm font-bold text-white">Things to do</span>
     </button>
   );
 }
 
-/** A panel that slides up from the bottom but leaves the campus visible above it. */
-export function Panel({ title, subtitle, onClose, children, tall = false, label }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    ref.current?.querySelector("button, a")?.focus({ preventScroll: true });
-  }, []);
+function Tag({ k, v }) {
+  const t = TAG[k];
+  if (!t || !v) return null;
   return (
-    <section
-      ref={ref}
-      role="dialog"
-      aria-label={label || title}
-      className={`reveal pointer-events-auto absolute inset-x-0 bottom-0 z-30 mx-auto flex w-full max-w-xl flex-col rounded-t-2xl bg-slab shadow-2xl sm:bottom-3 sm:rounded-2xl ${tall ? "max-h-[88%]" : "max-h-[58%]"}`}
-    >
-      <header className="flex items-start justify-between gap-3 border-b border-line px-4 pb-2 pt-3">
-        <div className="min-w-0">
-          <h2 className="display truncate text-[1.7rem] text-ife-900">{title}</h2>
-          {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
-        </div>
-        {onClose && (
-          <button className="btn-ghost shrink-0 px-3 py-1.5 text-sm" onClick={onClose}>
-            Close
-          </button>
-        )}
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">{children}</div>
-    </section>
+    <span className="rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: v > 0 ? t.tint : "#eef1ee", color: v > 0 ? "#16201a" : "#56635b" }}>
+      {v > 0 ? "+" : "−"}{t.label}
+    </span>
   );
 }
 
-const CHIP = { good: "bg-ife-50 text-ife-700", bad: "bg-concrete text-muted", cost: "bg-bulb-soft text-ink" };
-
-export function ActionList({ actions, onAct, busy }) {
+/** Action cards in a two-column grid: icon, real seconds, price, name, and +/− need tags. */
+export function ActionCards({ actions, onAct, busy }) {
+  if (!actions.length) return <p className="py-6 text-center text-sm text-muted">Nothing to do here right now.</p>;
   const sorted = [...actions].sort((a, b) => (b.test ? 2 : 0) + b.enabled - ((a.test ? 2 : 0) + a.enabled));
-  if (!sorted.length) return <p className="text-sm text-muted">Nothing to do here right now.</p>;
   return (
-    <ul className="space-y-2">
-      {sorted.map((a) => {
-        const chips = effectChips(a);
-        return (
-          <li key={a.id}>
-            <button
-              onClick={() => onAct(a)}
-              disabled={busy || !a.enabled}
-              className={`w-full rounded-lg border px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed ${
-                a.test && a.enabled ? "border-ife-600 bg-ife-600 text-white" : "border-line bg-white hover:border-ife-500 disabled:bg-slab"
-              }`}
-            >
-              <span className="flex items-start justify-between gap-3">
-                <span className={`text-base font-bold ${a.enabled ? "" : "text-muted"}`}>{a.label}</span>
-                <span className={`shrink-0 text-sm font-semibold ${a.test && a.enabled ? "text-bulb" : "text-muted"}`}>
-                  {duration(a.minutes)}
+    <ul className="grid grid-cols-2 gap-2.5">
+      {sorted.map((a) => (
+        <li key={a.id}>
+          <button onClick={() => {
+            sfx("tap");
+            onAct(a);
+          }} disabled={busy || !a.enabled}
+            className={`flex h-full min-h-[8.5rem] w-full flex-col rounded-[20px] bg-white p-3 text-left shadow-[0_2px_10px_rgb(10_44_29/0.08)] ring-1 disabled:cursor-not-allowed ${
+              a.test && a.enabled ? "ring-2 ring-go" : "ring-black/5"} ${a.enabled ? "" : "opacity-60"}`}>
+            <span className="flex items-start justify-between gap-1">
+              <span aria-hidden className="grid h-11 w-11 place-items-center rounded-full bg-chip text-2xl">{iconFor(a)}</span>
+              <span className="text-right">
+                {a.seconds > 0 && <span className="block rounded-full bg-chip px-1.5 py-0.5 text-[11px] font-semibold text-muted">🕒 {Math.round(a.seconds)}s</span>}
+                <span className={`mt-0.5 block text-sm font-black ${a.earn ? "text-go" : a.cost ? "text-ink" : "text-go"}`}>
+                  {a.earn ? `Earns ${nairaShort(a.earn)}` : a.cost ? naira(a.cost) : "Free"}
                 </span>
               </span>
-              <span className={`mt-0.5 block text-sm ${a.test && a.enabled ? "text-ife-100" : "text-muted"}`}>
-                {a.enabled ? `${a.blurb} Done by ${a.ends}.` : a.reason}
+            </span>
+            <span className="mt-2 line-clamp-2 text-[0.95rem] font-semibold leading-snug">{a.label}</span>
+            {a.enabled ? (
+              <span className="mt-auto flex flex-wrap gap-1 pt-2">
+                {Object.entries(a.effects || {}).filter(([k]) => TAG[k]).slice(0, 3).map(([k, v]) => <Tag key={k} k={k} v={v} />)}
+                {a.xp > 0 && <span className="rounded-full bg-bulb-soft px-2 py-0.5 text-[11px] font-bold">+{a.skill}</span>}
               </span>
-              {a.enabled && (chips.length > 0 || a.xp > 0 || a.hustle) && (
-                <span className="mt-1.5 flex flex-wrap gap-1">
-                  {a.hustle && <span className="rounded bg-bulb px-1.5 py-0.5 text-xs font-bold text-ink">Hustle</span>}
-                  {chips.map((c) => (
-                    <span key={c.text} className={`rounded px-1.5 py-0.5 text-xs font-bold ${CHIP[c.tone]}`}>
-                      {c.text}
-                    </span>
-                  ))}
-                  {a.xp > 0 && (
-                    <span className="rounded bg-bulb-soft px-1.5 py-0.5 text-xs font-bold text-ink">
-                      +{a.xp} {a.skill} XP
-                    </span>
-                  )}
-                </span>
-              )}
-            </button>
-          </li>
-        );
-      })}
+            ) : (
+              <span className="mt-auto pt-2 text-xs font-semibold text-muted">{a.reason}</span>
+            )}
+          </button>
+        </li>
+      ))}
     </ul>
   );
 }
 
-// --- Getting around -------------------------------------------------------------------------------
+// --- The campus map and getting somewhere ------------------------------------------------------------
 
-const MODE_ICON = { trek: "🚶", bus: "🚌", keke: "🛺", cab: "🚕", bike: "🚲", car: "🚗" };
-const KIND_COLOR = { lecture: "#f2c230", faculty: "#f4d27a", hall: "#c4dfcf", home: "#ffffff", food: "#f7c6a3", campus: "#e8e2d4" };
+const MODE_ICON = { trek: "🚶", bus: "🚌", keke: "🛺", cab: "🚕", bike: "🚲", car: "🚗", town_bus: "🚐" };
+const KIND_ICON = { lecture: "🎓", faculty: "🏛", hall: "🛏", home: "🏠", food: "🍲", bank: "🏦", campus: "📍" };
+const PLACE_ICON = { hol: "📚", health: "🏥", sports: "⚽", amphi: "🎭", senate: "🏛", oduduwa: "🎤", market: "🛒", sub: "🛍", buka: "🍲", banks: "🏦", offcampus: "🏠", staff: "🏠" };
 
-/** A tappable map of campus. */
+export function placeIcon(id, b) {
+  return PLACE_ICON[id] || KIND_ICON[b.kind] || "📍";
+}
+
+/** The campus as a map with pins. Tap a pin to see that place. On a tall phone screen the map stands upright. */
 export function CampusMap({ world, game, selected, onSelect, playerPos }) {
   const { x0, x1, z0, z1 } = world.bounds;
-  const short = (name) => name.replace(/ \(.*\)/, "").replace("Your self-con", "Self-con").replace(" Building", "")
-    .replace("Faculty of ", "").replace("Social Sciences & Admin", "Soc Sci");
+  const [portrait] = useState(() => typeof window !== "undefined" && window.innerHeight > window.innerWidth * 1.15);
+  // portrait: turn the map a quarter so the long side runs down the screen
+  const P = (x, z) => (portrait ? [z1 - z + z0, x] : [x, z]);
+  const box = portrait ? `${z0} ${x0} ${z1 - z0} ${x1 - x0}` : `${x0} ${z0} ${x1 - x0} ${z1 - z0}`;
+  const pin = portrait ? 14 : 10.5;
   return (
-    <svg viewBox={`${x0} ${z0} ${x1 - x0} ${z1 - z0}`} className="w-full rounded-lg bg-[#7ea551]" role="group" aria-label="Campus map">
-      {world.edges.map(([a, b]) => (
-        <line key={`${a}-${b}`} x1={world.nodes[a][0]} y1={world.nodes[a][1]} x2={world.nodes[b][0]} y2={world.nodes[b][1]}
-          stroke="#4a4d50" strokeWidth="7" strokeLinecap="round" />
-      ))}
-      <polyline points={world.bus_route.map((n) => world.nodes[n].join(",")).join(" ")} fill="none" stroke="#f2c230"
-        strokeWidth="1.6" strokeDasharray="5 4" />
-      {world.bus_stops.map((s) => (
-        <g key={s} style={{ pointerEvents: "none" }}>
-          <circle cx={world.nodes[s][0]} cy={world.nodes[s][1]} r="4" fill="#1f6f4a" stroke="#fff" strokeWidth="1.5" />
-          <text x={world.nodes[s][0] + 6} y={world.nodes[s][1] - 5} fontSize="7.5" fontWeight="700" fill="#fff">
-            🚌 {world.stop_names[s]}
-          </text>
-        </g>
-      ))}
+    <svg viewBox={box} className="w-full rounded-2xl bg-[#86ad5a]" role="group" aria-label="Campus map">
+      {world.edges.map(([a, b]) => {
+        const [ax, ay] = P(...world.nodes[a]);
+        const [bx, by] = P(...world.nodes[b]);
+        return <line key={`${a}-${b}`} x1={ax} y1={ay} x2={bx} y2={by} stroke="#5b5e61" strokeWidth="7" strokeLinecap="round" />;
+      })}
       {Object.entries(world.buildings).map(([id, b]) => {
-        const here = game.at === id;
+        const [cx, cy] = P(b.x, b.z);
+        const [w, h] = portrait ? [b.d, b.w] : [b.w, b.d];
+        return <rect key={id} x={cx - w / 2} y={cy - h / 2} width={w} height={h} rx="3" fill="#efe9dc" opacity="0.75" />;
+      })}
+      {Object.entries(world.buildings).map(([id, b]) => {
+        if (b.kind === "home" && id !== game.home) return null;
         const sel = selected === id;
-        const open = game.open[id];
         const next = game.next_venue === id;
-        const exam = game.exam_venue === id && game.upcoming.some((u) => /CA test|Exams/.test(u));
+        const here = game.at === id;
+        const [cx, cy] = P(b.x, b.z);
         return (
           <g key={id} onClick={() => onSelect(id)} className="cursor-pointer" role="button" tabIndex={0}
-            aria-label={`${b.name}${open ? "" : " (closed now)"}${next ? ", your next lecture" : ""}`}
+            aria-label={`${b.name}${game.open[id] ? "" : " (closed now)"}${next ? ", your next lecture" : ""}`}
             onKeyDown={(e) => e.key === "Enter" && onSelect(id)}>
-            <rect x={b.x - b.w / 2} y={b.z - b.d / 2} width={b.w} height={b.d} rx="3"
-              fill={sel ? "#f2c230" : here ? "#ffffff" : KIND_COLOR[b.kind] || "#f4efe4"} opacity={open ? 1 : 0.6}
-              stroke={sel || next ? "#16201a" : "#5a5040"} strokeWidth={sel || next ? 2.4 : 1} />
-            <text x={b.x} y={b.z + 3} textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#16201a" style={{ pointerEvents: "none" }}>
-              {short(b.name)}
+            <circle cx={cx} cy={cy} r={sel ? pin + 2.5 : pin} fill={sel ? "#f2c230" : "#ffffff"} stroke={next ? "#1c9a5e" : here ? "#16201a" : "rgba(0,0,0,.25)"}
+              strokeWidth={next || here ? 3 : 1} opacity={game.open[id] ? 1 : 0.65} />
+            <text x={cx} y={cy + pin * 0.42} textAnchor="middle" fontSize={pin * 1.1} style={{ pointerEvents: "none" }}>{placeIcon(id, b)}</text>
+            <text x={cx} y={cy + pin + 9} textAnchor="middle" fontSize={portrait ? 9 : 7.5} fontWeight="800" fill="#16201a" stroke="#fff" strokeWidth="2.4"
+              paintOrder="stroke" style={{ pointerEvents: "none" }}>
+              {b.name.replace(/ \(.*\)/, "").replace("Faculty of ", "").replace("Your self-con", "Self-con").replace(" Seater LT", " Seater")}
             </text>
-            {(next || exam) && (
-              <text x={b.x} y={b.z - b.d / 2 - 3} textAnchor="middle" fontSize="8" fontWeight="800" fill="#fff" style={{ pointerEvents: "none" }}>
-                {next ? "NEXT CLASS" : "EXAM HALL"}
-              </text>
-            )}
+            {next && <text x={cx} y={cy - pin - 4} textAnchor="middle" fontSize="8" fontWeight="900" fill="#fff" stroke="#1c9a5e" strokeWidth="3" paintOrder="stroke">NEXT CLASS</text>}
           </g>
         );
       })}
-      {playerPos && (
-        <g>
-          <circle cx={playerPos[0]} cy={playerPos[1]} r="7" fill="#b03a2e" stroke="#fff" strokeWidth="2.5" />
-          <text x={playerPos[0]} y={playerPos[1] - 11} textAnchor="middle" fontSize="9" fontWeight="700" fill="#fff">YOU</text>
-        </g>
-      )}
+      {playerPos && (() => {
+        const [px, py] = P(playerPos[0], playerPos[1]);
+        return (
+          <g>
+            <circle cx={px} cy={py} r="6.5" fill="#d64535" stroke="#fff" strokeWidth="2.5" />
+            <text x={px} y={py - 10} textAnchor="middle" fontSize="9" fontWeight="900" fill="#fff" stroke="#d64535" strokeWidth="2.5" paintOrder="stroke">YOU</text>
+          </g>
+        );
+      })()}
     </svg>
   );
 }
 
-export function TravelPanel({ world, game, plan, onPlan, onGo, onClose, busy, playerPos, initial }) {
-  const [selected, setSelected] = useState(initial || null);
-  const [quote, setQuote] = useState(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!selected) return;
-    let live = true;
-    setQuote(null);
-    setError("");
-    onPlan(selected)
-      .then((q) => live && setQuote(q))
-      .catch((e) => live && setError(e.message));
-    return () => {
-      live = false;
-    };
-  }, [selected, onPlan]);
+/** "Where to?": the map, or a searchable list grouped by kind of place. */
+export function MapSheet({ world, game, onPick, onClose, playerPos }) {
+  const [view, setView] = useState("map");
+  const [q, setQ] = useState("");
   const groups = useMemo(() => {
     const out = {};
     for (const [id, b] of Object.entries(world.buildings)) {
       if (id === game.at || (b.kind === "home" && id !== game.home)) continue;
+      if (q && !b.name.toLowerCase().includes(q.toLowerCase())) continue;
       (out[b.kind] ||= []).push([id, b]);
     }
     return Object.entries(world.kinds).filter(([k]) => out[k]).map(([k, label]) => [label, out[k]]);
-  }, [world, game.at, game.home]);
+  }, [world, game.at, game.home, q]);
   return (
-    <Panel title={selected ? `To ${world.buildings[selected].name}` : "Where to?"} subtitle={`Now ${clockText(game.minute)}`}
-      onClose={onClose} tall label="Travel">
-      <CampusMap world={world} game={game} selected={selected} onSelect={setSelected} playerPos={playerPos} />
-      {!selected && (
-        <div className="mt-3 space-y-3">
+    <BottomSheet title="📍 Where to?" subtitle="Tap a place to see how to get there" onClose={onClose} label="Map">
+      <div className="mb-2 grid grid-cols-2 gap-1 rounded-full bg-chip p-1">
+        {[["map", "Map"], ["list", "List"]].map(([id, label]) => (
+          <button key={id} onClick={() => setView(id)} aria-pressed={view === id}
+            className={`rounded-full py-1.5 text-sm font-bold ${view === id ? "bg-white shadow" : "text-muted"}`}>{label}</button>
+        ))}
+      </div>
+      {view === "map" ? (
+        <CampusMap world={world} game={game} onSelect={onPick} playerPos={playerPos} />
+      ) : (
+        <>
+          <input className="mb-2 w-full rounded-xl bg-chip px-3 py-2.5 text-sm outline-none" placeholder="Search a place" value={q}
+            onChange={(e) => setQ(e.target.value)} aria-label="Search a place" />
           {groups.map(([label, list]) => (
-            <section key={label}>
-              <h3 className="text-sm font-bold text-ink">{label}</h3>
-              <ul className="mt-1 grid grid-cols-2 gap-1.5">
+            <section key={label} className="mb-3">
+              <h3 className="mb-1 text-xs font-bold text-muted">{label.toUpperCase()}</h3>
+              <ul className="divide-y divide-line/60 rounded-2xl bg-slab">
                 {list.map(([id, b]) => (
                   <li key={id}>
-                    <button className="btn-ghost w-full justify-start px-3 py-2 text-left text-sm" onClick={() => setSelected(id)}>
-                      {id === game.home ? "🏠 " : ""}
-                      {b.name}
-                      {game.next_venue === id && <span className="ml-auto rounded bg-bulb px-1 text-xs">next class</span>}
-                      {!game.open[id] && game.next_venue !== id && <span className="ml-auto text-xs font-normal text-muted">closed</span>}
+                    <button className="flex w-full items-center gap-3 px-3 py-2.5 text-left" onClick={() => onPick(id)}>
+                      <span aria-hidden className="text-xl">{placeIcon(id, b)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold">{id === game.home ? `${b.name} (home)` : b.name}</span>
+                        <span className="block text-xs text-muted">
+                          {game.next_venue === id ? "Your next class" : game.open[id] ? "Open now" : "🔒 Closed now"}
+                        </span>
+                      </span>
+                      <span aria-hidden className="text-muted">›</span>
                     </button>
                   </li>
                 ))}
               </ul>
             </section>
           ))}
-        </div>
+        </>
       )}
-      {selected && (
-        <div className="mt-3">
-          {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-          {!quote && !error && <p className="text-sm text-muted" role="status">Checking the roads…</p>}
-          {quote && (
-            <>
-              {!quote.open_on_arrival && quote.hours && (
-                <p className="mb-2 rounded-lg bg-bulb-soft px-3 py-2 text-sm font-bold">
-                  It'll be closed when you get there (open {quote.hours[0]} to {quote.hours[1]}).
-                </p>
-              )}
-              <ul className="space-y-2">
-                {quote.options.map((o) => (
-                  <li key={o.mode}>
-                    <button
-                      className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-left hover:border-ife-500 disabled:cursor-not-allowed disabled:bg-slab"
-                      disabled={!o.available || busy}
-                      onClick={() => onGo(selected, o)}
-                    >
-                      <span className="flex items-center gap-3">
-                        <span aria-hidden className="text-2xl">{MODE_ICON[o.mode]}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-baseline justify-between gap-2">
-                            <span className={`font-bold ${o.available ? "" : "text-muted"}`}>{o.name}</span>
-                            {o.available && <span className="num text-lg">{o.cost ? naira(o.cost) : "Free"}</span>}
-                          </span>
-                          <span className="block text-sm text-muted">
-                            {o.available
-                              ? `${duration(o.minutes)}, there by ${o.arrive}${o.wait ? ` · ${o.wait} min waiting` : ""}${o.walk && o.mode !== "trek" ? ` · ${o.walk} min walk` : ""}`
-                              : o.reason}
-                          </span>
-                          {o.rush && o.available && <span className="block text-xs font-bold text-danger">Rush hour: long queue at the park</span>}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button className="mt-3 text-sm font-bold text-ife-600 underline" onClick={() => setSelected(null)}>
-                Somewhere else
-              </button>
-            </>
+    </BottomSheet>
+  );
+}
+
+/** One place: what it is, whether it's open, and the ways to get there. Ends with "Go · ₦150". */
+export function PlaceSheet({ world, game, to, onPlan, onGo, onClose, onBack, busy }) {
+  const b = world.buildings[to];
+  const [quote, setQuote] = useState(null);
+  const [error, setError] = useState("");
+  const [mode, setMode] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setQuote(null);
+    setError("");
+    onPlan(to).then((qq) => {
+      if (!live) return;
+      setQuote(qq);
+      const first = qq.options.find((o) => o.available);
+      setMode(first?.mode || null);
+    }).catch((e) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
+  }, [to, onPlan]);
+  const opt = quote?.options.find((o) => o.mode === mode);
+  return (
+    <BottomSheet onClose={onClose} label={`To ${b.name}`} height="74%"
+      header={
+        <div className="flex items-center gap-3">
+          <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-chip text-2xl">{placeIcon(to, b)}</span>
+          <span className="min-w-0">
+            <span className="display block truncate text-[1.45rem] text-ife-900">{b.name}</span>
+            <span className="block text-sm text-muted">{world.kinds[b.kind]}{b.hours ? ` · open ${clockText(b.hours[0])} to ${clockText(b.hours[1])}` : " · open all day"}</span>
+          </span>
+        </div>
+      }
+      footer={
+        <button className="btn w-full rounded-full bg-go py-4 text-lg text-white" disabled={!opt?.available || busy}
+          onClick={() => {
+            sfx("tap");
+            onGo(to, opt);
+          }}>
+          {opt ? `Go · ${opt.cost ? naira(opt.cost) : "Free"}` : "Go"}
+        </button>
+      }>
+      <div className="flex flex-wrap gap-1.5">
+        {game.next_venue === to && <span className="rounded-full bg-ife-50 px-2.5 py-1 text-xs font-bold text-ife-700">📚 Your next class is here</span>}
+        {game.exam_venue === to && <span className="rounded-full bg-bulb-soft px-2.5 py-1 text-xs font-bold">✍️ Exam hall</span>}
+        {!game.open[to] && <span className="rounded-full bg-danger-soft px-2.5 py-1 text-xs font-bold text-danger">🔒 Closed now</span>}
+        {onBack && <button className="ml-auto text-sm font-bold text-ife-600" onClick={onBack}>‹ Map</button>}
+      </div>
+      {error && <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+      {!quote && !error && <p className="mt-4 text-sm text-muted" role="status">Checking the roads…</p>}
+      {quote && (
+        <>
+          {!quote.open_on_arrival && quote.hours && (
+            <p className="mt-3 rounded-xl bg-bulb-soft px-3 py-2 text-sm font-semibold">It'll be closed when you get there (open {quote.hours[0]} to {quote.hours[1]}).</p>
           )}
-        </div>
+          <h3 className="mt-4 text-xs font-bold text-muted">HOW YOU'LL GET THERE</h3>
+          <div className="mt-2 grid grid-cols-4 gap-2" role="radiogroup" aria-label="Transport">
+            {quote.options.map((o) => (
+              <button key={o.mode} role="radio" aria-checked={mode === o.mode} disabled={!o.available}
+                onClick={() => {
+                  sfx("tap");
+                  setMode(o.mode);
+                }}
+                className={`flex h-[5.4rem] flex-col items-center justify-center rounded-[22px] px-1 text-center disabled:opacity-40 ${
+                  mode === o.mode ? "bg-[#e3f3ea] ring-2 ring-go" : "bg-chip"}`}>
+                <span aria-hidden className="text-2xl leading-none">{MODE_ICON[o.mode] || "🚶"}</span>
+                <span className="mt-1 text-xs font-semibold">{o.name.replace("CNG campus bus", "CNG bus").replace("Night cab", "Cab")}</span>
+                <span className="text-xs font-black">{o.available ? (o.cost ? naira(o.cost) : "Free") : "—"}</span>
+              </button>
+            ))}
+          </div>
+          {opt ? (
+            <p className="mt-3 text-sm text-muted">
+              {duration(opt.minutes)} trip{opt.wait >= 10 ? " · long queue" : ""}{opt.walk && opt.mode !== "trek" ? ` · ${opt.walk} min walk` : ""}
+              {opt.rush ? " · rush hour" : ""}. Plays in about {Math.round(opt.seconds)} seconds.
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-muted">{quote.options.find((o) => !o.available)?.reason}</p>
+          )}
+          {quote.options.filter((o) => !o.available).map((o) => (
+            <p key={o.mode} className="mt-1 text-xs text-muted">{MODE_ICON[o.mode]} {o.name}: {o.reason}</p>
+          ))}
+        </>
       )}
-    </Panel>
+    </BottomSheet>
   );
 }
 
 const SEGMENT_TEXT = {
-  walk: "Trekking",
-  wait: "Waiting",
-  ride: { bus: "On the CNG bus", keke: "In a keke", cab: "In a night cab", town_bus: "On the town bus", bike: "Cycling",
-    car: "Driving" },
+  walk: "Trekking", wait: "Waiting at the park",
+  ride: { bus: "On the CNG bus", keke: "In a keke", cab: "In a night cab", town_bus: "On the town bus", bike: "Cycling", car: "Driving" },
 };
 
-export function JourneyBar({ journey, progress, segment, onSkip }) {
-  const minute = journey.depart + (journey.arrive - journey.depart) * progress;
-  const text = segment ? (segment.kind === "ride" ? SEGMENT_TEXT.ride[segment.mode] : segment.label || SEGMENT_TEXT[segment.kind]) : "";
+/** The ride: a pill at the top and a progress card at the bottom. */
+export function JourneyBar({ journey, progress, segment, fromName }) {
+  const text = segment ? (segment.kind === "ride" ? SEGMENT_TEXT.ride[segment.mode] : segment.label || SEGMENT_TEXT[segment.kind]) : "Moving";
   return (
-    <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 mx-auto max-w-xl p-3" aria-live="polite">
-      <div className="rounded-2xl bg-ife-900/92 p-4 text-white shadow-2xl backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-bold text-bulb">▶▶ {journey.name} to {journey.toName}</p>
-            <p className="truncate font-bold">{text}</p>
+    <>
+      <div className="pointer-events-none absolute inset-x-0 top-14 z-20 flex justify-center px-4">
+        <p className="float rounded-full px-4 py-2 text-sm font-semibold">{MODE_ICON[journey.mode] || "🚶"} On the way to {journey.toName}…</p>
+      </div>
+      <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex justify-center p-3" aria-live="polite">
+        <div className="float w-full max-w-[560px] rounded-3xl p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <span className="truncate">{fromName}</span>
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-chip">
+              <span className="block h-full rounded-full bg-[#3b82f6]" style={{ width: `${progress * 100}%` }} />
+            </span>
+            <span className="truncate">{journey.toName}</span>
           </div>
-          <p className="num shrink-0 text-3xl">{clockText(minute)}</p>
-        </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/20">
-          <div className="h-full rounded-full bg-bulb" style={{ width: `${progress * 100}%` }} />
-        </div>
-        <div className="mt-2 flex items-center justify-between text-xs text-ife-100">
-          <span>
-            {clockText(journey.depart)} → {clockText(journey.arrive)}
-          </span>
-          <button className="rounded-lg bg-white/15 px-3 py-1.5 text-sm font-bold text-white hover:bg-white/25" onClick={onSkip}>
-            Skip
-          </button>
+          <div className="mt-2 flex items-center justify-between">
+            <p className="text-sm text-muted">{text} · {duration(journey.minutes)} trip</p>
+            <button className="rounded-full bg-chip px-3 py-1 text-xs font-bold" onClick={() => sfx("horn")}>📯 Horn</button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-/** Shown while an activity's time passes: the clock spins forward. */
-export function TimeLapse({ lapse, progress }) {
-  const minute = lapse.from + (lapse.to - lapse.from) * progress;
-  return (
-    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-ife-900/70 p-6 text-center text-white backdrop-blur-sm"
-      role="status" aria-live="polite">
-      <div>
-        <p className="text-sm font-bold text-bulb">{lapse.label}</p>
-        <p className="num mt-2 text-7xl">{clockText(minute)}</p>
-        <div className="mx-auto mt-4 h-1.5 w-56 overflow-hidden rounded-full bg-white/20">
-          <div className="h-full bg-bulb" style={{ width: `${progress * 100}%` }} />
-        </div>
-        <p className="mt-3 text-sm text-ife-100">{duration(lapse.to - lapse.from)} later…</p>
-      </div>
-    </div>
-  );
-}
-
-export function Toasts({ messages, error, onDismiss }) {
-  if (!messages.length && !error) return null;
-  return (
-    <div className="pointer-events-none absolute inset-x-0 top-[13rem] z-20 mx-auto flex max-w-md flex-col gap-1.5 px-3" aria-live="polite">
-      {error && (
-        <p className="pointer-events-auto rounded-lg bg-danger px-3 py-2 text-sm font-bold text-white shadow-lg" role="alert">
-          {error}{" "}
-          <button className="underline" onClick={onDismiss}>
-            OK
-          </button>
-        </p>
-      )}
-      {messages.slice(0, 3).map((m, i) => (
-        <p key={`${m}-${i}`} className={`bump rounded-lg px-3 py-2 text-sm shadow-lg ${i === 0 ? "bg-ife-600 font-bold text-white" : "bg-slab/95"}`}>
-          {m}
-        </p>
-      ))}
-    </div>
+    </>
   );
 }
 
@@ -473,64 +642,18 @@ export function Timetable({ game }) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
   return (
     <table className="w-full text-sm">
-      <thead>
-        <tr className="text-left text-xs text-muted">
-          <th className="py-1 font-bold">Day</th>
-          <th className="py-1 font-bold">Lectures and where</th>
-        </tr>
-      </thead>
       <tbody>
         {game.timetable.map((row, i) => (
-          <tr key={i} className={`border-t border-line ${game.dow === i ? "bg-bulb-soft" : ""}`}>
-            <td className="py-1.5 font-bold">{days[i]}</td>
+          <tr key={i} className={`border-t border-line/60 ${game.dow === i ? "bg-bulb-soft" : ""}`}>
+            <td className="py-1.5 pl-2 font-bold">{days[i]}</td>
             <td className="py-1.5">
               {row.map((l) => (
-                <span key={l.start} className="block">
-                  {l.time} <b>{l.code}</b> · {l.venue_name}
-                </span>
+                <span key={l.start} className="block">{l.time} <b>{l.code}</b> · {l.venue_name}</span>
               ))}
             </td>
           </tr>
         ))}
       </tbody>
     </table>
-  );
-}
-
-
-/** "Today on campus": three missions, the all-three bonus, and your daily streak. */
-export function TodayPanel({ game, onClose }) {
-  const done = game.missions.filter((m) => m.done).length;
-  return (
-    <Panel title="Today on campus" subtitle={`${done} of ${game.missions.length} done · new missions every morning`} onClose={onClose} label="Today's missions">
-      <ul className="space-y-2">
-        {game.missions.map((m) => (
-          <li key={m.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${m.done ? "border-ife-500 bg-ife-50" : "border-line bg-white"}`}>
-            <span aria-hidden className={`grid h-7 w-7 place-items-center rounded-full text-sm font-black ${m.done ? "bg-ife-600 text-white" : "bg-concrete text-muted"}`}>
-              {m.done ? "✓" : ""}
-            </span>
-            <span className="flex-1">
-              <span className="block font-bold">{m.label}</span>
-              <span className="block text-xs text-muted">{m.tier === "easy" ? "Easy" : m.tier === "campus" ? "Around campus" : "Hustle"}</span>
-            </span>
-            <span className="num text-lg">+{naira(m.reward)}</span>
-          </li>
-        ))}
-      </ul>
-      <p className={`mt-3 rounded-lg px-3 py-2 text-sm font-bold ${game.missions_bonus ? "bg-ife-600 text-white" : "bg-bulb-soft"}`}>
-        {game.missions_bonus ? "All three done: bonus collected!" : "Finish all three for a ₦1,500 bonus and +80 Rep"}
-      </p>
-      <div className="mt-4">
-        <h3 className="font-bold">Daily streak</h3>
-        <p className="text-xs text-muted">Come back every day. Day 7 opens the Sunday chest.</p>
-        <ol className="mt-2 grid grid-cols-7 gap-1">
-          {Array.from({ length: 7 }, (_, i) => (
-            <li key={i} className={`rounded-md py-2 text-center text-xs font-bold ${i < game.streak ? "bg-bulb text-ink" : "bg-concrete text-muted"}`}>
-              {i === 6 ? "🎁" : i + 1}
-            </li>
-          ))}
-        </ol>
-      </div>
-    </Panel>
   );
 }

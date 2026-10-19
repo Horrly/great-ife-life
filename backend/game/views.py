@@ -10,14 +10,18 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle, SimpleRateThrottle
 from rest_framework.views import APIView
 
+import secrets
+
+from . import chat as CH
 from . import content as C
 from . import engine as E
+from . import rooms as R
 from . import world as W
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import AccountSession, DeviceToken, Game, hash_token
+from .models import AccountSession, DeviceToken, Game, Room, Transfer, hash_token
 
 User = get_user_model()
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.]{3,20}$")
@@ -39,16 +43,72 @@ def clean_name(raw: str) -> str:
 
 
 def now() -> float:
-    """Real time in seconds. The game clock runs off this (1 real second = 1 game minute)."""
+    """Real time in seconds. The game clock is real Lagos time."""
     return time.time()
 
 
+OLD_PROFILE_NAMES = {"staff_pikin": "Staff Pikin", "scholarship": "Scholarship Kid", "hustler": "Hustler Fresher",
+                     "off_campus": "Off-Campus Student"}
+
+
+def status_name(pid: str) -> str:
+    return C.PROFILES[pid]["name"] if pid in C.PROFILES else OLD_PROFILE_NAMES.get(pid, "Student")
+
+
+def collect_credits(game: Game) -> list[str]:
+    """Transfers other students sent: credit them now. The game row is already locked by the caller."""
+    lines = []
+    if game.status != "playing":
+        return lines
+    for t in Transfer.objects.select_for_update().filter(receiver=game, applied=False).order_by("pk"):
+        game.state, line = E.receive_transfer(game.state, t.amount, t.sender_label)
+        t.applied = True
+        t.save(update_fields=["applied"])
+        lines.append(line)
+    return lines
+
+
+def commit(game: Game, state: dict):
+    """Save a new state, keeping the player's database room in step with where they live."""
+    game.state = state
+    game._credit_lines = collect_credits(game)
+    R.ensure_room(game)
+    if game.profile != game.state["profile"]:
+        game.profile = game.state["profile"]
+    game.save_state(game.state)
+
+
 def payload(game: Game, messages=None, at: float | None = None) -> dict:
-    data = E.view(game.state, at if at is not None else now())
+    t = at if at is not None else now()
+    data = E.view(game.state, t)
+    data["room"] = R.roommates(game, t) if game.status == "playing" else None
     data["share_code"] = game.share_code if game.status == "graduated" else None
+    data["matric"] = game.matric
+    data["chat_unread"] = CH.unread_total(game) if game.status == "playing" else 0
+    data["online"], data["here_count"] = presence(game)
+    credits = getattr(game, "_credit_lines", None)
+    if credits:
+        messages = list(messages or []) + credits
+        game._credit_lines = []
     if messages is not None:
         data["messages"] = messages
     return data
+
+
+ONLINE_WINDOW = 15 * 60
+
+
+def presence(game: Game) -> tuple[int, int]:
+    """Students active in the last 15 minutes, and how many of them are in the same place as you."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    cut = timezone.now() - timedelta(seconds=ONLINE_WINDOW)
+    active = Game.objects.filter(status="playing", updated_at__gte=cut)
+    at = game.state.get("at")
+    here = active.filter(state__at=at).count() if at else 0
+    return active.count(), here
 
 
 def game_for(request, *, lock=False) -> Game:
@@ -80,7 +140,9 @@ class ConfigView(APIView):
     def get(self, request):
         return Response({
             "departments": [{"id": k, "name": v["name"], "code": v["code"]} for k, v in C.DEPARTMENTS.items()],
-            "profiles": [{"id": k, "name": v["name"], "tagline": v["tagline"]} for k, v in C.PROFILES.items()],
+            "profiles": [{"id": k, "name": v["name"], "tagline": v["tagline"], "weight": v["weight"]}
+                         for k, v in C.PROFILES.items()],
+            "housing": C.HOUSING,
             "look_options": C.LOOK_OPTIONS,
             "traits": C.TRAITS,
             "dreams": C.DREAMS,
@@ -92,9 +154,11 @@ class WorldView(APIView):
 
     def get(self, request):
         data = W.public_map()
-        data["timing"] = {"rate": E.RATE, "idle_cap": E.IDLE_CAP, "journey_speedup": E.JOURNEY_SPEEDUP,
-                          "journey_max_seconds": E.JOURNEY_MAX_SECONDS, "timelapse_seconds": E.TIMELAPSE_SECONDS,
-                          "door_radius": E.DOOR_RADIUS}
+        data["banks"] = C.BANKS
+        data["pos"] = [k for k, b in W.BUILDINGS.items() if b["kind"] in C.POS_KINDS or k in C.POS_PLACES]
+        data["timing"] = {"rate": E.RATE, "journey_speedup": E.JOURNEY_SPEEDUP,
+                          "journey_max_seconds": E.JOURNEY_MAX_SECONDS, "door_radius": E.DOOR_RADIUS,
+                          "walk_units_per_second": E.WALK_UNITS_PER_SECOND}
         response = Response(data)
         response["Cache-Control"] = "public, max-age=300"
         return response
@@ -112,23 +176,23 @@ class NewGameView(APIView):
                                 look=E.clean_look(look) if look else None)
         except E.GameError as exc:
             raise ValidationError({"department": str(exc)})
-        game, token = Game.create(state, name)
-        user = account_for(request, required=False)
-        if user:
-            game.user = user
-            game.save(update_fields=["user"])
+        with transaction.atomic():
+            game, token = Game.create(state, name)
+            user = account_for(request, required=False)
+            if user:
+                game.user = user
+            commit(game, game.state)
         return Response({"token": token, "game": payload(game)}, status=status.HTTP_201_CREATED)
 
 
 class GameView(APIView):
     def get(self, request):
-        """Opening the game catches the clock up (at most an hour passes while you were away)."""
+        """Opening the game catches the clock up with real Lagos time."""
         with transaction.atomic():
             game = game_for(request, lock=True)
             t = now()
             state, messages = E.sync(game.state, t)
-            if state != game.state:
-                game.save_state(state)
+            commit(game, state)
         return Response(payload(game, messages, t))
 
 
@@ -160,7 +224,7 @@ class SyncView(APIView):
                 state, messages = E.sync(game.state, t, request.data.get("pos"))
             except E.GameError as exc:
                 return Response({"detail": str(exc), "game": payload(game, at=t)}, status=status.HTTP_400_BAD_REQUEST)
-            game.save_state(state)
+            commit(game, state)
         return Response(payload(game, messages, t))
 
 
@@ -191,6 +255,9 @@ class _MoveView(APIView):
     def move(self, state, data, t):
         raise NotImplementedError
 
+    def move_game(self, game, data, t):
+        return self.move(game.state, data, t)
+
     def post(self, request):
         with transaction.atomic():
             game = game_for(request, lock=True)
@@ -203,13 +270,14 @@ class _MoveView(APIView):
                                 status=status.HTTP_409_CONFLICT)
             t = now()
             try:
-                state, messages = self.move(game.state, request.data, t)
+                state, messages = self.move_game(game, request.data, t)
             except E.GameError as exc:
                 # The clock still moved while you were deciding, so keep that.
+                game.refresh_from_db()
                 state, _ = E.sync(game.state, t)
-                game.save_state(state)
+                commit(game, state)
                 return Response({"detail": str(exc), "game": payload(game, at=t)}, status=status.HTTP_400_BAD_REQUEST)
-            game.save_state(state)
+            commit(game, state)
         return Response(payload(game, messages, t))
 
 
@@ -254,6 +322,111 @@ class LookView(_MoveView):
         return new, []
 
 
+class ParentsView(_MoveView):
+    def move(self, state, data, t):
+        try:
+            amount = int(data.get("amount"))
+        except (TypeError, ValueError):
+            raise E.GameError("Pick how much to ask for.")
+        return E.ask_parents(state, amount, t)
+
+
+class BetView(_MoveView):
+    def move(self, state, data, t):
+        try:
+            match, stake = int(data.get("match")), int(data.get("stake"))
+        except (TypeError, ValueError):
+            raise E.GameError("Pick a match and a stake.")
+        return E.place_bet(state, match, str(data.get("pick", "")), stake, bool(data.get("adult")), t)
+
+
+class HousingView(APIView):
+    """Halls with space and this week's off-campus listings, priced for you."""
+
+    throttle_classes = [SyncThrottle]
+
+    def get(self, request):
+        game = game_for(request)
+        return Response(R.options(game, now()))
+
+
+class MoveHomeView(_MoveView):
+    def move_game(self, game, data, t):
+        state = game.state
+        kind = str(data.get("kind", ""))
+        if kind == "hostel":
+            hall = str(data.get("hall", ""))
+            if hall not in C.HALLS[E.gender(state["look"])]:
+                raise E.GameError("Pick a hall.")
+            if state["housing"]["kind"] == "hostel" and state["housing"]["building"] == hall:
+                raise E.GameError("You already live in this hall. Share your room code to bring friends in.")
+            room = R.hostel_room(hall, E.gender(state["look"]), exclude=game)
+            state, messages = E.move_home(state, "hostel", hall, C.HOUSING["hostel"]["rent"][0],
+                                          label=R.room_label(room), now=t)
+        else:
+            listing = next((x for x in E.listings(t) if x["id"] == data.get("listing")), None)
+            if not listing:
+                raise E.GameError("That place has been taken. Pick another.")
+            state, messages = E.move_home(state, listing["kind"], "offcampus", listing["rent"], area=listing["area"],
+                                          now=t)
+            room = Room.objects.create(kind=listing["kind"], building="offcampus", area=listing["area"],
+                                       capacity=C.HOUSING[listing["kind"]]["capacity"], rent=listing["rent"])
+        return R.place(game, room, state), messages
+
+
+class JoinRoomView(_MoveView):
+    """Move in with a friend using their room code: up to 4 in a hall room, 2 in an off-campus place."""
+
+    def move_game(self, game, data, t):
+        code = str(data.get("code", "")).strip().upper()
+        room = Room.objects.select_for_update().filter(code=code).first() if code else None
+        if not room:
+            raise E.GameError("No room has that code. Check it and try again.")
+        if game.room_id == room.pk:
+            raise E.GameError("You already live here.")
+        state = game.state
+        others = list(R.members(room, game).select_for_update().order_by("pk"))
+        if len(others) >= room.capacity:
+            raise E.GameError("That hall room is full (4 people)." if room.kind == "hostel"
+                              else "The landlord doesn't allow more than 2 tenants.")
+        if room.kind == "hostel":
+            if room.gender and room.gender != E.gender(state["look"]):
+                raise E.GameError(f"That room is in a {room.gender} hall.")
+            state, messages = E.move_home(state, "hostel", room.building, C.HOUSING["hostel"]["rent"][0],
+                                          label=R.room_label(room), tenants=len(others) + 1, now=t)
+        else:
+            state, messages = E.move_home(state, room.kind, room.building, room.rent, area=room.area, share=True,
+                                          tenants=len(others) + 1, now=t)
+            if others:  # your half of the rent goes to the tenant already living there
+                host = others[0]
+                half = room.rent // 2
+                if host.account_number:
+                    Transfer.objects.create(receiver=host, amount=half, sender_label=(
+                        f"{game.display_name or 'your new flatmate'} (half the rent)"))
+                    return R.place(game, room, state), messages
+                hs = dict(host.state)
+                hs["money"] = hs["money"] + half
+                hs["log"] = (hs.get("log", []) + [{"day": hs["total_days"], "time": E.clock_text(hs["clock"]),
+                                                   "text": f"{game.display_name or 'Your new flatmate'} moved in and "
+                                                           f"paid you ₦{half:,} (half the rent)."}])[-40:]
+                host.state = hs
+                commit(host, hs)
+        return R.place(game, room, state), messages
+
+
+class RoomNoteView(APIView):
+    throttle_classes = [SyncThrottle]
+
+    def post(self, request):
+        with transaction.atomic():
+            game = game_for(request, lock=True)
+            try:
+                R.post_note(game, int(request.data.get("note", -1)))
+            except (E.GameError, TypeError, ValueError) as exc:
+                raise ValidationError({"detail": str(exc) if isinstance(exc, E.GameError) else "Pick a message."})
+        return Response(payload(game))
+
+
 class LeaderboardView(APIView):
     def get(self, request):
         qs = Game.objects.filter(status="graduated", hidden=False).exclude(display_name="")
@@ -263,7 +436,7 @@ class LeaderboardView(APIView):
         rows = qs.order_by("-final_cgpa", "updated_at")[:25]
         return Response([{
             "name": g.display_name, "cgpa": g.final_cgpa, "class": g.final_class,
-            "department": C.DEPARTMENTS[g.department]["name"], "profile": C.PROFILES[g.profile]["name"],
+            "department": C.DEPARTMENTS[g.department]["name"], "profile": status_name(g.profile),
             "share_code": g.share_code,
         } for g in rows])
 
@@ -273,7 +446,7 @@ def card_data(game: Game) -> dict:
     return {
         "name": game.display_name or "A Great Ife student",
         "department": C.DEPARTMENTS[game.department]["name"],
-        "profile": C.PROFILES[game.profile]["name"],
+        "profile": status_name(game.profile),
         "cgpa": final["cgpa"], "class": final["class"], "semesters": final["semesters"],
         "outstanding": len(final["outstanding"]), "hustles": final["hustles"], "lectures": final["lectures"],
         "earned": final["earned"],
@@ -299,7 +472,7 @@ def life_summary(game: Game) -> dict:
     state = game.state
     return {
         "id": game.pk, "status": game.status, "name": game.display_name,
-        "department": C.DEPARTMENTS[game.department]["name"], "profile": C.PROFILES[game.profile]["name"],
+        "department": C.DEPARTMENTS[game.department]["name"], "profile": status_name(game.profile),
         "level": E.level_label(state) if game.status == "playing" else None,
         "cgpa": game.final_cgpa if game.status == "graduated" else (E.cgpa(state) if state["results"] else None),
         "class": game.final_class or None, "share_code": game.share_code if game.status == "graduated" else None,
@@ -393,3 +566,176 @@ class ResumeLifeView(APIView):
         user = account_for(request)
         game = get_object_or_404(Game, pk=pk, user=user)
         return Response({"game_token": DeviceToken.issue(game), "game": payload(game)})
+
+
+# --- Banking -------------------------------------------------------------------------------------
+
+def new_account_number(bank_id: str) -> str:
+    prefix = C.BANKS[bank_id]["prefix"]
+    for _ in range(50):
+        number = prefix + "".join(secrets.choice("0123456789") for _ in range(10 - len(prefix)))
+        if not Game.objects.filter(account_number=number).exists():
+            return number
+    raise E.GameError("The bank's network is down. Try again.")
+
+
+def _amount(data) -> int:
+    try:
+        return int(data.get("amount"))
+    except (TypeError, ValueError):
+        raise E.GameError("Pick an amount.")
+
+
+class BankOpenView(_MoveView):
+    def move_game(self, game, data, t):
+        bank_id = str(data.get("bank", ""))
+        if bank_id not in C.BANKS:
+            raise E.GameError("Pick a bank.")
+        number = new_account_number(bank_id)
+        state, messages = E.open_account(game.state, bank_id, number, t)
+        game.account_number, game.bank = number, bank_id
+        return state, messages
+
+
+class BankCounterView(_MoveView):
+    def move(self, state, data, t):
+        return E.bank_counter(state, str(data.get("kind", "")), _amount(data), t)
+
+
+class AtmView(_MoveView):
+    def move(self, state, data, t):
+        return E.atm_withdraw(state, _amount(data), t)
+
+
+class PosView(_MoveView):
+    def move(self, state, data, t):
+        return E.pos_cash(state, str(data.get("kind", "")), _amount(data), str(data.get("method", "card")), t)
+
+
+def _receiver(game: Game, number: str, bank_id: str) -> Game:
+    number = re.sub(r"\D", "", str(number or ""))
+    if len(number) != 10:
+        raise E.GameError("Account numbers have 10 digits.")
+    other = Game.objects.filter(account_number=number, status="playing").first()
+    if not other or (bank_id and other.bank != bank_id):
+        raise E.GameError("Account not found. Check the number and the bank.")
+    if other.pk == game.pk:
+        raise E.GameError("That's your own account.")
+    return other
+
+
+class BankLookupView(APIView):
+    """Name enquiry: confirm who owns an account number before you send money."""
+
+    throttle_classes = [SyncThrottle]
+
+    def get(self, request):
+        game = game_for(request)
+        try:
+            other = _receiver(game, request.query_params.get("number"), request.query_params.get("bank", ""))
+        except E.GameError as exc:
+            raise ValidationError({"detail": str(exc)})
+        return Response({"name": (other.display_name or "A STUDENT").upper(), "bank": C.BANKS[other.bank]["name"],
+                         "number": other.account_number})
+
+
+class TransferView(_MoveView):
+    def move_game(self, game, data, t):
+        other = _receiver(game, data.get("number"), str(data.get("bank", "")))
+        amount = _amount(data)
+        label = f"{other.display_name or 'A student'} ({C.BANKS[other.bank]['name']})"
+        state, messages = E.send_transfer(game.state, amount, label, t)
+        sender_bank = C.BANKS[game.bank]["name"] if game.bank in C.BANKS else "Bank"
+        Transfer.objects.create(sender=game, receiver=other, amount=amount,
+                                sender_label=f"{game.display_name or 'A student'} ({sender_bank})")
+        return state, messages
+
+
+# --- Chat ----------------------------------------------------------------------------------------
+
+class ChatThrottle(PerGameThrottle):
+    scope = "chat"
+
+
+class ChatSendThrottle(PerGameThrottle):
+    scope = "chat-send"
+
+
+def _chat(fn):
+    try:
+        return fn()
+    except CH.ChatError as exc:
+        raise ValidationError({"detail": str(exc)})
+
+
+class ChatThreadsView(APIView):
+    throttle_classes = [ChatThrottle]
+
+    def get(self, request):
+        game = game_for(request)
+        return Response({"threads": _chat(lambda: CH.threads(game)), "matric": game.matric,
+                         "account": bool(game.account_number)})
+
+
+class ChatMessagesView(APIView):
+    def get_throttles(self):
+        self.throttle_scope = None
+        return [ChatSendThrottle()] if self.request.method == "POST" else [ChatThrottle()]
+
+    def get(self, request):
+        game = game_for(request)
+        try:
+            after = int(request.query_params.get("after", 0) or 0)
+        except ValueError:
+            after = 0
+        return Response(_chat(lambda: CH.messages(game, request.query_params.get("thread", ""), after)))
+
+    def post(self, request):
+        game = game_for(request)
+        thread = str(request.data.get("thread", ""))
+        _chat(lambda: CH.send(game, thread, request.data.get("text"), bool(request.data.get("share_account"))))
+        after = request.data.get("after") or 0
+        try:
+            after = int(after)
+        except (TypeError, ValueError):
+            after = 0
+        return Response(_chat(lambda: CH.messages(game, thread, after)), status=status.HTTP_201_CREATED)
+
+
+class ChatDmView(APIView):
+    throttle_classes = [ChatThrottle]
+
+    def post(self, request):
+        game = game_for(request)
+        try:
+            gid = int(request.data.get("game")) if request.data.get("game") else None
+        except (TypeError, ValueError):
+            gid = None
+        other = _chat(lambda: CH.find_student(game, request.data.get("matric"), gid))
+        return Response(_chat(lambda: CH.messages(game, CH.dm_thread(game.pk, other.pk))))
+
+
+class ChatBlockView(APIView):
+    throttle_classes = [ChatThrottle]
+
+    def post(self, request):
+        game = game_for(request)
+        try:
+            other = int(request.data.get("game"))
+        except (TypeError, ValueError):
+            raise ValidationError({"detail": "Pick a student."})
+        _chat(lambda: CH.block(game, other))
+        return Response({"ok": True})
+
+
+class ChatReportView(APIView):
+    throttle_classes = [ChatThrottle]
+
+    def post(self, request):
+        game = game_for(request)
+        try:
+            mid = int(request.data.get("message"))
+        except (TypeError, ValueError):
+            raise ValidationError({"detail": "Pick a message."})
+        _chat(lambda: CH.report(game, mid))
+        return Response({"ok": True})

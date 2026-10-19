@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { makePerson, randomLook, setQuality } from "./characters";
+import RoomView from "./room";
 import { buildGraph, Mover, pointsFor, route } from "./traffic";
 import { makeBus, makeCab, makeKeke, makeTownBus, makeVehicle } from "./vehicles";
 import { buildWorld, stopPlacement } from "./world";
@@ -314,6 +315,7 @@ export default class CampusEngine {
 
   setMinute(minute) {
     this.minute = ((minute % 1440) + 1440) % 1440;
+    if (this.roomView) this.roomView.setMinute(this.minute, this.noLight);
     const m = this.minute;
     const sky = skyAt(m);
     this.scene.background = sky;
@@ -710,14 +712,21 @@ export default class CampusEngine {
         // slide along walls: if we were pushed back, keep the part of the motion that's free
         if (Math.hypot(nx - ox, nz - oz) < v * step * 0.3 && this.autoPath) this._unstick();
         this.player.rotation.y = lerpAngle(this.player.rotation.y, Math.atan2(this.vel.x, this.vel.y), Math.min(1, dt * 10));
-        if (mv.len > 0.05 || this.autoPath) {
+        // Only settle the camera behind you when walking forwards or tap-walking. Following
+        // sideways joystick input makes you run in circles and the whole campus spins.
+        const forwards = mv.len > 0.05 && mv.y > Math.abs(mv.x) * 1.5;
+        if (forwards || (this.autoPath && mv.len <= 0.05)) {
           this.camYaw = lerpAngle(this.camYaw, this.player.rotation.y + Math.PI, Math.min(1, dt * 0.9 * Math.min(1, v / WALK_SPEED)));
         }
       }
       this.player.walk(dt, v);
       this._checkDoors();
-    } else {
-      this.camYaw += dt * 0.12; // slow orbit while you're inside
+    }
+    if (this.roomMode && this.roomView) {
+      // inside your own room: draw the room instead of the campus
+      this.roomView.tick(raw);
+      this.roomView.render(this.renderer, raw);
+      return;
     }
 
     // camera follows the player (or the vehicle you're in)
@@ -800,6 +809,22 @@ export default class CampusEngine {
     // phones in portrait: pull back so you can see the road ahead
     this.camera.fov = w < h ? 62 : 52;
     this.camera.updateProjectionMatrix();
+    this.roomView?.resize(w, h);
+  }
+
+  /** Show your room (hall or off campus) with your roommates in it. */
+  showRoom(info, noLight = false) {
+    if (!this.roomView) {
+      this.roomView = new RoomView({ lowPower: this.lowPower, environment: this.scene.environment });
+      this.roomView.resize(this.container.clientWidth || 1, this.container.clientHeight || 1);
+    }
+    this.noLight = noLight;
+    this.roomView.show(info, this.minute, noLight);
+    this.roomMode = true;
+  }
+
+  hideRoom() {
+    this.roomMode = false;
   }
 
   dispose() {
@@ -808,6 +833,7 @@ export default class CampusEngine {
     window.removeEventListener("keydown", this._keydown);
     window.removeEventListener("keyup", this._keyup);
     this._ro?.disconnect();
+    this.roomView?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

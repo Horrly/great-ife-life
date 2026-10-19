@@ -1,5 +1,13 @@
 export const naira = (n) => `₦${Math.round(Number(n) || 0).toLocaleString("en-NG")}`;
 
+/** "₦1.2k", "₦45k", "₦1.5m": short money for tight spaces. */
+export function nairaShort(n) {
+  const v = Math.round(Number(n) || 0);
+  if (Math.abs(v) >= 1_000_000) return `₦${+(v / 1_000_000).toFixed(1)}m`;
+  if (Math.abs(v) >= 1_000) return `₦${+(v / 1_000).toFixed(v >= 100_000 ? 0 : 1)}k`;
+  return `₦${v}`;
+}
+
 export const NEED_LABELS = { hunger: "Food", energy: "Energy", hygiene: "Hygiene", fun: "Fun", social: "Social", prep: "Readiness" };
 
 /** "+12 Readiness", "−₦900": short chips showing what an action does. */

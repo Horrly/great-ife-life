@@ -3,7 +3,8 @@
 Edit this file to add campus jokes, activities and events. The engine (engine.py) reads it, and the
 map (world.py) says where each building is.
 
-Time is in game minutes after midnight (8:00 AM = 480). 1 real second = 1 game minute while you're free.
+Time is in minutes after midnight (8:00 AM = 480). The game clock is real Lagos time, but actions play out in
+a few seconds (like Lagos Life); only sleep takes real hours.
 Effects use these keys: money (naira), hunger, energy, hygiene, fun, social (needs, 0-100, higher is
 better) and prep (how ready you are for this semester's tests and exams, 0-100).
 """
@@ -17,9 +18,9 @@ def H(hours: int, minutes: int = 0) -> int:
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 NEEDS = ["hunger", "energy", "hygiene", "fun", "social"]
 
-SEMESTER_DAYS = 10          # Mon..Sun, Mon..Wed
-CA_TEST_DAY = 4             # Thursday of week one
-EXAM_DAYS = (9, 10)         # Tuesday and Wednesday of week two
+SEMESTER_DAYS = 10          # school days (weekdays): two real weeks
+CA_TEST_DAY = 4             # the 4th school day
+EXAM_DAYS = (9, 10)         # the 9th and 10th school days
 TEST_TIME = H(9)            # tests and exams start at 9:00 at the Faculty
 TEST_DOORS_CLOSE = H(9, 30)  # arrive after this and you've missed it
 LECTURE_TIMES = [H(8), H(10), H(12), H(14)]
@@ -44,7 +45,7 @@ SLEEP_ENERGY_PER_HOUR = 10
 LATE_NIGHT = H(25)          # awake past 1 AM: energy drains twice as fast
 
 # A day has far more hours than the old four slots, so each hour of reading counts for less.
-STUDY_GAIN = 0.22
+STUDY_GAIN = 0.2
 
 # Travelling costs you something too (per game minute of each kind of travel).
 TRAVEL_EFFECTS = {
@@ -54,63 +55,137 @@ TRAVEL_EFFECTS = {
     "cycle": {"energy": -0.04, "hygiene": -0.03},
 }
 
+# Your money status is rolled when you get admitted, like Lagos Life's birth lottery.
+# "weight": how often it comes up (Lapo Baby is common, Odogwu is rare).
+# "parent_cap": the most your parents will send when you call them, however much you ask.
+# "rent_budget": what your parents will put towards your first year's accommodation.
 PROFILES = {
-    "staff_pikin": {
-        "name": "Staff Pikin",
-        "tagline": "Your daddy is a lecturer. You live in the staff quarters and everybody knows your surname.",
-        "home": "Staff Quarters",
-        "home_building": "staff",
-        "phone": "iphone",
-        "items": ["car", "laptop"],
-        "money": 40_000,
-        "allowance": 20_000,
-        "fees_covered": True,
-        "perks": ["Free food at home once a day", "School charges paid by Daddy", "You drive Daddy's old Corolla",
-                  "You have a laptop"],
-    },
-    "scholarship": {
-        "name": "Scholarship Kid",
-        "tagline": "You got in on brains. A foundation pays your stipend, as long as your CGPA stays at 3.50 or above.",
-        "home": "Moremi Hall",
-        "home_building": "moremi",
-        "halls": {"male": "awo", "female": "moremi"},
-        "phone": "tecno",
-        "items": ["laptop"],
-        "money": 18_000,
-        "allowance": 12_000,
-        "fees_covered": True,
-        "study_bonus": 0.25,
-        "perks": ["Study 25% faster", "The foundation gave you a laptop", "Stipend stops if CGPA drops below 3.50"],
-    },
-    "hustler": {
-        "name": "Hustler Fresher",
-        "tagline": "Nobody is sending you money. You came with one bag, a phone with a cracked screen and big dreams.",
-        "home": "Angola Hall",
-        "home_building": "angola",
-        "halls": {"male": "angola", "female": "mozambique"},
+    "lapo_baby": {
+        "name": "Lapo Baby",
+        "weight": 60,
+        "tagline": "Mummy took a LAPO loan to send you to Ife. Every naira has a job, and the job is survival.",
         "phone": "itel",
         "phone_cracked": True,
-        "money": 8_000,
+        "items": [],
+        "money": 100_000,
         "allowance": 0,
+        "parent_cap": 20_000,
+        "parent_no_money": 0.35,
+        "rent_budget": 30_000,
         "fees_covered": False,
-        "hustle_bonus": 0.5,
-        "study_bonus": 0.2,
-        "perks": ["Hustles pay 50% more", "Struggle made you sharp: study 20% faster", "You pay your own school charges"],
+        "hustle_bonus": 0.3,
+        "perks": ["Start with ₦100,000", "Hustles pay 30% more", "Parents send ₦20,000 at most", "You pay your own school charges"],
     },
-    "off_campus": {
-        "name": "Off-Campus Student",
-        "tagline": "No hall space, so you rent a self-con in Asherifa. Freedom, but every trip to campus starts outside the gate.",
-        "home": "Self-con in Asherifa",
-        "home_building": "offcampus",
+    "nepo_baby": {
+        "name": "Nepo Baby",
+        "weight": 32,
+        "tagline": "Your parents know people. There's money at home, but they still ask what you did with the last one.",
         "phone": "infinix",
-        "money": 15_000,
+        "items": ["laptop"],
+        "money": 200_000,
         "allowance": 10_000,
-        "fees_covered": False,
-        "home_study_bonus": 0.4,
-        "perks": ["Quiet room: reading at home works 40% better", "Cook anytime, no porter",
-                  "Every trip to campus starts outside the gate"],
+        "parent_cap": 100_000,
+        "parent_no_money": 0.15,
+        "rent_budget": 450_000,
+        "fees_covered": True,
+        "perks": ["Start with ₦200,000", "₦10,000 every Monday", "Parents send up to ₦100,000", "School charges paid", "You have a laptop"],
+    },
+    "odogwu": {
+        "name": "Odogwu",
+        "weight": 8,
+        "tagline": "Your father's name opens doors in Ife. Money lands before you finish asking.",
+        "phone": "iphone",
+        "items": ["laptop", "car"],
+        "money": 300_000,
+        "allowance": 40_000,
+        "parent_cap": 300_000,
+        "parent_no_money": 0.05,
+        "rent_budget": 1_500_000,
+        "fees_covered": True,
+        "perks": ["Start with ₦300,000", "₦40,000 every Monday", "Parents send up to ₦300,000", "School charges paid",
+                  "You drive your own Corolla", "You have a laptop"],
     },
 }
+
+# --- Where you live ---------------------------------------------------------------------------------
+# Rent is for a whole session (two semesters) and falls due again when a new session starts.
+# Halls take four in a room; off campus, landlords allow two tenants at most.
+HALLS = {"male": ["awo", "fajuyi", "etf", "akintola", "angola"], "female": ["moremi", "mozambique"]}
+HOUSING = {
+    "hostel": {"name": "Hall bunk", "capacity": 4, "rent": (30_000, 30_000), "emoji": "🛏",
+               "blurb": "Four in a room, bunk beds, one socket, endless gist. The cheapest way to live.",
+               "perks": ["Cheapest", "Roommates to gist with", "Hall life: light and water come and go"]},
+    "single": {"name": "Single room", "capacity": 2, "rent": (120_000, 150_000), "emoji": "🚪",
+               "blurb": "A room in a face-me-I-face-you. Shared toilet, but your door has a key.",
+               "perks": ["Quieter: reading at home 20% better", "Up to 2 tenants"]},
+    "self_con": {"name": "Self-contain", "capacity": 2, "rent": (250_000, 600_000), "emoji": "🏠",
+                 "blurb": "Your own room, kitchen and bathroom. Off-campus freedom.",
+                 "perks": ["Own bathroom and kitchen", "Reading at home 30% better", "Up to 2 tenants"]},
+    "flat": {"name": "2-bedroom flat", "capacity": 2, "rent": (800_000, 1_500_000), "emoji": "🏡",
+             "blurb": "Parlour, two bedrooms, a generator and a gateman. The highest a student can live.",
+             "perks": ["Generator: no 'no light' days", "Reading at home 40% better", "Soft life every day",
+                       "Up to 2 tenants"]},
+}
+HOME_STUDY_BONUS = {"hostel": 0.0, "single": 0.2, "self_con": 0.3, "flat": 0.4}
+OFF_CAMPUS_AREAS = ["Asherifa", "Damico", "Mayfair", "Fine Fare", "Parakin", "Oduduwa Estate", "Lagere", "Ibadan Road"]
+ROOM_NOTES = ["Good morning, roomies 👋", "Who finished my garri?! 😤", "NEPA has taken light again 🕯",
+              "I'm reading tonight, small noise please 📚", "Who's coming for TDB? 🌙", "Buying bread, who wants? 🍞",
+              "Happy birthday, roomie! 🎉", "Please wash your plates 🍽", "Exam is close, let's form a reading group",
+              "Gist me when you're back 😂"]
+
+# --- Calling home ------------------------------------------------------------------------------------
+PARENT_ASKS = [5_000, 20_000, 50_000, 100_000, 300_000, 500_000]
+
+# --- Banking ------------------------------------------------------------------------------------------
+# You arrive with cash. Open an account at the Banking Area (or a fintech app on a smartphone) so your
+# parents, your allowance and freelance clients can pay you, and other students can send you money.
+# "app": opened on your phone, no branch and no debit card (you cash out at POS agents by transfer).
+BANKS = {
+    "firstbank": {"name": "First Bank", "color": "#0d2f6e", "fg": "#f2c230", "prefix": "30", "app": False},
+    "gtbank": {"name": "GTBank", "color": "#dd4f05", "fg": "#ffffff", "prefix": "01", "app": False},
+    "access": {"name": "Access Bank", "color": "#183a6b", "fg": "#f58220", "prefix": "14", "app": False},
+    "uba": {"name": "UBA", "color": "#c8102e", "fg": "#ffffff", "prefix": "20", "app": False},
+    "zenith": {"name": "Zenith Bank", "color": "#3b3b3d", "fg": "#e3242b", "prefix": "22", "app": False},
+    "wema": {"name": "Wema Bank", "color": "#6d1f73", "fg": "#ffffff", "prefix": "02", "app": False},
+    "opay": {"name": "OPay", "color": "#1dbf8d", "fg": "#ffffff", "prefix": "8", "app": True},
+    "moniepoint": {"name": "Moniepoint", "color": "#0a4bd6", "fg": "#ffffff", "prefix": "5", "app": True},
+}
+BANK_OPEN_DEPOSIT = 1_000       # minimum opening deposit, from your cash into the account
+CARD_FEE = 1_000                # instant debit card at the branch
+BANK_HOURS = (8 * 60, 16 * 60)  # branches: weekdays, 8 AM to 4 PM
+ATM_AMOUNTS = [1_000, 2_000, 5_000, 10_000, 20_000]
+ATM_DAILY = 100_000
+ATM_OTHER_BANK_FEE = 35         # using another bank's ATM
+ATM_FAIL = 0.12                 # "Unable to dispense cash"
+ATM_SPOTS = {"banks": None, "sub": "firstbank"}   # building -> whose ATM (None: every bank has one there)
+POS_AMOUNTS = [1_000, 2_000, 5_000, 10_000, 20_000, 50_000]
+POS_FEE_PER = (5_000, 100)      # ₦100 for every ₦5,000 (or part of it)
+POS_NIGHT_FEE = 50              # after 8 PM the hall POS guy adds a little something
+POS_HOURS = (7 * 60, 23 * 60)
+POS_KINDS = ("hall", "home", "faculty", "lecture")          # plus the places below
+POS_PLACES = ("market", "sub", "buka", "banks")
+COUNTER_AMOUNTS = [1_000, 5_000, 10_000, 20_000, 50_000, 100_000]
+TRANSFER_AMOUNTS = [500, 1_000, 2_000, 5_000, 10_000, 20_000, 50_000]
+TRANSFER_DAILY = 200_000
+CASH_THEFT_FROM = 50_000        # carrying this much cash around tempts thieves
+CASH_THEFT_CHANCE = 0.05
+
+
+def transfer_fee(amount: int) -> int:
+    """Interbank transfer charge, like NIP: ₦10 up to ₦5,000, ₦25 up to ₦50,000, ₦50 above."""
+    return 10 if amount <= 5_000 else 25 if amount <= 50_000 else 50
+
+
+def pos_fee(amount: int) -> int:
+    per, fee = POS_FEE_PER
+    return -(-amount // per) * fee
+
+
+# --- Betting (the house always wins in the long run) --------------------------------------------------
+BET_STAKES = [100, 500, 1_000, 5_000, 20_000]
+BET_MARGIN = 0.12          # the bookie keeps about 12% of every naira staked
+BET_TEAMS = ["Arsenal", "Chelsea", "Man United", "Man City", "Liverpool", "Spurs", "Real Madrid", "Barcelona",
+             "Enyimba", "Shooting Stars", "Rangers", "Kano Pillars", "Remo Stars", "Sunshine Stars", "PSG", "Bayern"]
 
 # Each course has a faculty building (classrooms, study groups) and lecture theatres it uses.
 # Tests and exams are written in "exams".
@@ -141,16 +216,13 @@ DAY = [(H(6), H(23, 59))]
 # "minutes": how long it takes (the clock jumps forward; needs keep falling meanwhile).
 ACTIONS = [
     # --- Home
-    {"id": "sleep", "at": "home", "label": "Sleep", "hours": [(H(20), H(28))], "minutes": "sleep",
-     "effects": {}, "special": "sleep", "blurb": "Lights off till morning.", "done": "You slept like a baby."},
+    {"id": "sleep", "at": "home", "label": "Sleep", "hours": [(H(20), H(32))], "minutes": "sleep",
+     "effects": {}, "special": "sleep", "blurb": "Lights off till your alarm. Sleep takes real hours.", "done": "You slept like a baby."},
     {"id": "nap", "at": "home", "label": "Nap (1 hour)", "hours": [(H(9), H(20))], "minutes": 60,
      "effects": {"energy": 14, "fun": 2}, "blurb": "Just one hour. (It's never one hour.)", "done": "Short nap. You feel better."},
     {"id": "bath", "at": "home", "label": "Have a bath", "hours": [(H(5), H(24))], "minutes": 20,
      "effects": {"hygiene": 60, "energy": 3}, "special": "bath", "blurb": "Fetch water, bathe, feel like a person again.",
      "done": "Fresh. You feel like a person again."},
-    {"id": "home_food", "at": "home", "label": "Eat at home", "hours": [(H(6, 30), H(21))], "minutes": 30,
-     "effects": {"hunger": 55, "social": 5}, "profiles": ["staff_pikin"], "once_per_day": True,
-     "blurb": "Mummy's pot. Free, and with extra meat.", "done": "Mummy's pot did not disappoint."},
     {"id": "cook", "at": "home", "label": "Cook noodles and egg", "hours": [(H(6), H(24))], "minutes": 40, "cost": 600,
      "effects": {"hunger": 40}, "special": "cook",
      "blurb": "Two packs, one egg, zero shame. Free if you have foodstuff from the market.",
@@ -251,13 +323,11 @@ ACTIONS = [
     {"id": "braids", "once_per_day": True, "at": "home", "label": "Braid hair for a client (4 hrs)", "hours": [(H(9), H(19))], "minutes": 240,
      "earn": 3_500, "effects": {"energy": -18, "fun": -4, "social": 8}, "hustle": True, "skill": "hair", "xp": 8,
      "blurb": "Four hours, two cramps, one happy client."},
-    {"id": "design_gig", "once_per_day": True, "requires": {"smartphone": True}, "at": "phone", "label": "Design a flyer (2 hrs)", "hours": [(H(9), H(24))], "minutes": 120,
+    {"id": "design_gig", "once_per_day": True, "freelance": True, "requires": {"smartphone": True}, "at": "phone", "label": "Design a flyer (2 hrs)", "hours": [(H(9), H(24))], "minutes": 120,
      "earn": 2_500, "effects": {"energy": -10, "fun": 4}, "hustle": True, "skill": "design", "xp": 8,
      "blurb": "Birthday flyer for a 200-level 'celebrity'."},
     {"id": "pay_fees", "requires": {"smartphone": True}, "at": "phone", "label": "Pay school charges on the portal", "hours": [(0, H(24))], "minutes": 10,
      "effects": {"fun": -5}, "special": "pay_fees", "blurb": "Without this, no exam card. No exam card, no exams."},
-    {"id": "call_home", "at": "phone", "label": "Call home for money", "hours": [(H(7), H(21))], "minutes": 15,
-     "effects": {"social": 6}, "special": "call_home", "blurb": "'Mummy, the textbook is ₦8,000.' Once a week."},
     {"id": "scroll", "requires": {"smartphone": True}, "at": "phone", "label": "Scroll social media (1 hr)", "hours": [(0, H(24))], "minutes": 60,
      "effects": {"fun": 12, "energy": -2, "prep": -1}, "blurb": "Five minutes. One hour later...",
      "done": "You scrolled. Time disappeared."},
@@ -289,6 +359,19 @@ ACTIONS += [
     {"id": "learn_design", "at": "home", "label": "Practise design on Canva (2 hrs)", "hours": [(H(9), H(25))],
      "minutes": 120, "cost": 200, "effects": {"energy": -8, "fun": 2}, "skill": "design", "xp": 12, "learn": True,
      "blurb": "Recreate posters you like until yours look better.", "done": "Two hours on Canva. Your eye is getting sharper."},
+    # Freelancing: online gigs for clients outside campus (Fiverr, Upwork, a Lagos startup's WhatsApp)
+    {"id": "fl_article", "once_per_day": True, "freelance": True, "requires": {"smartphone": True}, "at": "phone",
+     "label": "Freelance: write a blog article (2 hrs)", "hours": [(H(7), H(25))], "minutes": 120, "earn": 2_000,
+     "effects": {"energy": -8, "fun": -3}, "hustle": True, "skill": "charisma", "xp": 4,
+     "blurb": "1,000 words on 'Top 10 Fintech Apps'. The client wants it yesterday."},
+    {"id": "fl_transcribe", "once_per_day": True, "freelance": True, "at": "laptop",
+     "label": "Freelance: transcribe a podcast (2 hrs)", "hours": [(H(7), H(25))], "minutes": 120, "earn": 3_500,
+     "effects": {"energy": -9, "fun": -5}, "hustle": True,
+     "blurb": "Two Americans arguing about crypto. Paid in dollars, so it's sweet."},
+    {"id": "fl_landing", "once_per_day": True, "freelance": True, "at": "laptop",
+     "label": "Freelance: build a landing page (4 hrs)", "hours": [(H(8), H(24))], "minutes": 240, "earn": 15_000,
+     "effects": {"energy": -18, "fun": -4}, "hustle": True, "skill": "coding", "xp": 14, "min_level": 4,
+     "blurb": "A client on Upwork. Five-star review if you deliver."},
     {"id": "learn_coding", "at": "laptop", "label": "Practise coding on your laptop (2 hrs)", "hours": [(H(6), H(26))],
      "minutes": 120, "cost": 0, "effects": {"energy": -7, "fun": -2}, "skill": "coding", "xp": 12, "learn": True,
      "blurb": "YouTube, free courses and a lot of error messages.", "done": "Your code finally ran. You feel unstoppable."},
@@ -300,13 +383,13 @@ ACTIONS += [
      "blurb": "You, your friends, the SUB crowd and a ring light. Will it blow?"},
 
     # Bigger gigs that need a skill level
-    {"id": "bug_fix", "once_per_day": True, "at": "laptop", "label": "Fix bugs for a startup (3 hrs)", "hours": [(H(9), H(24))], "minutes": 180,
+    {"id": "bug_fix", "once_per_day": True, "freelance": True, "at": "laptop", "label": "Fix bugs for a startup (3 hrs)", "hours": [(H(9), H(24))], "minutes": 180,
      "earn": 6_000, "effects": {"energy": -15, "fun": -4}, "skill": "coding", "xp": 10, "min_level": 3, "hustle": True,
      "blurb": "Remote gig for a Lagos startup. They pay on time. Mostly."},
-    {"id": "logo_gig", "at": "laptop", "label": "Design a logo for a business (3 hrs)", "hours": [(H(9), H(22))],
+    {"id": "logo_gig", "freelance": True, "at": "laptop", "label": "Design a logo for a business (3 hrs)", "hours": [(H(9), H(22))],
      "minutes": 180, "earn": 9_000, "effects": {"energy": -15, "fun": 3}, "skill": "design", "xp": 14, "min_level": 5,
      "hustle": True, "weekly": True, "blurb": "A shawarma spot in town wants a whole brand."},
-    {"id": "website_gig", "at": "laptop", "label": "Build a website for a business (6 hrs)", "hours": [(H(8), H(17))],
+    {"id": "website_gig", "freelance": True, "at": "laptop", "label": "Build a website for a business (6 hrs)", "hours": [(H(8), H(17))],
      "minutes": 360, "earn": 22_000, "effects": {"energy": -28, "fun": -10}, "skill": "coding", "xp": 20, "min_level": 5,
      "hustle": True, "weekly": True, "blurb": "A real client, a real deadline, real money."},
     {"id": "bridal_hair", "requires": {"smartphone": True}, "at": "phone", "label": "Make hair for a wedding (5 hrs)", "hours": [(H(6), H(9))],
@@ -457,6 +540,10 @@ BADGES = {
     "upgrade": ("New phone, who dis?", "Buy a new phone at Ojaja"),
     "dream": ("Living the dream", "Achieve the dream you picked at admission"),
     "legend": ("Great Ife Legend", "Reach Campus Rep level 16"),
+    "landlord": ("Off-campus boss", "Rent your own place off campus"),
+    "full_room": ("Full room", "Share a room with real players"),
+    "odds": ("Odds landed", "Win a bet"),
+    "freelancer": ("Freelancer", "Finish 10 freelance gigs"),
 }
 
 # Random events. "when": "day" rolls at the start of a day, "after": after certain actions.
@@ -679,12 +766,18 @@ MOODLETS = {
     "embarrassed": ("Embarrassed", "😳", -8, 3),
     "sharp": ("Sharp Brain", "🧠", 6, 3),
     "new_phone": ("New Phone Joy", "📱", 12, 24),
+    "odds_landed": ("Odds Landed", "🤑", 12, 6),
+    "bet_cut": ("Bet Cut", "😭", -10, 6),
+    "lecture_from_home": ("Parents' Lecture", "📞", -4, 4),
+    "new_place": ("New Place Vibes", "🗝", 12, 48),
+    "roomie_gist": ("Roomie Gist", "🛏", 6, 4),
 }
 # Moodlets that depend on how things are right now (not timed)
 LIVE_MOODLETS = {
     "sapa": ("Sapa Don Hold Me", "🫥", -10),
     "no_light": ("No Light", "🕯️", -6),
     "soft_life": ("Soft Life", "😌", 8),
+    "flat_life": ("Flat Life", "🏡", 6),
 }
 
 # --- Moments in a lecture -------------------------------------------------------------------------
