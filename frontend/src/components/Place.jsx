@@ -57,7 +57,8 @@ function PlaceChat({ building, here }) {
   );
 }
 
-export default function PlacePanel({ game, building, atHome, title, sub, onAct, run, busy, onClose, onLeave, onMap, onHome, onHide, onLaptop, postNote }) {
+export default function PlacePanel({ game, building, atHome, title, sub, onAct, run, busy, onClose, onLeave, onMap, onHome, onHide, onLaptop,
+  postNote, initialStation, hall, setHall }) {
   const money = game.banking.branch || game.banking.atm || game.banking.pos;
   const stations = useMemo(() => {
     const order = ["class", "room", "money", "study", "food", "care", "rest", "fun", "hustle", "shop"];
@@ -67,7 +68,7 @@ export default function PlacePanel({ game, building, atHome, title, sub, onAct, 
     return order.filter((s) => have.has(s));
   }, [game.actions, atHome, game.room, money]);
   const best = game.test ? "class" : game.at === "banks" ? "money" : stations.find((s) => game.actions.some((a) => (a.station || "fun") === s && a.enabled)) || stations[0];
-  const [station, setStation] = useState(best);
+  const [station, setStation] = useState(initialStation && stations.includes(initialStation) ? initialStation : best);
   useEffect(() => {
     if (!stations.includes(station)) setStation(best);
   }, [stations]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -77,7 +78,7 @@ export default function PlacePanel({ game, building, atHome, title, sub, onAct, 
       className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-chip text-lg disabled:opacity-50">{icon}</button>
   );
   return (
-    <BottomSheet onClose={onClose} label={title} height="78%"
+    <BottomSheet onClose={onClose} label={title} height="64%"
       header={
         <div>
           <span className="display block truncate text-[1.45rem] text-ife-900">{title}</span>
@@ -103,7 +104,7 @@ export default function PlacePanel({ game, building, atHome, title, sub, onAct, 
           </button>
         ))}
       </div>
-      {station === "room" ? <RoomCard room={game.room} onNote={postNote} /> : station === "money" ? <MoneyHere game={game} run={run} /> : (
+      {station === "room" ? <RoomCard room={game.room} onNote={postNote} /> : station === "money" ? <MoneyHere game={game} run={run} hall={hall} setHall={setHall} /> : (
         <ActionCards actions={list} onAct={onAct} busy={busy} />
       )}
     </BottomSheet>

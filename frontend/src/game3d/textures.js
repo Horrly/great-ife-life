@@ -47,20 +47,28 @@ export function signTexture(text, { bg = "#14402c", fg = "#f6efd9", border = "#f
 }
 
 /** Floating name label above a building. */
-export function labelTexture(text) {
-  const key = `label:${text}`;
+const LABEL_TONES = {
+  dark: ["rgba(16, 32, 24, 0.82)", "#ffffff"],
+  player: ["rgba(47, 125, 225, 0.95)", "#ffffff"], // real players: blue
+  npc: ["rgba(255, 255, 255, 0.95)", "#16201a"], // campus people: white
+  you: ["rgba(28, 154, 94, 0.95)", "#ffffff"],
+};
+
+export function labelTexture(text, tone = "dark") {
+  const key = `label:${tone}:${text}`;
   if (cache.has(key)) return cache.get(key);
   const [m, mg] = canvas(8, 8);
   mg.font = '700 44px "Figtree Variable", sans-serif';
   const w = Math.ceil(mg.measureText(text).width) + 56;
   m.width = 1;
   const [c, g] = canvas(w, 76);
-  g.fillStyle = "rgba(16, 32, 24, 0.82)";
+  const [bg, fg] = LABEL_TONES[tone] || LABEL_TONES.dark;
+  g.fillStyle = bg;
   const r = 36;
   g.beginPath();
   g.roundRect(0, 0, w, 76, r);
   g.fill();
-  g.fillStyle = "#ffffff";
+  g.fillStyle = fg;
   g.font = '700 44px "Figtree Variable", sans-serif';
   g.textBaseline = "middle";
   g.fillText(text, 28, 40);

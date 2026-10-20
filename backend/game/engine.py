@@ -2527,6 +2527,20 @@ def _daily(bank, key: str, day: int) -> int:
     return bank[f"{key}_today"]
 
 
+def _amount(amount, lo, hi, step=1, what="amount") -> int:
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        raise GameError("Enter an amount.")
+    if amount < lo:
+        raise GameError(f"The smallest {what} is ₦{lo:,}.")
+    if amount > hi:
+        raise GameError(f"The most you can do at once is ₦{hi:,}.")
+    if amount % step:
+        raise GameError(f"Use a multiple of ₦{step:,}.")
+    return amount
+
+
 def _bank_open_check(state):
     if state["phase"] != "play":
         raise GameError("Finish what's on screen first.")
@@ -2572,8 +2586,8 @@ def open_account(state: dict, bank_id: str, number: str, now: float | None = Non
     return _finish(state, messages, now, 6)
 
 
-def bank_counter(state: dict, kind: str, amount: int, now: float | None = None) -> tuple[dict, list[str]]:
-    """Deposit cash or withdraw over the counter at your branch. Free, but only in banking hours."""
+def bank_counter(state: dict, kind: str, amount: int, now: float | None = None, hall: str | None = None) -> tuple[dict, list[str]]:
+    """Deposit cash or withdraw over the counter in your own bank's hall. Free, but only in banking hours."""
     state = upgrade(copy.deepcopy(state))
     messages = _begin(state, now)
     _bank_open_check(state)
@@ -2585,10 +2599,11 @@ def bank_counter(state: dict, kind: str, amount: int, now: float | None = None) 
         raise GameError(f"{name} has no branch. Use a POS agent to deposit or withdraw.")
     if not at_branch(state):
         raise GameError("Go to the Banking Area.")
+    if hall and hall != bank["bank"]:
+        raise GameError(f"You bank with {name}. Use the {name} hall, or the ATM.")
     if not branch_open(state):
         raise GameError("The banking hall is closed. Banks open 8:00 AM to 4:00 PM, Monday to Friday.")
-    if amount not in C.COUNTER_AMOUNTS:
-        raise GameError("Pick an amount.")
+    amount = _amount(amount, C.COUNTER_MIN, C.COUNTER_MAX)
     if kind == "deposit":
         if state["money"] < amount:
             raise GameError("You don't have that much cash.")
@@ -2606,7 +2621,8 @@ def bank_counter(state: dict, kind: str, amount: int, now: float | None = None) 
     return _finish(state, messages, now, 8)
 
 
-def atm_withdraw(state: dict, amount: int, now: float | None = None) -> tuple[dict, list[str]]:
+def atm_withdraw(state: dict, amount: int, now: float | None = None, machine: str | None = None) -> tuple[dict, list[str]]:
+    """Withdraw with your debit card. Your own bank's ATM is free; another bank's ATM charges ₦35."""
     state = upgrade(copy.deepcopy(state))
     messages = _begin(state, now)
     _bank_open_check(state)
@@ -2618,12 +2634,14 @@ def atm_withdraw(state: dict, amount: int, now: float | None = None) -> tuple[di
         raise GameError("You need a bank account and a debit card.")
     if not bank.get("card"):
         raise GameError(f"{C.BANKS[bank['bank']]['name']} has no card. Cash out at a POS agent by transfer.")
-    if amount not in C.ATM_AMOUNTS:
-        raise GameError("Pick an amount.")
+    amount = _amount(amount, C.ATM_STEP, C.ATM_MAX, C.ATM_STEP)
+    if owner == "":   # the Banking Area has every bank's ATM: you pick one
+        owner = machine if machine in C.BANKS and not C.BANKS[machine]["app"] else bank["bank"]
     used = _daily(bank, "atm", state["total_days"])
     if used + amount > C.ATM_DAILY:
         raise GameError(f"Daily ATM limit reached (₦{C.ATM_DAILY:,}). Try a POS agent or tomorrow.")
     fee = C.ATM_OTHER_BANK_FEE if owner and owner != bank["bank"] else 0
+    machine_name = C.BANKS[owner]["name"] if owner else "the"
     if bank_balance(state) < amount + fee:
         raise GameError("Insufficient funds.")
     if _rng(state, "atm").random() < C.ATM_FAIL:
@@ -2635,7 +2653,7 @@ def atm_withdraw(state: dict, amount: int, now: float | None = None) -> tuple[di
         _bank_move(state, -fee, "ATM fee (another bank's ATM)")
     bank["atm_today"] += amount
     state["money"] += amount
-    messages.insert(0, f"The ATM counted out ₦{amount:,}." + (f" (₦{fee} fee: another bank's ATM.)" if fee else "")
+    messages.insert(0, f"The {machine_name} ATM counted out ₦{amount:,}." + (f" (₦{fee} fee: another bank's ATM.)" if fee else "")
                     + f" Balance: ₦{bank_balance(state):,}.")
     return _finish(state, messages, now, 5)
 
@@ -2654,8 +2672,7 @@ def pos_cash(state: dict, kind: str, amount: int, method: str = "card",
     bank = state.get("bank")
     if not bank:
         raise GameError("You need a bank account to use POS.")
-    if amount not in C.POS_AMOUNTS:
-        raise GameError("Pick an amount.")
+    amount = _amount(amount, C.POS_MIN, C.POS_MAX)
     charge = pos_charge(state, amount)
     bank_name = C.BANKS[bank["bank"]]["name"]
     if kind == "withdraw":
@@ -2691,7 +2708,7 @@ def pos_cash(state: dict, kind: str, amount: int, method: str = "card",
     return _finish(state, messages, now, 5)
 
 
-def send_transfer(state: dict, amount: int, to_label: str, now: float | None = None) -> tuple[dict, list[str]]:
+def send_transfer(state: dict, amount: int, to_label: str, now: float | None = None, note: str = "") -> tuple[dict, list[str]]:
     """Send money from your account. The server credits the other student's account."""
     state = upgrade(copy.deepcopy(state))
     messages = _begin(state, now)
@@ -2701,15 +2718,14 @@ def send_transfer(state: dict, amount: int, to_label: str, now: float | None = N
         raise GameError("Open a bank account first.")
     if not state.get("phone"):
         raise GameError("You need a phone to send a transfer.")
-    if amount not in C.TRANSFER_AMOUNTS:
-        raise GameError("Pick an amount.")
+    amount = _amount(amount, C.TRANSFER_MIN, C.TRANSFER_DAILY)
     used = _daily(bank, "sent", state["total_days"])
     if used + amount > C.TRANSFER_DAILY:
         raise GameError(f"Daily transfer limit reached (₦{C.TRANSFER_DAILY:,}).")
     fee = C.transfer_fee(amount)
     if bank_balance(state) < amount + fee:
         raise GameError("Insufficient funds.")
-    _bank_move(state, -amount, f"Transfer to {to_label}")
+    _bank_move(state, -amount, f"Transfer to {to_label}" + (f" · {note}" if note else ""))
     _bank_move(state, -fee, "Transfer fee")
     bank["sent_today"] += amount
     state["stats"]["spent"] += fee
@@ -2757,6 +2773,11 @@ def banking_view(state) -> dict:
         "transfer_amounts": C.TRANSFER_AMOUNTS,
         "transfer_fees": {a: C.transfer_fee(a) for a in C.TRANSFER_AMOUNTS},
         "open_cost": C.BANK_OPEN_DEPOSIT + C.CARD_FEE, "atm_fee": C.ATM_OTHER_BANK_FEE,
+        "limits": {"atm_max": C.ATM_MAX, "atm_step": C.ATM_STEP, "pos_min": C.POS_MIN, "pos_max": C.POS_MAX,
+                   "counter_min": C.COUNTER_MIN, "counter_max": C.COUNTER_MAX, "transfer_min": C.TRANSFER_MIN,
+                   "pos_per": C.POS_FEE_PER[0], "pos_fee": C.POS_FEE_PER[1],
+                   "pos_night": C.POS_NIGHT_FEE if tod(state) >= C.H(20) and state["at"]
+                   and W.BUILDINGS[state["at"]]["kind"] in ("hall", "home") else 0},
         "held_allowance": state["flags"].get("held_allowance", 0),
     }
 

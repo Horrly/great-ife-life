@@ -55,106 +55,208 @@ function Wallet({ game }) {
   );
 }
 
-/** Inside a building: the bank counter, ATMs and the POS agent, whichever are here. */
-export function MoneyHere({ game, run }) {
-  const { openBank, bankCounter, atm, pos, busy } = useGame();
+/** Type any amount (₦ prefix, commas as you type), or tap a quick chip. */
+export function AmountInput({ value, onChange, chips = [], max, step = 1, dark = false, label = "Amount" }) {
+  const text = value ? Number(value).toLocaleString("en-NG") : "";
+  return (
+    <div>
+      <label className={`flex items-center gap-1 rounded-2xl px-4 py-3 ring-1 focus-within:ring-2 focus-within:ring-[#f08a24] ${dark ? "bg-white/95 text-ink ring-white/30" : "bg-white ring-line"}`}>
+        <span className="num text-2xl text-muted">₦</span>
+        <input inputMode="numeric" aria-label={label} placeholder="0" value={text}
+          onChange={(e) => {
+            const n = Number(e.target.value.replace(/\D/g, "")) || 0;
+            onChange(Math.min(n, max ?? n));
+          }}
+          className="num min-w-0 flex-1 bg-transparent text-2xl outline-none placeholder:text-line" />
+      </label>
+      {step > 1 && value % step !== 0 && <p className="mt-1 text-xs font-semibold text-danger">Use a multiple of ₦{step.toLocaleString("en-NG")}.</p>}
+      {chips.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {chips.map(([v, l]) => (
+            <button key={l} type="button" onClick={() => onChange(v)}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${value === v ? "bg-ink text-white" : "bg-chip text-ink"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ngn = (n) => naira(n || 0);
+
+function BankHall({ game, bankId, run, onBack }) {
+  const { openBank, bankCounter, atm, busy } = useGame();
   const b = game.banking;
-  const [counterKind, setCounterKind] = useState("deposit");
-  const [counterAmt, setCounterAmt] = useState(null);
-  const [atmAmt, setAtmAmt] = useState(null);
-  const [posKind, setPosKind] = useState("withdraw");
-  const [posMethod, setPosMethod] = useState(game.bank?.card ? "card" : "transfer");
-  const [posAmt, setPosAmt] = useState(null);
-  if (!b.branch && !b.atm && !b.pos) return null;
+  const bank = b.banks.find((x) => x.id === bankId);
   const acct = game.bank;
-  const branchBank = acct && !acct.app;
+  const mine = acct?.bank === bankId;
+  const [kind, setKind] = useState("deposit");
+  const [amt, setAmt] = useState(0);
+  const [atmAmt, setAtmAmt] = useState(0);
+  const L = b.limits;
+  const atmFee = acct && !mine ? b.atm_fee : 0;
+  const counterOk = amt >= L.counter_min && (kind === "deposit" ? amt <= game.cash : amt <= (acct?.balance ?? 0));
+  const atmOk = acct?.card && atmAmt >= L.atm_step && atmAmt % L.atm_step === 0 && atmAmt + atmFee <= acct.balance && atmAmt <= acct.atm_left;
+  return (
+    <div className="mb-3">
+      <div className="mb-3 flex items-center gap-3 rounded-2xl p-4" style={{ background: bank.color, color: bank.fg }}>
+        <button onClick={onBack} className="grid h-9 w-9 place-items-center rounded-full bg-black/20 text-lg" aria-label="All banks">‹</button>
+        <div className="min-w-0 flex-1">
+          <p className="display truncate text-2xl">{bank.name}</p>
+          <p className="text-sm opacity-85">{b.branch_open ? "Banking hall open till 4:00 PM" : "Hall closed · ATM works all day"}</p>
+        </div>
+      </div>
+      <Wallet game={game} />
+      {!acct && (
+        <Section title={`Open a ${bank.name} account`}
+          subtitle={b.branch_open
+            ? `Fill the form at the desk and bring ${naira(b.open_cost)} cash: ₦1,000 opening deposit and ₦1,000 for your debit card. Your card works at every ATM and POS.`
+            : "Come back between 8:00 AM and 4:00 PM, Monday to Friday."}>
+          <button className="btn w-full rounded-full bg-go py-3.5 text-white" disabled={busy || !b.branch_open || game.cash < b.open_cost}
+            onClick={() => run(openBank(bankId), `Opening your ${bank.name} account`)}>
+            {game.cash < b.open_cost ? `You need ${naira(b.open_cost)} cash` : `Open account · ${naira(b.open_cost)}`}
+          </button>
+        </Section>
+      )}
+      {mine && (
+        <Section title="At the counter" subtitle={b.branch_open ? "Deposits and withdrawals here are free." : "The counter is closed. The ATM works all day."}>
+          <div className="mb-2 grid grid-cols-2 gap-1 rounded-full bg-chip p-1">
+            {["deposit", "withdraw"].map((k) => (
+              <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k}
+                className={`rounded-full py-1.5 text-sm font-bold ${kind === k ? "bg-white shadow" : "text-muted"}`}>
+                {k === "deposit" ? "Deposit cash" : "Withdraw"}
+              </button>
+            ))}
+          </div>
+          <AmountInput value={amt} onChange={setAmt} label={kind === "deposit" ? "Amount to deposit" : "Amount to withdraw"}
+            chips={kind === "deposit"
+              ? [[1000, "₦1k"], [5000, "₦5k"], [20000, "₦20k"], [game.cash, "All my cash"]]
+              : [[1000, "₦1k"], [5000, "₦5k"], [20000, "₦20k"], [acct.balance, "Everything"]]} />
+          <button className="btn mt-3 w-full rounded-full bg-ink py-3.5 text-white" disabled={busy || !b.branch_open || !counterOk}
+            onClick={() => run(bankCounter(kind, amt, bankId).then((g) => {
+              if (g) setAmt(0);
+              return g;
+            }), kind === "deposit" ? "At the counter" : "The cashier is counting")}>
+            {kind === "deposit" ? "Deposit" : "Withdraw"} {amt ? naira(amt) : ""}
+          </button>
+        </Section>
+      )}
+      {acct && !mine && (
+        <p className="mb-3 rounded-2xl bg-bulb-soft px-4 py-3 text-sm">You bank with <b>{acct.name}</b>, so the counter here can't help you. You can still use this bank's ATM for a ₦{b.atm_fee} fee.</p>
+      )}
+      <Section title={`${bank.name} ATM`}
+        subtitle={!acct ? "You need an account and a debit card." : !acct.card ? `${acct.name} has no card. Cash out at a POS agent by transfer.`
+          : `₦500 and ₦1,000 notes, up to ${ngn(L.atm_max)} at a time · ${ngn(acct.atm_left)} left today${atmFee ? ` · ₦${atmFee} fee` : " · free for you"}`}>
+        <AmountInput value={atmAmt} onChange={setAtmAmt} max={L.atm_max} step={L.atm_step} label="Amount to withdraw at the ATM"
+          chips={[[2000, "₦2k"], [5000, "₦5k"], [10000, "₦10k"], [20000, "₦20k"]]} />
+        <button className="btn mt-3 w-full rounded-full bg-go py-3.5 text-white" disabled={busy || !atmOk}
+          onClick={() => run(atm(atmAmt, bankId).then((g) => {
+            if (g) setAtmAmt(0);
+            return g;
+          }), "Inserting your card…")}>
+          Withdraw {atmAmt ? naira(atmAmt) : ""}{atmFee && atmAmt ? ` · fee ₦${atmFee}` : ""}
+        </button>
+      </Section>
+    </div>
+  );
+}
+
+function PosAgent({ game, run }) {
+  const { pos, busy } = useGame();
+  const b = game.banking;
+  const L = b.limits;
+  const acct = game.bank;
+  const [kind, setKind] = useState("withdraw");
+  const [method, setMethod] = useState(acct?.card ? "card" : "transfer");
+  const [amt, setAmt] = useState(0);
+  const charge = amt ? Math.ceil(amt / L.pos_per) * L.pos_fee + L.pos_night : 0;
+  const nip = kind === "withdraw" && method === "transfer" && amt ? (amt <= 5000 ? 10 : amt <= 50000 ? 25 : 50) : 0;
+  const ok = amt >= L.pos_min && amt <= L.pos_max
+    && (kind === "withdraw" ? amt + charge + nip <= (acct?.balance ?? 0) : amt + charge <= game.cash);
+  return (
+    <Section title="POS agent" subtitle={`Cash out or deposit here. ₦${L.pos_fee} for every ₦${L.pos_per.toLocaleString("en-NG")}${L.pos_night ? `, plus ₦${L.pos_night} at night` : ""}.`}>
+      {!acct ? <p className="text-sm text-muted">You need a bank account to use POS.</p> : (
+        <>
+          <div className="mb-2 grid grid-cols-2 gap-1 rounded-full bg-chip p-1">
+            {["withdraw", "deposit"].map((k) => (
+              <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k}
+                className={`rounded-full py-1.5 text-sm font-bold ${kind === k ? "bg-white shadow" : "text-muted"}`}>
+                {k === "withdraw" ? "Get cash" : "Deposit cash"}
+              </button>
+            ))}
+          </div>
+          {kind === "withdraw" && (
+            <div className="mb-2 flex gap-1.5 text-sm">
+              {["card", "transfer"].map((m) => (
+                <button key={m} onClick={() => setMethod(m)} aria-pressed={method === m} disabled={m === "card" && !acct.card}
+                  className={`flex-1 rounded-full px-2 py-1.5 font-bold disabled:opacity-40 ${method === m ? "bg-ife-700 text-white" : "bg-white ring-1 ring-line"}`}>
+                  {m === "card" ? `💳 ${acct.name} card` : "📲 Transfer to agent"}
+                </button>
+              ))}
+            </div>
+          )}
+          <AmountInput value={amt} onChange={setAmt} max={L.pos_max} label="Amount"
+            chips={[[1000, "₦1k"], [2000, "₦2k"], [5000, "₦5k"], [10000, "₦10k"], [20000, "₦20k"]]} />
+          <button className="btn mt-3 w-full rounded-full bg-go py-3.5 text-white" disabled={busy || !ok}
+            onClick={() => run(pos(kind, amt, method).then((g) => {
+              if (g) setAmt(0);
+              return g;
+            }), "The POS agent is counting")}>
+            {kind === "withdraw" ? "Get" : "Deposit"} {amt ? `${naira(amt)} · charge ₦${charge + nip}` : ""}
+          </button>
+        </>
+      )}
+    </Section>
+  );
+}
+
+/** Inside a building: the Banking Area's banks, an ATM, and the POS agent, whichever are here. */
+export function MoneyHere({ game, run, hall, setHall }) {
+  const b = game.banking;
+  const [localHall, setLocalHall] = useState(null);
+  const current = hall !== undefined ? hall : localHall;
+  const choose = setHall || setLocalHall;
+  if (!b.branch && !b.atm && !b.pos) return null;
+  if (b.branch && current) return <BankHall game={game} bankId={current} run={run} onBack={() => choose(null)} />;
   return (
     <div className="mb-3">
       <Wallet game={game} />
-      {b.branch && !acct && (
-        <Section title="Open a bank account" subtitle={b.branch_open
-          ? `Bring ${naira(b.open_cost)} cash: ${naira(1000)} opening deposit and ${naira(1000)} for an instant debit card. Your parents, allowance and clients pay into it.`
-          : "Banks are open 8:00 AM to 4:00 PM, Monday to Friday. Come back then."}>
-          <div className="grid grid-cols-2 gap-1.5">
+      {b.branch && (
+        <Section title="Pick a bank to go in" subtitle={b.branch_open ? "Banking halls are open till 4:00 PM. ATMs work all day." : "Banking halls are closed (8 AM to 4 PM, Mon to Fri). The ATMs still work."}>
+          <div className="grid grid-cols-2 gap-2">
             {b.banks.filter((x) => !x.app).map((x) => (
-              <button key={x.id} disabled={busy || !b.branch_open || game.cash < b.open_cost}
-                onClick={() => run(openBank(x.id), `Opening your ${x.name} account`)}
-                className="rounded-xl px-2 py-3 text-sm font-black shadow-sm disabled:opacity-45" style={{ background: x.color, color: x.fg }}>
-                {x.name}
+              <button key={x.id} onClick={() => choose(x.id)}
+                className="relative rounded-2xl px-3 py-4 text-left shadow-sm" style={{ background: x.color, color: x.fg }}>
+                <span className="block font-black">{x.name}</span>
+                <span className="block text-xs opacity-85">{game.bank?.bank === x.id ? "Your bank" : "Enter"}</span>
               </button>
             ))}
           </div>
-          {b.held_allowance > 0 && (
-            <p className="mt-2 text-sm font-semibold text-ife-700">Your parents are holding {naira(b.held_allowance)} until you open one.</p>
-          )}
+          {b.held_allowance > 0 && <p className="mt-2 text-sm font-semibold text-ife-700">Your parents are holding {naira(b.held_allowance)} until you open an account.</p>}
         </Section>
       )}
-      {b.branch && branchBank && (
-        <Section title={`${acct.name} banking hall`} subtitle={b.branch_open ? "Deposits and withdrawals at the counter are free." : "The banking hall is closed (8 AM to 4 PM, Mon to Fri). The ATM works all night."}>
-          <div className="mb-2 grid grid-cols-2 gap-1.5">
-            {["deposit", "withdraw"].map((kind) => (
-              <button key={kind} onClick={() => setCounterKind(kind)} aria-pressed={counterKind === kind}
-                className={`rounded-lg py-1.5 text-sm font-bold ${counterKind === kind ? "bg-ink text-white" : "bg-line/60"}`}>
-                {kind === "deposit" ? "Deposit cash" : "Withdraw"}
-              </button>
-            ))}
-          </div>
-          <Chips amounts={b.counter_amounts} value={counterAmt} onPick={setCounterAmt}
-            disabled={(a) => !b.branch_open || (counterKind === "deposit" ? game.cash < a : acct.balance < a)} />
-          <button className="btn-primary mt-2 w-full" disabled={busy || !counterAmt || !b.branch_open}
-            onClick={() => run(bankCounter(counterKind, counterAmt), counterKind === "deposit" ? "At the counter" : "The cashier is counting")}>
-            {counterKind === "deposit" ? "Deposit" : "Withdraw"} {counterAmt ? naira(counterAmt) : ""}
-          </button>
-        </Section>
-      )}
-      {b.atm && (
-        <Section title={b.atm.owner ? `${b.atm.owner_name} ATM` : "ATMs (every bank)"}
-          subtitle={!acct ? "You need a bank account and a debit card." : !acct.card
-            ? `${acct.name} has no card. Cash out at a POS agent by transfer.`
-            : `Up to ${naira(acct.atm_left)} more today.${b.atm.owner && b.atm.owner !== acct.bank ? ` Another bank's ATM: ₦${b.atm_fee} fee.` : ""}`}>
-          <Chips amounts={b.atm_amounts} value={atmAmt} onPick={setAtmAmt}
-            disabled={(a) => !acct?.card || acct.balance < a || acct.atm_left < a} />
-          <button className="btn-primary mt-2 w-full" disabled={busy || !atmAmt || !acct?.card}
-            onClick={() => run(atm(atmAmt), "Inserting your card…")}>
-            Withdraw {atmAmt ? naira(atmAmt) : ""}
-          </button>
-        </Section>
-      )}
-      {b.pos && (
-        <Section title="POS agent" subtitle="Cash out or deposit right here. The agent charges ₦100 for every ₦5,000.">
-          {!acct ? (
-            <p className="text-sm text-muted">You need a bank account to use POS.</p>
-          ) : (
-            <>
-              <div className="mb-2 grid grid-cols-2 gap-1.5">
-                {["withdraw", "deposit"].map((kind) => (
-                  <button key={kind} onClick={() => setPosKind(kind)} aria-pressed={posKind === kind}
-                    className={`rounded-lg py-1.5 text-sm font-bold ${posKind === kind ? "bg-ink text-white" : "bg-line/60"}`}>
-                    {kind === "withdraw" ? "Get cash" : "Deposit cash"}
-                  </button>
-                ))}
-              </div>
-              {posKind === "withdraw" && (
-                <div className="mb-2 flex gap-1.5 text-sm">
-                  {["card", "transfer"].map((m) => (
-                    <button key={m} onClick={() => setPosMethod(m)} aria-pressed={posMethod === m} disabled={m === "card" && !acct.card}
-                      className={`flex-1 rounded-full px-2 py-1 font-bold disabled:opacity-40 ${posMethod === m ? "bg-ife-700 text-white" : "bg-white ring-1 ring-line"}`}>
-                      {m === "card" ? "💳 Swipe card" : "📲 Transfer to agent"}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <Chips amounts={b.pos_amounts} value={posAmt} onPick={setPosAmt} note={(a) => `+₦${b.pos_charges[a]}`}
-                disabled={(a) => (posKind === "withdraw" ? acct.balance < a + b.pos_charges[a] : game.cash < a + b.pos_charges[a])} />
-              <button className="btn-primary mt-2 w-full" disabled={busy || !posAmt}
-                onClick={() => run(pos(posKind, posAmt, posMethod), "The POS agent is counting")}>
-                {posKind === "withdraw" ? "Get" : "Deposit"} {posAmt ? `${naira(posAmt)} (charge ₦${b.pos_charges[posAmt]})` : ""}
-              </button>
-            </>
-          )}
-        </Section>
-      )}
+      {b.atm && !b.branch && <AtmOnly game={game} run={run} />}
+      {b.pos && <PosAgent game={game} run={run} />}
     </div>
+  );
+}
+
+function AtmOnly({ game, run }) {
+  const { atm, busy } = useGame();
+  const b = game.banking;
+  const L = b.limits;
+  const acct = game.bank;
+  const [amt, setAmt] = useState(0);
+  const fee = acct && b.atm.owner && b.atm.owner !== acct.bank ? b.atm_fee : 0;
+  const ok = acct?.card && amt >= L.atm_step && amt % L.atm_step === 0 && amt + fee <= acct.balance;
+  return (
+    <Section title={`${b.atm.owner_name} ATM`} subtitle={!acct ? "You need a bank account and a debit card." : !acct.card ? `${acct.name} has no card. Use a POS agent.` : fee ? `Another bank's ATM: ₦${fee} fee.` : "Free for you."}>
+      <AmountInput value={amt} onChange={setAmt} max={L.atm_max} step={L.atm_step} chips={[[2000, "₦2k"], [5000, "₦5k"], [10000, "₦10k"], [20000, "₦20k"]]} />
+      <button className="btn mt-3 w-full rounded-full bg-go py-3.5 text-white" disabled={busy || !ok}
+        onClick={() => run(atm(amt), "Inserting your card…")}>Withdraw {amt ? naira(amt) : ""}</button>
+    </Section>
   );
 }
 
@@ -166,7 +268,8 @@ export function BankApp({ game, run }) {
   const [bankId, setBankId] = useState("");
   const [who, setWho] = useState(null);
   const [lookErr, setLookErr] = useState("");
-  const [amount, setAmount] = useState(null);
+  const [amount, setAmount] = useState(0);
+  const [note, setNote] = useState("");
   const [copied, setCopied] = useState(false);
   const acct = game.bank;
   const b = game.banking;
@@ -189,7 +292,7 @@ export function BankApp({ game, run }) {
       </div>
     );
   }
-  const fee = (a) => b.transfer_fees[a] ?? 0;
+  const fee = (a) => (a <= 5000 ? 10 : a <= 50000 ? 25 : 50);
   async function verify() {
     setWho(null);
     setLookErr("");
@@ -200,12 +303,13 @@ export function BankApp({ game, run }) {
     }
   }
   async function send() {
-    const g = await run(transfer(number, bankId, amount), `Sending ${naira(amount)}`);
+    const g = await run(transfer(number, bankId, amount, note), `Sending ${naira(amount)}`);
     if (g) {
       setTab("home");
       setWho(null);
       setNumber("");
-      setAmount(null);
+      setAmount(0);
+      setNote("");
     }
   }
   return (
@@ -275,10 +379,12 @@ export function BankApp({ game, run }) {
           ) : (
             <>
               <p className="rounded-lg bg-ife-50 px-3 py-2 text-sm font-black text-ife-700">✓ {who.name} · {who.bank}</p>
-              <Chips amounts={b.transfer_amounts} value={amount} onPick={setAmount} note={(a) => `fee ₦${fee(a)}`}
-                disabled={(a) => acct.balance < a + fee(a) || acct.sent_left < a} />
-              <button className="btn-primary w-full" disabled={busy || !amount} onClick={send}>
-                Send {amount ? naira(amount) : ""} to {who.name.split(" ")[0]}
+              <AmountInput value={amount} onChange={setAmount} max={acct.sent_left} label="Amount to send"
+                chips={[[500, "₦500"], [1000, "₦1k"], [5000, "₦5k"], [10000, "₦10k"]]} />
+              <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={60} aria-label="Note"
+                placeholder="Note (optional), e.g. for printing" className="w-full rounded-xl bg-chip px-3 py-2.5 text-sm outline-none" />
+              <button className="btn-primary w-full" disabled={busy || amount < 100 || acct.balance < amount + fee(amount)} onClick={send}>
+                Send {amount ? `${naira(amount)} · fee ₦${fee(amount)}` : ""}
               </button>
               <p className="text-xs text-muted">Check the name. Transfers can't be reversed.</p>
             </>

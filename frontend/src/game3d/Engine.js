@@ -39,8 +39,9 @@ function skyAt(minute) {
 }
 
 export default class CampusEngine {
-  constructor(container, map, { look, pos, onNearDoor, lowPower = false } = {}) {
+  constructor(container, map, { look, pos, onNearDoor, onRoomTap, lowPower = false } = {}) {
     this.container = container;
+    this.opts = { onRoomTap };
     this.map = map;
     this.onNearDoor = onNearDoor || (() => {});
     this.graph = buildGraph(map);
@@ -374,7 +375,8 @@ export default class CampusEngine {
       // a quick tap (not a drag) walks you there
       if (drag && e.type === "pointerup" && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 10
           && performance.now() - drag.t < 400) {
-        this._tapToWalk(e.clientX, e.clientY);
+        if (this.roomMode && this.roomView) this._tapRoom(e.clientX, e.clientY);
+        else this._tapToWalk(e.clientX, e.clientY);
       }
       drag = null;
     };
@@ -810,6 +812,30 @@ export default class CampusEngine {
     this.camera.fov = w < h ? 62 : 52;
     this.camera.updateProjectionMatrix();
     this.roomView?.resize(w, h);
+  }
+
+  /** Tapping something inside (a bucket, the buka counter, yourself) opens what you can do with it. */
+  _tapRoom(clientX, clientY) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const station = this.roomView.pick(ndc);
+    if (station) this.opts.onRoomTap?.(station);
+  }
+
+  /** Show the inside of a campus place, with the people in it. */
+  showPlace(spec, noLight = false) {
+    if (!this.roomView) {
+      this.roomView = new RoomView({ lowPower: this.lowPower, environment: this.scene.environment });
+      this.roomView.resize(this.container.clientWidth || 1, this.container.clientHeight || 1);
+    }
+    this.noLight = noLight;
+    this.roomView.showPlace(spec, this.minute, noLight);
+    this.roomMode = true;
+  }
+
+  /** While an action plays, you walk to where it happens (the cooker, the counter, a desk). */
+  roomActivity(station) {
+    this.roomView?.setActivity(station);
   }
 
   /** Show your room (hall or off campus) with your roommates in it. */

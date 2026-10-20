@@ -93,6 +93,29 @@ function SaveSheet({ onClose }) {
 }
 
 
+// What each building looks like inside.
+const INSIDE = { theatre: "lecture", faculty: "classroom", library: "library", buka: "buka", market: "market", sub: "sub",
+  banks: "bank", clinic: "clinic", auditorium: "auditorium", amphitheatre: "amphi", sports: "sports", tower: "office" };
+const NPC_NAMES = ["Tolu", "Emeka", "Aisha", "Kunle", "Zainab", "Femi", "Bisola", "Chidi", "Halima", "Seun", "Ngozi", "Dayo",
+  "Ifeoma", "Yusuf", "Kemi", "Tobi", "Amaka", "Segun"];
+const BUSY = { lecture: 12, classroom: 7, library: 9, buka: 8, market: 7, sub: 6, bank: 5, clinic: 3, auditorium: 14, amphi: 8, sports: 8, office: 3, common: 6 };
+
+/** Campus NPCs in a place: how many depends on the kind of place and the hour; the same people all hour. */
+function npcsFor(id, type, minute) {
+  const hour = Math.floor(minute / 60);
+  let seed = [...`${id}${hour}`].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const open = hour >= 7 && hour < 22;
+  const peak = (type === "buka" && (hour === 12 || hour === 13 || hour === 18)) || (type === "lecture" && hour >= 8 && hour < 16)
+    || (type === "library" && hour >= 19);
+  const n = Math.round((BUSY[type] || 4) * (open ? (peak ? 1 : 0.55) : 0.15) * (0.7 + rand() * 0.5));
+  return Array.from({ length: n }, () => ({
+    kind: "npc", name: NPC_NAMES[Math.floor(rand() * NPC_NAMES.length)],
+    look: { skin: Math.floor(rand() * 5), hair: Math.floor(rand() * 6), top: Math.floor(rand() * 7), bottom: Math.floor(rand() * 5),
+      style: Math.floor(rand() * 2), hall: Math.floor(rand() * 2) },
+  }));
+}
+
 const SEEN_KEY = "gil.inboxSeen";
 function useInbox(log) {
   const key = (l) => (l ? `${l.day}|${l.time}|${l.text}` : "");
@@ -139,6 +162,9 @@ export default function Play() {
   const [lapse, setLapse] = useState(null);
   const [lp, setLp] = useState(0);
   const [hint, setHint] = useState(true);
+  const [placeStation, setPlaceStation] = useState(null);
+  const [bankHall, setBankHall] = useState(null);
+  const roomTap = useRef(() => {});
   const clock = useLiveClock(game);
   const minute = ((clock % 1440) + 1440) % 1440;
   const [inboxCount, markInboxSeen] = useInbox(game.log);
@@ -166,6 +192,7 @@ export default function Play() {
         look: game.look,
         pos: game.pos,
         onNearDoor: setNear,
+        onRoomTap: (station) => roomTap.current(station),
         // only really old phones skip shadows: 2 GB of memory or 2 cores
         lowPower: !window.__campusHQ && ((navigator.deviceMemory || 4) <= 2 || (navigator.hardwareConcurrency || 4) <= 2),
       });
@@ -214,18 +241,20 @@ export default function Play() {
   }, [day]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Actions play out in a few real seconds as a ring chip at the top; you can keep looking around. */
-  async function playback(label, g, icon) {
+  async function playback(label, g, icon, station) {
     if (!g?.playback) return;
     setLapse({ label, icon });
+    engine.current?.roomActivity(station || null);
     await animate(g.playback, setLp);
     setLapse(null);
+    engine.current?.roomActivity(null);
   }
 
   async function onAct(action) {
     const g = await act(action.id);
     setPanel((p) => (p === "phone" || p === "laptop" ? null : p));
     if (!g || action.id === "sleep" || action.id === "wake") return;
-    await playback(action.label, g, iconFor(action));
+    await playback(action.label, g, iconFor(action), action.station);
   }
 
   async function onParents(amount) {
@@ -242,7 +271,7 @@ export default function Play() {
   /** Bank, ATM and POS moves: wait for the server, then play the few seconds it takes. */
   async function runMove(promise, label) {
     const g = await promise;
-    if (g) await playback(label, g, "🏦");
+    if (g) await playback(label, g, "🏦", "money");
     return g;
   }
 
@@ -311,16 +340,42 @@ export default function Play() {
   // your own room is drawn in 3D, with your roommates in it
   const roomKey = JSON.stringify(game.room?.people?.map((p) => [p.id, p.where]) ?? null);
   const noLight = game.moodlets?.some((m) => m.id === "no_light");
+  const hour = Math.floor(minute / 60);
+  const hereKey = JSON.stringify(game.here_people?.map((p) => p.id) ?? []);
   useEffect(() => {
     const e = engine.current;
     if (!e) return;
-    if (atHome && game.room) e.showRoom({ ...game.room, kind: game.housing.kind }, noLight);
-    else e.hideRoom();
-  }, [atHome, roomKey, noLight, world, game.housing.kind]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (atHome && game.room && !lookAround) e.showRoom({ ...game.room, kind: game.housing.kind }, noLight);
+    else if (inside && building && !lookAround && !journey) {
+      const type = INSIDE[building.style] || "common";
+      e.showPlace({
+        type, name: building.name, hall: game.at === "banks" ? bankHall : null, banks: world?.banks,
+        people: [{ kind: "you", name: "You", look: game.look },
+          ...(game.here_people || []).map((p) => ({ kind: "player", name: p.name, look: p.look })),
+          ...npcsFor(game.at, type, minute)],
+      }, noLight);
+    } else e.hideRoom();
+  }, [atHome, roomKey, noLight, world, game.housing.kind, inside, game.at, lookAround, journey, hour, hereKey, bankHall]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (game.at !== "banks") setBankHall(null);
+  }, [game.at]);
+  // tapping things inside: open what you can do with them
+  roomTap.current = (station) => {
+    if (!controls || busy || lapse) return;
+    sfx("open");
+    if (station === "leave") onLeave();
+    else if (station === "self") setPanel("self");
+    else {
+      setPlaceStation(station);
+      setPanel("place");
+    }
+  };
   const showGame = { ...game, minute };
   const overlayOpen = game.phase !== "play" || journey;
   const controls = game.phase === "play" && !journey && !game.asleep;
   const close = useCallback(() => setPanel(null), []);
+  // a stable function: the place sheet asks the server for trip options once, not on every clock tick
+  const planFrom = useCallback((to) => plan(to, pos()), [plan, pos]);
   const openMe = (tab = "profile") => {
     setMeTab(tab);
     setPanel("me");
@@ -495,12 +550,13 @@ export default function Play() {
 
       {/* Sheets */}
       {panel === "place" && building && controls && (
-        <PlacePanel game={game} building={game.at} atHome={atHome} title={placeTitle} sub={placeSub} onAct={onAct} run={runMove}
-          busy={busy} onClose={close} onLeave={onLeave} onMap={() => setPanel("map")} onHome={() => goTo(game.home)}
-          onHide={() => {
+        <PlacePanel key={placeStation || "place"} game={game} building={game.at} atHome={atHome} title={placeTitle} sub={placeSub} onAct={onAct} run={runMove}
+          initialStation={placeStation} hall={bankHall} setHall={setBankHall}
+          busy={busy} onClose={() => {
             setPanel(null);
-            setLookAround(true);
-          }}
+            setPlaceStation(null);
+          }} onLeave={onLeave} onMap={() => setPanel("map")} onHome={() => goTo(game.home)}
+          onHide={() => setPanel(null)}
           onLaptop={() => setPanel("laptop")} postNote={postNote} />
       )}
       {panel === "map" && world && !overlayOpen && (
@@ -508,7 +564,7 @@ export default function Play() {
           playerPos={game.at ? world.nodes[world.buildings[game.at].node] : engine.current?.playerPos() || game.pos} />
       )}
       {panel === "to" && world && travelTo && !overlayOpen && (
-        <PlaceSheet world={world} game={showGame} to={travelTo} onPlan={(to) => plan(to, pos())} onGo={onGo} busy={busy}
+        <PlaceSheet world={world} game={showGame} to={travelTo} onPlan={planFrom} onGo={onGo} busy={busy}
           onClose={close} onBack={() => setPanel("map")} />
       )}
       {panel === "phone" && !journey && game.phase === "play" && (
@@ -535,6 +591,15 @@ export default function Play() {
         <MeSheet game={game} account={account} tab={meTab} onClose={close} onSave={() => setPanel("save")} onTitle={() => navigate("/")} />
       )}
       {panel === "inbox" && <InboxSheet game={game} onClose={close} />}
+      {panel === "self" && controls && (
+        <BottomSheet title="What should you do?" subtitle="Things you can do right here, by yourself" onClose={close} height="60%">
+          <ActionCards actions={[...game.actions.filter((a) => ["fun", "rest", "study"].includes(a.station)),
+            ...game.phone.filter((a) => ["fun", "hustle"].includes(a.station))].slice(0, 10)} onAct={(a) => {
+            setPanel(null);
+            onAct(a);
+          }} busy={busy} />
+        </BottomSheet>
+      )}
       {panel === "save" && <SaveSheet onClose={close} />}
 
       {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} fromName={journey.fromName} />}

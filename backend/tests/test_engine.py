@@ -1075,3 +1075,32 @@ def test_lots_of_cash_can_get_stolen():
         E._start_of_day(s, random.Random(i), [])
         stolen += s["money"] < 200_000
     assert 0 < stolen < 20
+
+
+def test_typed_amounts_bank_halls_and_any_banks_atm():
+    s = banked(at(new(profile="lapo_baby", seed="typed"), 10, where="banks"), 50_000)
+    s["money"] = 10_000
+    s, _ = E.bank_counter(s, "deposit", 7_350, hall="gtbank")
+    assert s["money"] == 2_650 and E.bank_balance(s) == 57_350
+    with pytest.raises(E.GameError, match="You bank with GTBank"):
+        E.bank_counter(s, "withdraw", 1_000, hall="uba")
+    with pytest.raises(E.GameError, match="smallest"):
+        E.bank_counter(s, "deposit", 50, hall="gtbank")
+    with pytest.raises(E.GameError, match="multiple of ₦500"):
+        E.atm_withdraw(s, 1_250)
+    # someone else's ATM in the Banking Area: works, with a fee
+    for i in range(20):
+        t, _ = E.atm_withdraw(s, 2_500, machine="uba")
+        if t["money"] > s["money"]:
+            assert E.bank_balance(t) == 57_350 - 2_500 - C.ATM_OTHER_BANK_FEE
+            break
+        s["turn"] += 1
+    else:
+        raise AssertionError("ATM never worked")
+    p = banked(at(new(seed="typedpos"), 12, where="market"), 20_000)
+    p["money"] = 0
+    p, _ = E.pos_cash(p, "withdraw", 3_700, "card")
+    assert p["money"] == 3_700 and E.bank_balance(p) == 20_000 - 3_700 - C.pos_fee(3_700)
+    q = banked(at(new(seed="typednote"), 12), 20_000)
+    q, _ = E.send_transfer(q, 1_234, "Bisi (UBA)", note="for printing")
+    assert "for printing" in q["bank"]["history"][1]["text"]

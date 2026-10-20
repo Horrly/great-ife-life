@@ -43,7 +43,15 @@ def clean_name(raw: str) -> str:
 
 
 def now() -> float:
-    """Real time in seconds. The game clock is real Lagos time."""
+    """Real time in seconds. The game clock is real Lagos time.
+
+    For local testing only (DEBUG on): GAME_TIME_OFFSET shifts the clock by that many seconds.
+    """
+    from django.conf import settings
+    import os
+
+    if settings.DEBUG and os.environ.get("GAME_TIME_OFFSET"):
+        return time.time() + float(os.environ["GAME_TIME_OFFSET"])
     return time.time()
 
 
@@ -85,7 +93,7 @@ def payload(game: Game, messages=None, at: float | None = None) -> dict:
     data["share_code"] = game.share_code if game.status == "graduated" else None
     data["matric"] = game.matric
     data["chat_unread"] = CH.unread_total(game) if game.status == "playing" else 0
-    data["online"], data["here_count"] = presence(game)
+    data["online"], data["here_count"], data["here_people"] = presence(game)
     credits = getattr(game, "_credit_lines", None)
     if credits:
         messages = list(messages or []) + credits
@@ -107,8 +115,13 @@ def presence(game: Game) -> tuple[int, int]:
     cut = timezone.now() - timedelta(seconds=ONLINE_WINDOW)
     active = Game.objects.filter(status="playing", updated_at__gte=cut)
     at = game.state.get("at")
-    here = active.filter(state__at=at).count() if at else 0
-    return active.count(), here
+    if not at:
+        return active.count(), 0, []
+    here_qs = active.filter(state__at=at)
+    people = [{"id": g.pk, "name": g.display_name or "A student", "look": g.state.get("look", {}),
+               "department": C.DEPARTMENTS.get(g.department, {}).get("code", "")}
+              for g in here_qs.exclude(pk=game.pk).order_by("-updated_at")[:8]]
+    return active.count(), here_qs.count(), people
 
 
 def game_for(request, *, lock=False) -> Game:
@@ -599,12 +612,12 @@ class BankOpenView(_MoveView):
 
 class BankCounterView(_MoveView):
     def move(self, state, data, t):
-        return E.bank_counter(state, str(data.get("kind", "")), _amount(data), t)
+        return E.bank_counter(state, str(data.get("kind", "")), _amount(data), t, hall=data.get("hall") or None)
 
 
 class AtmView(_MoveView):
     def move(self, state, data, t):
-        return E.atm_withdraw(state, _amount(data), t)
+        return E.atm_withdraw(state, _amount(data), t, machine=data.get("machine") or None)
 
 
 class PosView(_MoveView):
@@ -644,10 +657,11 @@ class TransferView(_MoveView):
         other = _receiver(game, data.get("number"), str(data.get("bank", "")))
         amount = _amount(data)
         label = f"{other.display_name or 'A student'} ({C.BANKS[other.bank]['name']})"
-        state, messages = E.send_transfer(game.state, amount, label, t)
+        note = CH.clean_text(data.get("note"))[:60] if str(data.get("note") or "").strip() else ""
+        state, messages = E.send_transfer(game.state, amount, label, t, note=note)
         sender_bank = C.BANKS[game.bank]["name"] if game.bank in C.BANKS else "Bank"
         Transfer.objects.create(sender=game, receiver=other, amount=amount,
-                                sender_label=f"{game.display_name or 'A student'} ({sender_bank})")
+                                sender_label=f"{game.display_name or 'A student'} ({sender_bank})" + (f": {note}" if note else ""))
         return state, messages
 
 

@@ -93,10 +93,10 @@ export function GameProvider({ children }) {
   const housing = useCallback(() => api("/game/housing/"), []);
   // banking: every money move goes through the server, like everything else
   const openBank = useCallback((bank) => move("/game/bank/open/", { bank }), [move]);
-  const bankCounter = useCallback((kind, amount) => move("/game/bank/counter/", { kind, amount }), [move]);
-  const atm = useCallback((amount) => move("/game/bank/atm/", { amount }), [move]);
+  const bankCounter = useCallback((kind, amount, hall) => move("/game/bank/counter/", { kind, amount, hall }), [move]);
+  const atm = useCallback((amount, machine) => move("/game/bank/atm/", { amount, machine }), [move]);
   const pos = useCallback((kind, amount, method) => move("/game/bank/pos/", { kind, amount, method }), [move]);
-  const transfer = useCallback((number, bank, amount) => move("/game/bank/transfer/", { number, bank, amount }), [move]);
+  const transfer = useCallback((number, bank, amount, note) => move("/game/bank/transfer/", { number, bank, amount, note }), [move]);
   const lookupAccount = useCallback((number, bank) => api(`/game/bank/lookup/?${new URLSearchParams({ number, bank })}`), []);
   // chat
   const chat = useMemo(() => ({

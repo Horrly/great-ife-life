@@ -79,7 +79,8 @@ def test_replayed_move_does_not_double_apply():
     assert replay.data["game"]["money"] == first.data["money"]
 
 
-def test_illegal_move_is_refused_with_current_state():
+def test_illegal_move_is_refused_with_current_state(monkeypatch):
+    FakeClock(monkeypatch, start=1_792_387_800.0 + 3 * 3600)  # 9:30 AM: too early to sleep
     client, game = start()
     game = clear(client, game)
     res = client.post("/api/game/act/", {"action": "sleep", "turn": game["turn"]}, format="json")  # morning

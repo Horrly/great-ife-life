@@ -18,6 +18,10 @@ Inspired by the viral Nigerian life simulator *Lagos Life*, but built around the
 |---|---|---|
 | ![Hall room with roommates](docs/screenshots/room.png) | ![Choosing where to live](docs/screenshots/housing.png) | ![Room card and notice board](docs/screenshots/building.png) |
 
+| Inside a lecture theatre | Mama Put | A bank hall | Send money |
+|---|---|---|---|
+| ![Tech LT with students](docs/screenshots/lecture.png) | ![Mama Put inside](docs/screenshots/buka.png) | ![GTBank hall with tellers and ATMs](docs/screenshots/bank.png) | ![Transfer with a name check](docs/screenshots/transfer.png) |
+
 | The Banking Area | Open an account | Send money | Gist with coursemates |
 |---|---|---|---|
 | ![Bank fronts, ATMs and a POS agent](docs/screenshots/banking-area.png) | ![Opening an account](docs/screenshots/bank.png) | ![Transfer with a name check](docs/screenshots/transfer.png) | ![Department chat](docs/screenshots/chat.png) |
@@ -39,6 +43,10 @@ Inspired by the viral Nigerian life simulator *Lagos Life*, but built around the
   - Running actions shrink to a ring chip at the top-left. One toast shows at a time. Events arrive as cards at the bottom, and every menu is the same slide-up sheet with pill tabs.
   - **Travel:** tap a pin on the map, see the place, pick a transport tile (🚶 Trek Free, 🛺 Keke ₦200…), then press "Go · ₦200".
   - Sounds are made in the browser (no audio downloads), phones give a short vibration, and desktop has shortcuts (M map, P phone, S you, I inbox, H home, C class).
+- **Every building has an inside.** Lecture theatres with raked benches and a whiteboard, HOL with shelves and reading lamps, Mama Put with black pots and benches, Ojaja's stalls, the SUB business centre, the Health Centre, the bank halls, Oduduwa Hall's stage, and hall common rooms.
+  - Inside, you see who's there: staff (Mama Put, Dr. Adeyemi, the tellers), campus students with white name tags, real players with blue @name tags, and you in green.
+  - **Tap things to use them:** in your hall room, the bucket for a bath, the gas cooker to cook, the bunk to sleep, the reading table to study, the door to go out. Tap yourself for things you can do alone. It's the same in every building: tap the buka counter, the library shelves, the ATM. While an action plays, you walk over to it.
+- **The Banking Area is a real place.** Walk into any bank's hall (First Bank, GTBank, Access, UBA, Zenith, Wema) to open an account or use the counter, and use any bank's ATM with your card. **Type any amount** (with quick chips), and the button repeats it: "Withdraw ₦7,500 · fee ₦35". Your bank card also works at every POS agent.
 - **Admission is a 5-step wizard:** your look, two traits, your dream, a slot-machine **status lottery**, then where you'll live.
 
 - **A 3D campus you walk around.** Low-poly Great Ife, with real names:
