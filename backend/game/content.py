@@ -509,7 +509,19 @@ BUSINESSES.update({
                    "bad_chance": 0.12, "bad_loss": 1_500, "bad_text": "NEPA took light; the generator drank your profit.",
                    "blurb": "Two chairs, a mirror, a generator and loud music."},
 })
+BUSINESSES["puffpuff"] = {"name": "Puff-puff and buns stand", "price": 15_000, "income": (300, 900),
+                          "bad_chance": 0.10, "bad_loss": 300, "bad_text": "The oil burnt and the dough didn't rise.",
+                          "blurb": "Hot puff-puff in nylon at the hall gate. Morning rush and late-night readers."}
 BUSINESS_RESALE = 0.6
+# Push your businesses for a few nights (like Lagos Life's flyers, radio and influencers)
+PROMOS = {
+    "flyers": {"label": "Print and share flyers", "cost": 1_500, "boost": 0.20, "nights": 1,
+               "blurb": "Flyers on every hall notice board. +20% business takings tonight."},
+    "status": {"label": "Post on WhatsApp status and the hall group chats", "cost": 500, "boost": 0.10, "nights": 1,
+               "blurb": "Cheap and quick. +10% business takings tonight."},
+    "influencer": {"label": "Pay a campus influencer to shout you out", "cost": 6_000, "boost": 0.50, "nights": 2,
+                   "blurb": "A big OAU account tells everyone about you. +50% business takings for 2 nights."},
+}
 
 for _bid, _b in BUSINESSES.items():
     ACTIONS.append({"id": f"buy_{_bid}", "at": "phone", "label": f"Start a {_b['name'].lower()}",
@@ -519,6 +531,10 @@ for _bid, _b in BUSINESSES.items():
     ACTIONS.append({"id": f"sell_{_bid}", "at": "phone", "label": f"Sell your {_b['name'].lower()}",
                     "hours": [(H(8), H(18))], "minutes": 30, "effects": {}, "special": "sell_business", "business": _bid,
                     "blurb": f"Get ₦{int(_b['price'] * BUSINESS_RESALE):,} back (60% of what you paid)."})
+
+for _pid, _p in PROMOS.items():
+    ACTIONS.append({"id": f"promo_{_pid}", "at": "phone", "label": _p["label"], "hours": [(H(7), H(22))], "minutes": 15,
+                    "cost": _p["cost"], "effects": {}, "special": "promote", "promo": _pid, "blurb": _p["blurb"]})
 
 ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
 
@@ -632,7 +648,7 @@ EVENTS = [
         "text": "Your department is hosting a seminar. The real attraction: jollof rice for attendees.",
         "choices": [
             {"label": "Attend for the jollof", "effects": {"hunger": 45, "social": 10, "prep": 3},
-             "result": "Learned something, ate something."},
+             "result": "You sat through the seminar, took notes, and left with a full plate of jollof."},
             {"label": "Skip it", "result": "Your stomach will remember this."},
         ],
     },
@@ -693,12 +709,17 @@ GRADE_BANDS = [(70, "A", 5), (60, "B", 4), (50, "C", 3), (45, "D", 2), (40, "E",
 
 # How your student looks (picked on the admission screen, drawn by the 3D client).
 LOOK_OPTIONS = {
-    "skin": ["#8d5524", "#a86b3c", "#6b3e1f", "#c68642", "#4a2a14"],
-    "hair": ["low_cut", "afro", "braids", "bun", "dreads", "bald"],
-    "top": ["#1f6f4a", "#b03a2e", "#f2c230", "#2f5f9e", "#f4f4f2", "#222222", "#7a3e9d"],
-    "bottom": ["#26324a", "#3b3b3b", "#6b4f2a", "#e8e2d4", "#1f6f4a"],
+    # indexes into these lists are what a save stores; only ever add to the end of a list
+    "skin": ["#8d5524", "#a86b3c", "#6b3e1f", "#c68642", "#4a2a14", "#3b2210", "#e0ac69", "#5c3a21"],
+    "hair": ["low_cut", "afro", "braids", "bun", "dreads", "bald", "classic", "long"],
+    "top": ["#1f6f4a", "#b03a2e", "#f2c230", "#2f5f9e", "#f4f4f2", "#222222", "#7a3e9d", "#e07b39", "#8fb8de"],
+    "bottom": ["#26324a", "#3b3b3b", "#6b4f2a", "#e8e2d4", "#1f6f4a", "#4a6fa5"],
     "style": ["trousers", "skirt"],
     "hall": ["male", "female"],   # which halls you can live in
+    "hair_color": ["#141010", "#3b2314", "#6b4226", "#7a1f2b", "#c9a227", "#4b2a6b"],
+    "print": ["plain", "ankara", "adire", "aso_oke"],
+    "beard": ["none", "beard"],
+    "shoes": ["#f2f2ee", "#1c1c1c", "#6b4a2a", "#2f5f9e", "#b03a2e"],
 }
 
 
@@ -891,3 +912,106 @@ QUIZZES = {
     ],
 }
 QUIZ_CHANCE = 0.4   # of class moments, this many are pop quizzes
+
+
+# --- People: what you can do with someone you tap ------------------------------------------------
+SOCIAL = {
+    # bond: how much closer it brings you; needs: how close you must be first (see FRIEND_LEVELS)
+    "hello": {"label": "Say hello", "emoji": "👋🏾", "effects": {"social": 4}, "seconds": 3, "cooldown": 20, "bond": 2},
+    "gist": {"label": "Gist", "emoji": "💬", "effects": {"social": 12, "fun": 6}, "seconds": 7, "cooldown": 45, "bond": 4},
+    "joke": {"label": "Crack a joke", "emoji": "😂", "effects": {"social": 9, "fun": 10}, "seconds": 5, "cooldown": 45,
+             "chance": True, "bond": 4},
+    "hype": {"label": "Hype them up", "emoji": "🙌🏾", "effects": {"social": 10, "fun": 5}, "seconds": 5, "cooldown": 45,
+             "bond": 4, "needs": 10},
+    "life": {"label": "Talk about life", "emoji": "🫶🏾", "effects": {"social": 18, "fun": 4}, "seconds": 9, "cooldown": 90,
+             "bond": 6, "needs": 30},
+    "hang": {"label": "Hang out", "emoji": "🚶🏾", "effects": {"social": 20, "fun": 14, "energy": -4}, "seconds": 14,
+             "cooldown": 120, "bond": 7, "needs": 30},
+    "borrow": {"label": "Ask for small money", "emoji": "🙏🏾", "effects": {"social": -2}, "seconds": 5, "cooldown": 1440,
+               "bond": -3, "needs": 60, "npc_only": True},
+    "shade": {"label": "Throw shade", "emoji": "😒", "effects": {"fun": 4, "social": -6}, "seconds": 4, "cooldown": 60,
+              "bond": -8},
+}
+SOCIAL_ORDER = ["hello", "gist", "joke", "hype", "life", "hang", "borrow", "shade"]
+# how close you are to someone, from the bond score that greetings, gists and hangouts build
+FRIEND_LEVELS = [(0, "Stranger"), (10, "Acquaintance"), (30, "Friend"), (60, "Close friend"), (100, "Bestie")]
+BOND_MAX = 120
+PEOPLE_KEEP = 60          # people you remember; the ones you haven't seen in longest are forgotten first
+BORROW_RANGE = (300, 1_500)
+SOCIAL_LINES = {
+    "hello": ["{who} waved back. 👋🏾", "{who}: \"How far!\"", "{who} nodded and smiled."],
+    "gist": ["You and {who} gisted about everything and nothing.", "{who} told you who is dating who in your department.",
+             "{who} gave you the full gist of last night's hall party."],
+    "joke_win": ["{who} laughed till they cried 😂", "{who}: \"You no well!\" 😂", "That one cracked {who} up."],
+    "joke_fail": ["{who} didn't laugh. Tough crowd.", "{who} stared at you. Awkward.", "Crickets. {who} has heard that one."],
+    "hype": ["You hyped {who} up. They're walking taller now. 🙌🏾", "{who}: \"Odogwu! You too much!\"",
+             "You told {who} they're the main character. They believed it."],
+    "life": ["You and {who} talked about home, school and what comes after.", "{who} told you what they really want to do after OAU.",
+             "Deep talk with {who}. You both feel lighter."],
+    "hang": ["You and {who} walked round campus, bought gala and talked rubbish. Good times.",
+             "You hung out with {who} till the sun went down.", "{who} showed you their favourite spot on campus."],
+    "borrow_yes": ["{who} sent you ₦{amount:,}. \"Pay me back o!\"", "{who} squeezed out ₦{amount:,} for you."],
+    "borrow_no": ["{who}: \"Me sef I'm broke 😭\"", "{who} laughed and changed the topic."],
+    "shade": ["You threw shade at {who}. They'll remember that.", "{who} hissed and walked off.",
+              "{who}: \"Who send you?\""],
+}
+
+# --- The SUG election in the OAU Portal (a new race every real week) ----------------------------------
+SUG_CANDIDATES = [
+    {"id": "light", "name": "Comrade Ifeoluwa", "slogan": "Light & Water", "promise": "Every hall gets light and running water before exams."},
+    {"id": "shuttle", "name": "Hauwa 'Shuttle'", "slogan": "Free Shuttle", "promise": "Free campus shuttle from Moremi to the Faculties at 7 AM."},
+    {"id": "buka", "name": "Seyi Buka-Prices", "slogan": "Cheap Food", "promise": "Bring back ₦300 rice and beans at every buka."},
+    {"id": "wifi", "name": "Comrade Tobi", "slogan": "Campus Wi-Fi", "promise": "Free Wi-Fi in HOL, SUB and every lecture theatre."},
+    {"id": "sports", "name": "Musa 'Goals'", "slogan": "Sports for All", "promise": "Floodlights on the pitch and inter-hall games every month."},
+    {"id": "safety", "name": "Adaeze Safe-Campus", "slogan": "Safe Nights", "promise": "Street lights on every road and night cabs that are fair."},
+    {"id": "fees", "name": "Comrade Kunle", "slogan": "No Fee Hike", "promise": "Fight every fee increase. Aluta continua!"},
+    {"id": "hostel", "name": "Bisi Bed-Space", "slogan": "More Bed Spaces", "promise": "Two new hostels and no more squatting."},
+]
+
+# --- The daily campus riddle: a clue each day, the first finders win ----------------------------------
+RIDDLES = {
+    "hol": "Silence is the rule, the cold air is free, and TDB students sleep here at three.",
+    "oduduwa": "Convocation gowns, concerts and calls: the biggest stage of all Great Ife's halls.",
+    "senate": "Fees and files and very long lines: the white tower where the VC signs.",
+    "market": "Phones get fixed and garri gets sold; Ojaja is noisy, so I'm told.",
+    "sports": "Round and round the track they run; the goalposts stand in the evening sun.",
+    "amphi": "Steps like a bowl where the drama is played; at night the music won't fade.",
+    "buka": "Amala hot and ewedu green; Mama's pot is the best you've seen.",
+    "health": "Fever or headache, they'll check your pressure; the pharmacy's out of everything, for sure.",
+    "sub": "Union of students, cafeteria queues: the SUG office is where they share the news.",
+    "thousand": "A thousand seats and nowhere to hide: general courses happen inside.",
+    "banks": "Six banks in a row, ATMs that queue: withdraw your allowance, there's POS too.",
+}
+RIDDLE_PRIZES = [(1, 5_000), (3, 2_500), (10, 1_000), (10**9, 300)]   # (up to rank, prize)
+
+# --- Big moments everyone in the room sees ----------------------------------------------------------
+ACTIONS += [
+    {"id": "round_buka", "at": "buka", "label": "Buy food for everyone here", "hours": [(H(8), H(21))], "minutes": 20,
+     "cost": 10_000, "effects": {"social": 35, "fun": 15, "hunger": 20}, "pay": "any",
+     "blurb": "Plates for the whole buka. They'll be singing your name.", "done": "The whole buka is eating on you. Odogwu!",
+     "spectacle": {"emoji": "🍲", "text": "{name} just bought food for EVERYONE at Mama Put! Eat on them!"}},
+    {"id": "round_sub", "at": "sub", "label": "Buy drinks for the whole SUB", "hours": [(H(9), H(21))], "minutes": 20,
+     "cost": 15_000, "effects": {"social": 40, "fun": 20}, "pay": "any",
+     "blurb": "Chilled drinks for every table in the SUB.", "done": "Drinks are on you. The SUB is cheering.",
+     "spectacle": {"emoji": "🥤", "text": "{name} is buying drinks for the WHOLE SUB! Cold ones on them!"}},
+    {"id": "spray_amphi", "at": "amphi", "label": "Spray money at the show", "hours": [(H(18), H(23))], "minutes": 15,
+     "cost": 5_000, "effects": {"fun": 30, "social": 25}, "pay": "cash",
+     "blurb": "Naira notes in the air while the band plays.", "done": "You sprayed the stage. The DJ called your name!",
+     "spectacle": {"emoji": "💸", "text": "MAKE IT RAIN! {name} is spraying money at the Amphitheatre!"}},
+]
+# shared campus moments: everyone there sees the banner
+ACTIONS += [
+    {"id": "rally_sub", "at": "sub", "label": "Lead an SUG rally", "hours": [(H(15), H(19))], "minutes": 45,
+     "days": WEEKDAYS_ONLY, "cost": 2_000, "effects": {"social": 30, "fun": 15, "energy": -10}, "pay": "any",
+     "blurb": "Placards, a megaphone and a crowd. Aluta continua!", "done": "Your rally shook the SUB. Students are chanting your slogan.",
+     "spectacle": {"emoji": "✊🏾", "text": "ALUTA! {name} is leading a rally at the SUB!"}},
+    {"id": "war_cry", "at": "sports", "label": "Lead your hall's war cry", "hours": [(H(16), H(20))], "minutes": 30,
+     "effects": {"social": 25, "fun": 25, "energy": -12},
+     "blurb": "Inter-hall games: drums, flags and your hall's loudest song.", "done": "Your hall's war cry drowned out everyone. Great Ife!",
+     "spectacle": {"emoji": "📣", "text": "{name} is leading the war cry at the Sports Complex! Great Ife!"}},
+    {"id": "dept_dinner", "at": "oduduwa", "label": "Walk the red carpet at the departmental dinner", "hours": [(H(19), H(23))],
+     "minutes": 120, "days": FRI_SAT, "cost": 4_000, "effects": {"social": 40, "fun": 35, "hunger": 30, "energy": -10}, "pay": "any",
+     "blurb": "Owambe for your department: food, awards and photos.", "done": "You won 'Best Dressed' at the departmental dinner! 📸",
+     "spectacle": {"emoji": "🍽️", "text": "{name} just walked the red carpet at the departmental dinner!"}},
+]
+ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}   # again, now the big-moment actions are in

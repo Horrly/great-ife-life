@@ -178,6 +178,43 @@ function BadgesTab({ badges }) {
   );
 }
 
+export const LEVEL_COLOR = { Stranger: "#9aa3a0", Acquaintance: "#2f7de1", Friend: "#1f9d55", "Close friend": "#d97706", Bestie: "#d6336c" };
+
+/** Everyone you've met, closest first, with how far to the next level. */
+export function FriendBar({ p }) {
+  const pct = p.next ? Math.round(((p.bond - p.floor) / (p.next - p.floor)) * 100) : 100;
+  return (
+    <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-chip" aria-hidden>
+      <span className="block h-full rounded-full" style={{ width: `${Math.max(4, pct)}%`, background: LEVEL_COLOR[p.level] }} />
+    </span>
+  );
+}
+
+function PeopleTab({ people }) {
+  if (!people?.length) {
+    return <p className="rounded-2xl bg-slab px-3 py-4 text-sm text-muted">Nobody yet. Tap someone at a buka, in class or in your hall and say hello.</p>;
+  }
+  return (
+    <ul className="space-y-2">
+      {people.map((p) => (
+        <li key={p.name} className="flex items-center gap-3 rounded-2xl bg-slab px-3 py-2.5">
+          <span aria-hidden className={`grid h-10 w-10 shrink-0 place-items-center rounded-full font-black text-white ${p.player ? "bg-[#2f7de1]" : "bg-ink"}`}>
+            {p.name.replace(/^@/, "").slice(0, 1).toUpperCase()}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="truncate font-bold">{p.player ? `@${p.name}` : p.name}</span>
+              <span className="shrink-0 text-xs font-bold" style={{ color: LEVEL_COLOR[p.level] }}>{p.level}</span>
+            </span>
+            <span className="block truncate text-xs text-muted">{p.role || (p.player ? "Real student" : "On campus")}</span>
+            <FriendBar p={p} />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function MeSheet({ game, account, tab: initial = "profile", onClose, onSave, onTitle }) {
   const [tab, setTab] = useState(initial);
   const m = moodOf(game.mood);
@@ -199,13 +236,14 @@ export default function MeSheet({ game, account, tab: initial = "profile", onClo
       }>
       <PillTabs value={tab} onChange={setTab} tabs={[
         ["profile", "✏️ Profile"], ["needs", "Needs"], ["studies", "📚 Studies"], ["goals", "🎯 Goals", game.missions.length - done],
-        ["skills", "Skills"], ["badges", `★ Badges ${earned}/${game.badges.length}`], ["log", "Recently"],
+        ["people", `👥 People ${game.people?.length || 0}`], ["skills", "Skills"], ["badges", `★ Badges ${earned}/${game.badges.length}`], ["log", "Recently"],
       ]} />
       <div className="pt-2">
         {tab === "profile" && <ProfileTab game={game} account={account} onSave={onSave} onTitle={onTitle} />}
         {tab === "needs" && <NeedsTab game={game} />}
         {tab === "studies" && <StudiesTab game={game} />}
         {tab === "goals" && <GoalsTab game={game} />}
+        {tab === "people" && <PeopleTab people={game.people} />}
         {tab === "skills" && <Skills skills={game.skills} />}
         {tab === "badges" && <BadgesTab badges={game.badges} />}
         {tab === "log" && (

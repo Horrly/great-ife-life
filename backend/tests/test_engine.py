@@ -341,7 +341,7 @@ def test_every_way_to_get_there_is_quoted():
     assert modes["trek"]["cost"] == 0 and modes["bus"]["cost"] == 100
     assert 100 <= modes["keke"]["cost"] <= 200
     assert modes["keke"]["minutes"] < modes["trek"]["minutes"]
-    assert not modes["cab"]["available"] and "9:00 PM" in modes["cab"]["reason"]
+    assert not modes["cab"]["available"] and "9 PM" in modes["cab"]["reason"]
     assert any(seg["kind"] == "wait" for seg in modes["bus"]["segments"])
 
 
@@ -359,8 +359,8 @@ def test_the_cng_bus_skips_the_faculties_so_you_take_a_keke():
 
 def test_keke_fares_go_by_distance_and_never_pass_200():
     s = at(new(seed="kekefare"), 11, where="sub")
-    near = next(o for o in E.plan(s, "buka")["options"] if o["mode"] == "keke")
-    far = next(o for o in E.plan(s, "fajuyi")["options"] if o["mode"] == "keke")
+    near = next(o for o in E.plan(s, "moremi")["options"] if o["mode"] == "keke")
+    far = next(o for o in E.plan(s, "angola")["options"] if o["mode"] == "keke")
     assert near["cost"] == 100 and far["cost"] > near["cost"]
     for to in W.BUILDINGS:
         if to == "sub":
@@ -1104,3 +1104,57 @@ def test_typed_amounts_bank_halls_and_any_banks_atm():
     q = banked(at(new(seed="typednote"), 12), 20_000)
     q, _ = E.send_transfer(q, 1_234, "Bisi (UBA)", note="for printing")
     assert "for printing" in q["bank"]["history"][1]["text"]
+
+
+# --- Friendships: Stranger to Bestie, with more to do as you get closer ---------------------------
+
+
+def test_friendship_grows_and_unlocks_more_to_do():
+    s = at(new(seed="pal"), 12, where="buka")
+    assert E.friend_level(0)["level"] == "Stranger" and E.friend_level(35)["level"] == "Friend"
+    with pytest.raises(E.GameError, match="Acquaintance"):
+        E.social(s, "hype", "Mama Put", t_of(s))
+    s["people"] = {"Mama Put": {"bond": 9, "met": 0}}
+    s, msgs = E.social(s, "hello", "Mama Put", t_of(s), role="Food seller")
+    assert s["people"]["Mama Put"]["bond"] == 11 and any("Acquaintance" in m for m in msgs)
+    s1 = later(s, 1)[0]
+    s, _ = E.social(s1, "hype", "Mama Put", t_of(s1))
+    view = E.view(s, t_of(s))
+    assert view["people"][0]["name"] == "Mama Put" and view["people"][0]["role"] == "Food seller"
+    s2 = later(s, 120)[0]
+    s, msgs = E.social(s2, "shade", "Mama Put", t_of(s2))
+    assert s["people"]["Mama Put"]["bond"] < 15
+
+
+def test_small_money_is_for_close_friends_and_never_real_students():
+    s = at(new(seed="lend"), 12, where="buka")
+    s["people"] = {"Tobi": {"bond": 70, "met": 0}}
+    with pytest.raises(E.GameError):
+        E.social(s, "borrow", "Tobi", t_of(s), player=True)
+    s2, _ = E.social(s, "borrow", "Tobi", t_of(s))
+    s3 = later(s2, 30)[0]
+    with pytest.raises(E.GameError, match="tomorrow"):
+        E.social(s3, "borrow", "Tobi", t_of(s3))
+
+
+def test_chat_blocks_real_money_trades():
+    from game.chat import SCAM_RE
+    assert SCAM_RE.search("Real 1k to my OPay for 2b") and SCAM_RE.search("fake alert dey")
+    assert not SCAM_RE.search("How far, you dey class?")
+
+
+def test_promotions_boost_business_takings_for_a_few_nights():
+    s = at(new(seed="promo"), 10, where="staff")
+    s["money"] = 100_000
+    assert E._check(s, C.ACTIONS_BY_ID["promo_flyers"]) == "Start a business first"
+    s["businesses"] = {"puffpuff": s["total_days"]}
+    banked(s, 50_000)
+    s, msgs = E.act(s, "promo_influencer")
+    assert s["promo"]["boost"] == 0.5 and s["promo"]["until"] == s["total_days"] + 2
+    assert E._check(s, C.ACTIONS_BY_ID["promo_flyers"]) == "A promotion is already running"
+
+
+def test_campus_moments_are_real_places():
+    for aid in ("rally_sub", "war_cry", "dept_dinner"):
+        a = C.ACTIONS_BY_ID[aid]
+        assert a["at"] in W.BUILDINGS and a["spectacle"]["text"]

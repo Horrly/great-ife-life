@@ -1,271 +1,632 @@
-// Low-poly students. Every person is built from a few simple shapes, shares materials, and swings
-// their arms and legs as they walk. Characters face +Z.
+// Real people. Every student is a rigged human body (CC0 models by Quaternius: Universal Base Characters,
+// Modular Character Outfits and the Universal Animation Library) dressed in tinted clothes, with real
+// motion-captured style animation: idle breathing, walking, jogging, sitting, eating, talking on the phone.
+// Characters face +Z. Until the models have downloaded (and on very old phones) a light stand-in is used.
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { LOOK, isHighQuality, mat, randomLook, setQuality, surface } from "./look";
+import { HIP, blobShadow, makeSimplePerson } from "./simple";
 
-export const LOOK = {
-  skin: ["#8d5524", "#a86b3c", "#6b3e1f", "#c68642", "#4a2a14"],
-  hair: ["low_cut", "afro", "braids", "bun", "dreads", "bald"],
-  top: ["#1f6f4a", "#b03a2e", "#f2c230", "#2f5f9e", "#f4f4f2", "#222222", "#7a3e9d"],
-  bottom: ["#26324a", "#3b3b3b", "#6b4f2a", "#e8e2d4", "#1f6f4a"],
-  style: ["trousers", "skirt"],
-  hall: ["male", "female"],
-};
+export { HIP, LOOK, mat, randomLook, setQuality, surface };
 
-const materials = new Map();
-let HIGH = true;
-/** Realistic (physically based) materials on capable devices; cheaper ones on old phones. */
-export function setQuality(high) {
-  HIGH = Boolean(high);
-}
-export function surface(params = {}) {
-  if (HIGH) return new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0, ...params });
-  const { roughness, metalness, ...rest } = params; // eslint-disable-line no-unused-vars
-  return new THREE.MeshLambertMaterial(rest);
-}
-export function mat(color, extra = {}) {
-  const key = `${HIGH}:${color}:${JSON.stringify(extra)}`;
-  if (!materials.has(key)) materials.set(key, surface({ color, ...extra }));
-  return materials.get(key);
+// The models are 1.8 m tall; the game's people are about 3.4 units.
+const UNIT = 1.88;
+const BASE = "/models/";
+
+let assets = null; // { m, f, clips }
+let loading = null;
+let fullDetail = true;
+
+/** Use the light stand-in everywhere (very old phones). */
+export function setPeopleDetail(full) {
+  fullDetail = Boolean(full);
 }
 
-// Proportions of a real young adult: the head is about a seventh of the height, legs about half.
-export const HIP = 1.5;   // hip height above the ground (before scaling)
-const geo = {
-  thigh: new THREE.CylinderGeometry(0.16, 0.13, 0.78, 10).translate(0, -0.39, 0),
-  shin: new THREE.CylinderGeometry(0.12, 0.095, 0.72, 10).translate(0, -0.36, 0),
-  shoe: new THREE.CapsuleGeometry(0.11, 0.26, 3, 8).rotateX(Math.PI / 2).scale(1.15, 0.8, 1).translate(0, -0.07, 0.08),
-  sole: new THREE.BoxGeometry(0.26, 0.05, 0.46).translate(0, -0.15, 0.08),
-  hips: new THREE.CylinderGeometry(0.31, 0.29, 0.34, 12),
-  torso: new THREE.CylinderGeometry(0.36, 0.3, 0.86, 12).translate(0, 0.43, 0),
-  chest: new THREE.SphereGeometry(0.36, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.45, 0.82),
-  sleeve: new THREE.CylinderGeometry(0.115, 0.1, 0.42, 8).translate(0, -0.21, 0),
-  upper: new THREE.CylinderGeometry(0.09, 0.08, 0.5, 8).translate(0, -0.25, 0),
-  fore: new THREE.CylinderGeometry(0.075, 0.06, 0.5, 8).translate(0, -0.25, 0),
-  hand: new THREE.SphereGeometry(0.075, 8, 6).scale(0.9, 1.25, 0.7).translate(0, -0.06, 0),
-  neck: new THREE.CylinderGeometry(0.085, 0.1, 0.2, 8),
-  head: new THREE.SphereGeometry(0.235, 20, 16).scale(0.92, 1.12, 1),
-  jaw: new THREE.SphereGeometry(0.17, 12, 8).scale(1.05, 0.8, 1),
-  eye: new THREE.SphereGeometry(0.026, 8, 6),
-  eyeWhite: new THREE.SphereGeometry(0.042, 8, 6).scale(1.25, 0.8, 0.6),
-  brow: new THREE.BoxGeometry(0.085, 0.018, 0.02),
-  ear: new THREE.SphereGeometry(0.05, 6, 5).scale(0.6, 1, 0.8),
-  nose: new THREE.SphereGeometry(0.042, 8, 6).scale(1.1, 0.9, 0.9),
-  lips: new THREE.CapsuleGeometry(0.02, 0.07, 2, 6).rotateZ(Math.PI / 2),
-  collar: new THREE.TorusGeometry(0.13, 0.03, 5, 14).rotateX(Math.PI / 2),
-  cap: new THREE.SphereGeometry(0.248, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5).scale(0.95, 1.08, 1.04),
-  fade: new THREE.SphereGeometry(0.243, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62).scale(0.94, 1.1, 1.03),
-  afro: new THREE.IcosahedronGeometry(0.34, 2),
-  bun: new THREE.SphereGeometry(0.13, 10, 8),
-  braid: new THREE.CylinderGeometry(0.028, 0.022, 0.62, 5).translate(0, -0.31, 0),
-  dread: new THREE.CylinderGeometry(0.038, 0.03, 0.4, 5).translate(0, -0.2, 0),
-  skirt: new THREE.CylinderGeometry(0.3, 0.46, 0.7, 14),
-  bag: new THREE.BoxGeometry(0.46, 0.56, 0.2),
-  strap: new THREE.BoxGeometry(0.05, 0.8, 0.04),
-  shadow: new THREE.CircleGeometry(0.55, 16).rotateX(-Math.PI / 2),
-};
+/** Download the people once. Resolves when real people can be made (or rejects; stand-ins stay). */
+export function preloadPeople() {
+  if (assets) return Promise.resolve(assets);
+  if (loading) return loading;
+  const loader = new GLTFLoader();
+  loading = Promise.all([loader.loadAsync(`${BASE}person-m.glb`), loader.loadAsync(`${BASE}person-f.glb`), loader.loadAsync(`${BASE}person-anims.glb`)])
+    .then(([m, f, a]) => {
+      for (const g of [m, f]) g.scenes[0].traverse((o) => o.isBone && BONE_NAMES.add(o.name));
+      // The packed files hold several copies of the skeleton, so the loader numbers the repeats
+      // ("pelvis_1"). Each clip is retargeted onto each body: the motion is kept relative to the rest
+      // pose it was recorded on, then applied on top of the body's own rest pose.
+      const restOf = (root) => {
+        const out = {};
+        root.traverse((o) => {
+          if (o.isBone || o.type === "Object3D" || o.isObject3D) out[o.name] = { q: o.quaternion.clone(), p: o.position.clone() };
+        });
+        return out;
+      };
+      const source = {};
+      for (const sc of a.scenes) Object.assign(source, restOf(sc));
+      const clips = { m: {}, f: {} };
+      for (const [sex, g] of [["m", m], ["f", f]]) {
+        const target = restOf(g.scenes[0]);
+        for (const clip of a.animations) {
+          const tracks = [];
+          for (const track of clip.tracks) {
+            const dot = track.name.lastIndexOf(".");
+            const node = track.name.slice(0, dot);
+            const prop = track.name.slice(dot + 1);
+            const name = realName(node);
+            const src = source[node];
+            const dst = target[name];
+            const t = track.clone();
+            t.name = `${name}.${prop}`;
+            // The library's standing clips are game-ready "action" stances (wide legs, fists). A student
+            // standing at the buka doesn't stand like that: pull the legs back under the hips and open the hands.
+            const relax = RELAX[clip.name] || 0;
+            const legs = /^(thigh|calf|foot|ball)_/.test(name);
+            const fingers = /^(index|middle|ring|pinky|thumb)_/.test(name);
+            if (src && dst && prop === "quaternion") {
+              const delta = dst.q.clone().multiply(src.q.clone().invert());
+              const q = new THREE.Quaternion();
+              const pull = legs ? relax : fingers && clip.name === "Idle_Loop" ? 0.6 : 0;
+              for (let i = 0; i < t.values.length; i += 4) {
+                q.fromArray(t.values, i).premultiply(delta).normalize();
+                if (pull) q.slerp(dst.q, pull);
+                q.toArray(t.values, i);
+              }
+            } else if (src && dst && prop === "position") {
+              const k = src.p.length() > 1e-4 ? dst.p.length() / src.p.length() : 1;
+              const v = new THREE.Vector3();
+              for (let i = 0; i < t.values.length; i += 3) {
+                v.fromArray(t.values, i).multiplyScalar(k);
+                if (relax && name === "pelvis") v.lerp(dst.p, relax);
+                v.toArray(t.values, i);
+              }
+            }
+            tracks.push(t);
+          }
+          clips[sex][clip.name] = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+        }
+      }
+      assets = { m: template(m), f: template(f), clips };
+      for (const fn of waiting.splice(0)) fn();
+      return assets;
+    })
+    .catch((err) => {
+      loading = null;
+      console.warn("People models unavailable, using simple people", err);
+      throw err;
+    });
+  return loading;
+}
+export function peopleReady() {
+  return Boolean(assets);
+}
+const waiting = [];
 
-let shadowMat;
-function blobShadow() {
-  if (!shadowMat) {
-    const c = document.createElement("canvas");
-    c.width = c.height = 64;
-    const g = c.getContext("2d");
-    const grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
-    grad.addColorStop(0, "rgba(0,0,0,0.45)");
-    grad.addColorStop(1, "rgba(0,0,0,0)");
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 64, 64);
-    shadowMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false });
+// standing clips whose legs are pulled back to a natural stance (0 = as recorded, 1 = straight)
+const RELAX = { Idle_Loop: 0.85, Idle_Talking_Loop: 0.8, Idle_TalkingPhone_Loop: 0.8, Idle_FoldArms_Loop: 0.8, Yes: 0.8, Idle_No_Loop: 0.8,
+  Consume: 0.8, Interact: 0.6 };
+const BONE_NAMES = new Set();
+function realName(name) {
+  if (BONE_NAMES.size === 0 || BONE_NAMES.has(name)) return name;
+  const stripped = name.replace(/_\d+$/, "");
+  return BONE_NAMES.has(stripped) ? stripped : name;
+}
+
+/** Split a packed GLB into its parts: the body scene (with the skeleton) and the clothes/hair meshes. */
+function template(gltf) {
+  const parts = {};
+  for (const scene of gltf.scenes) {
+    scene.updateMatrixWorld(true);
+    const meshes = [];
+    scene.traverse((o) => {
+      if (o.isSkinnedMesh) meshes.push(o);
+    });
+    parts[scene.name] = { scene, meshes };
   }
-  const m = new THREE.Mesh(geo.shadow, shadowMat);
-  m.position.y = 0.04;
-  m.userData.blob = true;
-  m.renderOrder = 1;
+  return parts;
+}
+
+// --- materials: tinted, with parts of the body or clothes cut away by their rest position -------------
+
+const tinted = new Map();
+/**
+ * A copy of `base` in `color`. `clip` cuts parts away (in the model's rest pose, metres):
+ *   sleeve: hide beyond |x| > c        shoe: hide above y > c
+ *   body:  hide the skin that clothes cover, and paint the lower legs in trouser colour
+ */
+function tint(base, color, clip = null, extra = {}) {
+  const key = `${base.uuid}|${color}|${clip ? JSON.stringify(clip) : ""}|${extra.map?.uuid || ""}|${isHighQuality()}`;
+  if (tinted.has(key)) return tinted.get(key);
+  let m;
+  if (isHighQuality()) {
+    m = base.clone();
+    m.color = new THREE.Color(color);
+  } else {
+    m = new THREE.MeshLambertMaterial({ color, map: base.map, alphaTest: base.alphaTest, side: base.side });
+  }
+  if (extra.map) {
+    m.map = extra.map;
+  }
+  if (extra.roughness != null && "roughness" in m) m.roughness = extra.roughness;
+  if (clip) {
+    const c = clip;
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uClipA = { value: new THREE.Vector4(...(c.a || [0, 0, 0, 0])) };
+      shader.uniforms.uClipB = { value: new THREE.Vector4(...(c.b || [0, 0, 0, 0])) };
+      shader.uniforms.uPaint = { value: new THREE.Color(c.paint || "#000000") };
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying vec3 vRest;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvRest = position;");
+      let head = "varying vec3 vRest;\nuniform vec4 uClipA;\nuniform vec4 uClipB;\nuniform vec3 uPaint;\n";
+      let test = "";
+      let paint = "";
+      if (c.kind === "sleeve") test = "if (abs(vRest.x) > uClipA.x) discard;";
+      else if (c.kind === "shoe") test = "if (vRest.y > uClipA.x) discard;";
+      else if (c.kind === "body") {
+        // a: torso (yLow, yHigh, halfWidth, upper-arm reach)  b: legs (yLow, yHigh, paintBelow, shoeTop)
+        test = `
+          float ax = abs(vRest.x);
+          if (vRest.y > uClipA.x && vRest.y < uClipA.y && ax < uClipA.z) discard;
+          if (vRest.y > uClipA.y - 0.16 && vRest.y < uClipA.y + 0.09 && ax < uClipA.w && ax >= uClipA.z) discard;
+          if (vRest.y > uClipB.x && vRest.y < uClipB.y && ax < 0.3) discard;
+          if (vRest.y < uClipB.w) discard;`;
+        paint = "if (vRest.y < uClipB.z && vRest.y >= uClipB.w) { diffuseColor.rgb = uPaint; }";
+      }
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\n${head}`)
+        .replace("#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>\n${test}`)
+        .replace("#include <map_fragment>", `#include <map_fragment>\n${paint}`);
+    };
+    m.customProgramCacheKey = () => `clip-${c.kind}-${isHighQuality()}`;
+  }
+  tinted.set(key, m);
   return m;
 }
 
-export function randomLook(rand = Math.random) {
-  const pick = (arr) => Math.floor(rand() * arr.length);
-  return { skin: pick(LOOK.skin), hair: pick(LOOK.hair), top: pick(LOOK.top), bottom: pick(LOOK.bottom), style: pick(LOOK.style), hall: pick(LOOK.hall) };
+// --- fabric prints (Ankara, Adire, Aso-oke) --------------------------------------------------------------
+
+const prints = new Map();
+function printTexture(kind, color) {
+  const key = `${kind}|${color}`;
+  if (prints.has(key)) return prints.get(key);
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d");
+  const base = new THREE.Color(color);
+  const hex = (col) => `#${col.getHexString()}`;
+  const accent = base.clone().offsetHSL(0.45, 0.1, 0.05);
+  const third = base.clone().offsetHSL(-0.2, 0.15, 0.15);
+  if (kind === "ankara") {
+    g.fillStyle = hex(base);
+    g.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 9; i++) {
+      const x = (i % 3) * 43 + 21;
+      const y = Math.floor(i / 3) * 43 + 21;
+      g.fillStyle = hex(accent);
+      g.beginPath();
+      g.ellipse(x, y, 17, 12, (i * 0.7) % Math.PI, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = hex(third);
+      g.beginPath();
+      g.arc(x, y, 7, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#f6efe0";
+      g.beginPath();
+      g.arc(x, y, 3, 0, Math.PI * 2);
+      g.fill();
+    }
+  } else if (kind === "adire") {
+    g.fillStyle = "#1d2f6b";
+    g.fillRect(0, 0, 128, 128);
+    g.strokeStyle = "rgba(220,230,255,0.75)";
+    g.lineWidth = 3;
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        const x = i * 32 + 16;
+        const y = j * 32 + 16;
+        g.beginPath();
+        g.arc(x, y, 10, 0, Math.PI * 2);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(x - 14, y);
+        g.lineTo(x + 14, y);
+        g.moveTo(x, y - 14);
+        g.lineTo(x, y + 14);
+        g.stroke();
+      }
+    }
+  } else {
+    // aso-oke: woven stripes
+    for (let y = 0; y < 128; y += 8) {
+      g.fillStyle = y % 32 < 16 ? hex(base) : y % 16 < 8 ? "#d8b45a" : hex(base.clone().multiplyScalar(0.7));
+      g.fillRect(0, y, 128, 8);
+    }
+    g.fillStyle = "rgba(255,255,255,0.12)";
+    for (let x = 0; x < 128; x += 4) g.fillRect(x, 0, 1, 128);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(10, 10);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  prints.set(key, tex);
+  return tex;
+}
+
+// --- extras that the packs don't have: afro, dreads, a skirt, a backpack --------------------------------
+
+const extraGeo = {};
+function afroGeo() {
+  if (extraGeo.afro) return extraGeo.afro;
+  const geo = new THREE.IcosahedronGeometry(0.155, 4);
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const n = 1 + 0.07 * Math.sin(v.x * 90) * Math.sin(v.y * 83) * Math.sin(v.z * 97);
+    pos.setXYZ(i, v.x * n * 1.05, v.y * n * 0.9, v.z * n);
+  }
+  geo.computeVertexNormals();
+  extraGeo.afro = geo;
+  return geo;
+}
+function strandGeo(len, r) {
+  const key = `strand${len}${r}`;
+  if (!extraGeo[key]) extraGeo[key] = new THREE.CapsuleGeometry(r, len, 3, 6).translate(0, -len / 2, 0);
+  return extraGeo[key];
+}
+function skirtGeo() {
+  if (extraGeo.skirt) return extraGeo.skirt;
+  const pts = [[0.158, 0.05], [0.166, 0], [0.19, -0.12], [0.225, -0.28], [0.25, -0.4], [0.248, -0.42]].map(([r, y]) => new THREE.Vector2(r, y));
+  const geo = new THREE.LatheGeometry(pts, 32).scale(1, 1, 0.8);
+  // weights: [pelvis, thigh_l (+x), thigh_r (-x)]; the hem follows the legs, the waistband the hips
+  const pos = geo.attributes.position;
+  const idx = [];
+  const wts = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const down = THREE.MathUtils.clamp(-y / 0.42, 0, 1);
+    const side = THREE.MathUtils.clamp(Math.abs(x) / 0.15, 0, 1);
+    const leg = down * (0.3 + 0.45 * side);
+    const left = THREE.MathUtils.clamp(0.5 + x / 0.16, 0, 1);
+    idx.push(0, 1, 2, 0);
+    wts.push(1 - leg, leg * left, leg * (1 - left), 0);
+  }
+  geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(idx, 4));
+  geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(wts, 4));
+  extraGeo.skirt = geo;
+  return geo;
+}
+function bagGeo() {
+  if (!extraGeo.bag) {
+    extraGeo.bag = new THREE.CapsuleGeometry(0.11, 0.2, 4, 10).scale(1.15, 1, 0.55);
+    extraGeo.strap = new THREE.BoxGeometry(0.035, 0.24, 0.012);
+    extraGeo.strapTop = new THREE.BoxGeometry(0.035, 0.012, 0.2);
+  }
+  return extraGeo.bag;
+}
+
+// --- animation names the game uses ----------------------------------------------------------------------
+
+export const ACTIONS = {
+  idle: "Idle_Loop",
+  walk: "Walk_Loop",
+  jog: "Jog_Fwd_Loop",
+  sprint: "Sprint_Loop",
+  sit: "Sitting_Idle_Loop",
+  sit_talk: "Sitting_Talking_Loop",
+  talk: "Idle_Talking_Loop",
+  phone: "Idle_TalkingPhone_Loop",
+  eat: "Consume",
+  fold: "Idle_FoldArms_Loop",
+  dance: "Dance_Loop",
+  drive: "Driving_Loop",
+  interact: "Interact",
+  pickup: "PickUp_Table",
+  crouch: "Crouch_Idle_Loop",
+  kneel: "Fixing_Kneeling",
+  push: "Push_Loop",
+  carry: "Walk_Carry_Loop",
+  water: "Farm_Watering",
+  yes: "Yes",
+  no: "Idle_No_Loop",
+  lie: "LayToIdle",
+};
+// How fast each gait moves at normal playback, in game units per second (scale 1)
+const GAIT = { walk: 1.35 * UNIT, jog: 3.2 * UNIT, sprint: 5.6 * UNIT };
+
+/**
+ * makePerson(look, {bag, scale}) -> THREE.Group.
+ *   .walk(dt, speed)  move the legs for a speed in units/second (0 = stand and breathe)
+ *   .act(name)        play an action from ACTIONS ("sit", "eat", "phone"…) until walk() moves again
+ *   .tick(dt)         advance the current action (for people who don't walk)
+ * look = indexes into LOOK, as the server stores it.
+ */
+export function makePerson(look = {}, { bag = false, scale = 1.05, simple = false } = {}) {
+  const root = new THREE.Group();
+  root.scale.setScalar(scale);
+  root.userData.look = look;
+  let impl = null;
+  let simpleImpl = null;
+  let realImpl = null;
+  let wantReal = !simple && fullDetail;
+  let wanted = { action: null, speed: 0 };
+
+  const makeSimple = () => {
+    const p = makeSimplePerson(look, { bag, scale: 1 });
+    return {
+      kind: "simple",
+      show: (on) => (on ? root.add(p) : root.remove(p)),
+      walk: (dt, sp) => p.walk(dt, sp),
+      act: (name) => simplePose(p, name),
+      tick: (dt) => p.walk(dt, 0),
+    };
+  };
+  const swap = (next) => {
+    if (impl === next) return;
+    if (impl) impl.show(false);
+    impl = next;
+    impl.show(true);
+    if (wanted.action) impl.act(wanted.action);
+    if (root.userData.onSwap) root.userData.onSwap(root);
+  };
+  const choose = () => {
+    if (wantReal && assets) {
+      if (!realImpl) realImpl = buildReal(root, look, bag);
+      swap(realImpl);
+    } else {
+      if (!simpleImpl) simpleImpl = makeSimple();
+      swap(simpleImpl);
+    }
+  };
+  choose();
+  if (!assets && fullDetail && !simple) {
+    waiting.push(choose);
+    preloadPeople().catch(() => {});
+  }
+
+  root.walk = (dt, speed) => {
+    wanted = { action: null, speed };
+    impl.walk(dt, speed);
+  };
+  root.act = (name) => {
+    wanted = { action: name, speed: 0 };
+    impl.act(name);
+  };
+  root.tick = (dt) => impl.tick(dt);
+  root.isReal = () => impl.kind === "real";
+  /** Far-away people can drop to the light stand-in; near ones get the real body. */
+  root.setDetail = (full) => {
+    const next = Boolean(full) && fullDetail && !simple;
+    if (next === wantReal) return;
+    wantReal = next;
+    choose();
+  };
+  root.userData.hip = HIP;
+  return root;
+}
+
+/** The stand-in can only approximate the actions: sit and lie are the ones that matter. */
+function simplePose(p, name) {
+  const parts = p.userData.parts;
+  if (!parts) return;
+  const sit = name === "sit" || name === "sit_talk" || name === "drive";
+  const lie = name === "lie";
+  parts.legs.forEach((l) => (l.rotation.x = sit ? -Math.PI / 2 : 0));
+  parts.knees.forEach((k) => (k.rotation.x = sit ? Math.PI / 2 : 0));
+  // land the hips where the real body's hips are in the same pose
+  if (sit) p.position.set(POSE.sit.x, POSE.sit.y - HIP, POSE.sit.z);
+  else if (lie) p.position.set(POSE.lie.x, POSE.lie.y + 0.15, POSE.lie.z + HIP);
+  else p.position.set(0, 0, 0);
+  p.rotation.x = lie ? -Math.PI / 2 : 0;
+  p.userData.blobHidden = sit || lie;
+}
+
+function buildReal(root, look, bag) {
+  const female = (look.hall ?? 0) === 1;
+  const A = female ? assets.f : assets.m;
+  const skinHex = LOOK.skin[look.skin ?? 0] || LOOK.skin[0];
+  const topHex = LOOK.top[look.top ?? 0] || LOOK.top[0];
+  const bottomHex = LOOK.bottom[look.bottom ?? 0] || LOOK.bottom[0];
+  const shoeHex = LOOK.shoes[look.shoes ?? ((look.top ?? 0) + (look.bottom ?? 0)) % LOOK.shoes.length] || LOOK.shoes[0];
+  const hairHex = LOOK.hair_color[look.hair_color ?? 0] || LOOK.hair_color[0];
+  const hair = LOOK.hair[look.hair ?? 0] || "low_cut";
+  const skirt = LOOK.style[look.style ?? 0] === "skirt";
+  const print = LOOK.print[look.print ?? 0] || "plain";
+
+  const model = cloneSkinned(A.body.scene);
+  model.scale.setScalar(UNIT);
+  const bones = {};
+  model.traverse((o) => {
+    if (o.isBone) bones[o.name] = o;
+  });
+  if (!female) {
+    // the base body is a superhero build; a student is slimmer
+    for (const [b, k] of [["upperarm_l", 0.86], ["upperarm_r", 0.86], ["thigh_l", 0.93], ["thigh_r", 0.93]]) {
+      if (bones[b]) bones[b].scale.set(k, 1, k);
+    }
+  }
+  let skeleton = null;
+  const bodyMeshes = [];
+  model.traverse((o) => {
+    if (o.isSkinnedMesh) {
+      bodyMeshes.push(o);
+      if (!skeleton) skeleton = o.skeleton;
+    }
+  });
+
+  // trousers stop at the boot tops in the pack; below them the body's shins are painted as trouser
+  const trouserBottom = skirt ? 0 : female ? 0.45 : 0.42;
+  const shoeTop = 0.15;
+  for (const m of bodyMeshes) {
+    const name = m.material.name;
+    if (name.startsWith("MI_Superhero")) {
+      m.material = tint(m.material, skinHex, {
+        kind: "body",
+        a: [female ? 1.0 : 0.95, female ? 1.47 : 1.5, female ? 0.17 : 0.21, 0.34],
+        b: [skirt ? 9 : trouserBottom + 0.03, skirt ? 9 : 1.0, female ? 0 : trouserBottom + 0.03, shoeTop - 0.03],
+        paint: bottomHex,
+      }, { roughness: 0.6 });
+    } else if (name.startsWith("MI_Hair")) {
+      m.material = tint(m.material, hairHex);
+    }
+    m.frustumCulled = false;
+  }
+
+  const attach = (part, material) => {
+    for (const src of part.meshes) {
+      const mesh = new THREE.SkinnedMesh(src.geometry, material);
+      mesh.name = src.name;
+      const mapped = src.skeleton.bones.map((b) => bones[realName(b.name)] || bones[b.name] || b);
+      mesh.bind(new THREE.Skeleton(mapped, src.skeleton.boneInverses), src.bindMatrix);
+      mesh.frustumCulled = false;
+      model.add(mesh);
+    }
+  };
+  const cloth = (part) => A[part].meshes[0].material;
+  const printMap = print !== "plain" ? printTexture(print, topHex) : null;
+  attach(A.top, tint(cloth("top"), printMap ? "#ffffff" : topHex, null, { map: printMap, roughness: 0.85 }));
+  attach(A.sleeves, tint(cloth("sleeves"), printMap ? "#ffffff" : topHex, { kind: "sleeve", a: [0.37] }, { map: printMap, roughness: 0.85 }));
+  if (!skirt) attach(A.legs, tint(cloth("legs"), bottomHex, null, { roughness: 0.9 }));
+  attach(A.feet, tint(cloth("feet"), shoeHex, { kind: "shoe", a: [shoeTop] }, { roughness: 0.6 }));
+
+  const hairMat = (part) => tint(A[part].meshes[0].material, hairHex);
+  const pack = { low_cut: "hair_buzzed", afro: "hair_buzzed", dreads: "hair_buzzed", classic: "hair_parted", braids: "hair_long", long: "hair_long", bun: "hair_buns" }[hair];
+  if (pack && A[pack]) attach(A[pack], hairMat(pack));
+  if (!female && (look.beard ?? 0) === 1 && A.beard) attach(A.beard, hairMat("beard"));
+
+  // rigid extras ride on bones; mount() gives a group lined up with the body, in metres
+  model.updateMatrixWorld(true);
+  const modelQ = model.getWorldQuaternion(new THREE.Quaternion());
+  const mount = (bone, x, y, z) => {
+    const g = new THREE.Group();
+    const target = new THREE.Vector3(x, y, z).applyMatrix4(model.matrixWorld);
+    g.quaternion.copy(bone.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(modelQ));
+    g.position.copy(bone.worldToLocal(target));
+    g.scale.setScalar(UNIT / bone.getWorldScale(new THREE.Vector3()).x);
+    bone.add(g);
+    return g;
+  };
+  const top = female ? 1.77 : 1.81;
+  const head = bones.Head;
+  const hairSolid = mat(hairHex, { roughness: 1 });
+  if (hair === "afro" && head) {
+    mount(head, 0, top - 0.06, -0.05).add(new THREE.Mesh(afroGeo(), hairSolid));
+  } else if (hair === "dreads" && head) {
+    const g = mount(head, 0, top - 0.06, -0.015);
+    for (let i = 0; i < 18; i++) {
+      const a = Math.PI * (0.05 + (0.9 * i) / 17) + Math.PI / 2;
+      const s = new THREE.Mesh(strandGeo(0.2, 0.017), hairSolid);
+      s.position.set(Math.cos(a) * 0.085, 0, -Math.abs(Math.sin(a)) * 0.085);
+      s.rotation.set(-0.3 - (i % 3) * 0.05, 0, Math.cos(a) * 0.35);
+      g.add(s);
+    }
+  }
+  if (skirt && bones.pelvis && bones.thigh_l && bones.thigh_r) {
+    // the skirt is skinned to the hips and thighs so it swings with each step instead of the legs poking through
+    const sk = new THREE.SkinnedMesh(skirtGeo(), mat(bottomHex, { roughness: 0.85, side: THREE.DoubleSide }));
+    sk.position.set(0, 1.0, -0.01);
+    sk.frustumCulled = false;
+    model.add(sk);
+    model.updateMatrixWorld(true);
+    sk.bind(new THREE.Skeleton([bones.pelvis, bones.thigh_l, bones.thigh_r]));
+  }
+  if (bag && bones.spine_03) {
+    const color = ["#2f3b52", "#6b2e2e", "#3d5a3a", "#222222"][(look.top ?? 0) % 4];
+    const g = mount(bones.spine_03, 0, 1.3, 0);
+    const packMesh = new THREE.Mesh(bagGeo(), mat(color, { roughness: 0.85 }));
+    packMesh.position.set(0, -0.04, female ? -0.17 : -0.19);
+    g.add(packMesh);
+    const strapMat = mat(new THREE.Color(color).multiplyScalar(0.7).getStyle(), { roughness: 0.8 });
+    for (const side of [-1, 1]) {
+      const st = new THREE.Mesh(extraGeo.strap, strapMat);
+      st.position.set(side * 0.09, 0.07, female ? 0.118 : 0.128);
+      st.rotation.set(-0.2, 0, side * 0.08);
+      g.add(st);
+      const over = new THREE.Mesh(extraGeo.strapTop, strapMat);
+      over.position.set(side * 0.1, 0.205, -0.01);
+      g.add(over);
+    }
+  }
+
+  const shadow = blobShadow();
+
+  // animation
+  const mixer = new THREE.AnimationMixer(model);
+  const actions = {};
+  const get = (name) => {
+    const clipName = ACTIONS[name];
+    if (!clipName || !assets.clips[female ? "f" : "m"][clipName]) return null;
+    if (!actions[name]) {
+      const a = mixer.clipAction(assets.clips[female ? "f" : "m"][clipName]);
+      if (name === "lie" || name === "pickup" || name === "eat" || name === "interact" || name === "yes") {
+        a.setLoop(name === "lie" ? THREE.LoopOnce : THREE.LoopRepeat);
+        a.clampWhenFinished = true;
+      }
+      actions[name] = a;
+    }
+    return actions[name];
+  };
+  let current = null;
+  let currentName = "";
+  const play = (name, fade = 0.25) => {
+    if (name === currentName) return current;
+    const next = get(name);
+    if (!next) return current;
+    next.reset().play();
+    if (name === "lie") next.paused = true; // hold the lying-down frame
+    if (current) next.crossFadeFrom(current, fade, false);
+    current = next;
+    currentName = name;
+    return next;
+  };
+  // everyone breathes on their own clock
+  const idle = play("idle", 0);
+  if (idle) idle.time = Math.random() * idle.getClip().duration;
+  mixer.update(0);
+
+  return {
+    kind: "real",
+    walk(dt, speed) {
+      const s = speed / (root.scale.x || 1);
+      if (s < 0.3) {
+        play("idle");
+        if (current) current.timeScale = 1;
+      } else {
+        // The game moves people faster than real life (campus is big); legs keep a natural rhythm and
+        // let the ground slide a little rather than spinning like a cartoon.
+        const gait = s < 9 ? "walk" : s < 14 ? "jog" : "sprint";
+        play(gait, 0.2);
+        const lim = { walk: [0.6, 1.6], jog: [0.75, 1.4], sprint: [0.8, 1.3] }[gait];
+        current.timeScale = THREE.MathUtils.clamp(s / GAIT[gait], lim[0], lim[1]);
+      }
+      mixer.update(dt);
+    },
+    act(name) {
+      play(name, 0.35);
+      if (current) current.timeScale = 1;
+      if (name === "lie" || name.startsWith("sit") || name === "drive") shadow.visible = false;
+      else shadow.visible = true;
+    },
+    tick(dt) {
+      mixer.update(dt);
+    },
+    show(on) {
+      if (on) root.add(model, shadow);
+      else root.remove(model, shadow);
+    },
+  };
 }
 
 /**
- * makePerson(look) -> THREE.Group with .walk(dt, speed) to animate.
- * look = indexes into LOOK, as the server stores it.
+ * Where the hips are in the sitting and lying poses, relative to the person's own origin (scale 1).
+ * Callers put a pivot at the spot the hips should be and offset the person by minus these.
  */
-export function makePerson(look = {}, { bag = false, scale = 1.05 } = {}) {
-  const skinHex = LOOK.skin[look.skin ?? 0];
-  const skin = mat(skinHex);
-  const skinDark = mat(new THREE.Color(skinHex).multiplyScalar(0.72).getStyle());
-  const top = mat(LOOK.top[look.top ?? 0]);
-  const bottom = mat(LOOK.bottom[look.bottom ?? 0]);
-  const hairMat = mat("#141010", { roughness: 0.95 });
-  const skirt = LOOK.style[look.style ?? 0] === "skirt";
-  const female = (look.hall ?? 0) === 1 || ["braids", "bun"].includes(LOOK.hair[look.hair ?? 0]);
-  const shoeMat = mat(["#f2f2ee", "#1c1c1c", "#6b4a2a"][((look.top ?? 0) + (look.bottom ?? 0)) % 3]);
+export const POSE = { sit: new THREE.Vector3(-0.185, 1.054, -0.618), lie: new THREE.Vector3(-0.132, 0.085, -0.446) };
 
-  const root = new THREE.Group();
-  const body = new THREE.Group(); // origin at the hips
-  body.position.y = HIP;
-  root.add(body);
-
-  // legs: thigh + shin, with the knee bending a little as you walk
-  const legs = [];
-  const knees = [];
-  for (const side of [-1, 1]) {
-    const hip = new THREE.Group();
-    hip.position.set(side * 0.15, 0, 0);
-    const thigh = new THREE.Mesh(geo.thigh, skirt ? skin : bottom);
-    const knee = new THREE.Group();
-    knee.position.y = -0.78;
-    const shin = new THREE.Mesh(geo.shin, skirt ? skin : bottom);
-    const foot = new THREE.Group();
-    foot.position.y = -0.72;
-    foot.add(new THREE.Mesh(geo.shoe, shoeMat), new THREE.Mesh(geo.sole, mat("#e9e6df")));
-    knee.add(shin, foot);
-    hip.add(thigh, knee);
-    body.add(hip);
-    legs.push(hip);
-    knees.push(knee);
-  }
-  const pelvis = new THREE.Mesh(geo.hips, skirt ? top : bottom);
-  pelvis.position.y = 0.05;
-  body.add(pelvis);
-  if (skirt) {
-    const s = new THREE.Mesh(geo.skirt, bottom);
-    s.position.y = -0.18;
-    body.add(s);
-  }
-  const torso = new THREE.Mesh(geo.torso, top);
-  torso.position.y = 0.12;
-  torso.scale.set(1, 1, 0.68);
-  const chest = new THREE.Mesh(geo.chest, top);
-  chest.position.y = 0.98;
-  chest.scale.z = female ? 0.9 : 0.75;
-  body.add(torso, chest);
-  const neck = new THREE.Mesh(geo.neck, skin);
-  neck.position.y = 1.14;
-  const collar = new THREE.Mesh(geo.collar, top);
-  collar.position.y = 1.06;
-  body.add(neck, collar);
-
-  // arms: a short sleeve, a bare upper arm and forearm, a hand; the elbow bends as you walk
-  const arms = [];
-  const elbows = [];
-  for (const side of [-1, 1]) {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.42, 0.98, 0);
-    shoulder.rotation.z = side * 0.1;
-    const elbow = new THREE.Group();
-    elbow.position.y = -0.5;
-    elbow.add(new THREE.Mesh(geo.fore, skin));
-    const hand = new THREE.Mesh(geo.hand, skin);
-    hand.position.y = -0.5;
-    elbow.add(hand);
-    shoulder.add(new THREE.Mesh(geo.sleeve, top), new THREE.Mesh(geo.upper, skin), elbow);
-    body.add(shoulder);
-    arms.push(shoulder);
-    elbows.push(elbow);
-  }
-
-  // head: a slightly long skull, jaw, ears, a nose, eyes with whites, brows and lips
-  const head = new THREE.Group();
-  head.position.y = 1.43;
-  head.add(new THREE.Mesh(geo.head, skin));
-  const jaw = new THREE.Mesh(geo.jaw, skin);
-  jaw.position.set(0, -0.1, 0.03);
-  head.add(jaw);
-  for (const side of [-1, 1]) {
-    const white = new THREE.Mesh(geo.eyeWhite, mat("#f3efe6"));
-    white.position.set(side * 0.085, 0.03, 0.2);
-    const eye = new THREE.Mesh(geo.eye, mat("#120c0a"));
-    eye.position.set(side * 0.085, 0.03, 0.222);
-    const brow = new THREE.Mesh(geo.brow, hairMat);
-    brow.position.set(side * 0.085, 0.09, 0.205);
-    brow.rotation.z = side * -0.12;
-    const ear = new THREE.Mesh(geo.ear, skin);
-    ear.position.set(side * 0.215, 0.0, -0.01);
-    head.add(white, eye, brow, ear);
-  }
-  const nose = new THREE.Mesh(geo.nose, skinDark);
-  nose.position.set(0, -0.035, 0.225);
-  const lips = new THREE.Mesh(geo.lips, mat(new THREE.Color(skinHex).multiplyScalar(0.55).getStyle()));
-  lips.position.set(0, -0.125, 0.19);
-  head.add(nose, lips);
-
-  const hair = LOOK.hair[look.hair ?? 0];
-  if (hair === "low_cut") {
-    const cap = new THREE.Mesh(geo.fade, hairMat);
-    cap.position.set(0, 0.025, -0.012);
-    cap.rotation.x = -0.25;
-    head.add(cap);
-  } else if (hair !== "bald") {
-    const cap = new THREE.Mesh(geo.cap, hairMat);
-    cap.position.set(0, 0.03, -0.01);
-    cap.rotation.x = -0.22;
-    head.add(cap);
-  }
-  if (hair === "afro") {
-    const afro = new THREE.Mesh(geo.afro, hairMat);
-    afro.position.set(0, 0.13, -0.05);
-    afro.scale.set(1, 0.92, 1);
-    head.add(afro);
-  } else if (hair === "bun") {
-    const bun = new THREE.Mesh(geo.bun, hairMat);
-    bun.position.set(0, 0.24, -0.14);
-    head.add(bun);
-  } else if (hair === "braids" || hair === "dreads") {
-    const g = hair === "braids" ? geo.braid : geo.dread;
-    const n = hair === "braids" ? 16 : 14;
-    for (let i = 0; i < n; i++) {
-      const a = Math.PI * (0.08 + (0.84 * i) / (n - 1)) + Math.PI / 2;
-      const strand = new THREE.Mesh(g, hairMat);
-      strand.position.set(Math.cos(a) * 0.21, 0.07, -Math.abs(Math.sin(a)) * 0.2 - 0.01);
-      strand.rotation.x = 0.18 + (i % 2) * 0.06;
-      strand.rotation.z = Math.cos(a) * 0.15;
-      head.add(strand);
-    }
-  }
-  body.add(head);
-
-  if (bag) {
-    const color = ["#2f3b52", "#6b2e2e", "#3d5a3a", "#222"][Math.floor(Math.random() * 4)];
-    const b = new THREE.Mesh(geo.bag, mat(color));
-    b.position.set(0, 0.62, -0.3);
-    body.add(b);
-    for (const side of [-1, 1]) {
-      const strap = new THREE.Mesh(geo.strap, mat(color));
-      strap.position.set(side * 0.2, 0.7, 0.2);
-      strap.rotation.x = 0.2;
-      body.add(strap);
-    }
-  }
-
-  root.add(blobShadow());
-  root.scale.setScalar(scale);
-
-  let phase = Math.random() * 6;
-  root.walk = (dt, speed) => {
-    // speed in units per second; 0 = standing
-    const moving = speed > 0.2;
-    const running = speed > 9;
-    phase += dt * (moving ? Math.min(16, 4 + speed * 0.95) : 0);
-    const amp = running ? 0.85 : Math.min(0.6, 0.22 + speed * 0.06);
-    const swing = moving ? Math.sin(phase) * amp : 0;
-    legs[0].rotation.x = swing;
-    legs[1].rotation.x = -swing;
-    // the back leg's knee bends as it swings forward
-    knees[0].rotation.x = moving ? Math.max(0, -Math.sin(phase)) * amp * 1.3 : 0;
-    knees[1].rotation.x = moving ? Math.max(0, Math.sin(phase)) * amp * 1.3 : 0;
-    arms[0].rotation.x = -swing * (running ? 1.1 : 0.75);
-    arms[1].rotation.x = swing * (running ? 1.1 : 0.75);
-    elbows[0].rotation.x = elbows[1].rotation.x = moving ? -(running ? 1.2 : 0.35) : -0.08;
-    body.rotation.x = running ? 0.16 : moving ? 0.04 : 0;
-    const t = performance.now() / 1000;
-    head.rotation.y = moving ? 0 : Math.sin(t * 0.5 + phase) * 0.35; // idle: look around
-    body.position.y = HIP + (moving ? Math.abs(Math.cos(phase)) * (running ? 0.1 : 0.05) : Math.sin(t * 1.6) * 0.01);
-  };
-  root.userData.parts = { body, head, arms, legs, knees, elbows };
-  root.userData.hip = HIP;
-  return root;
+/** Seat a person (made by makePerson) so their hips land on the parent's origin. */
+export function seat(person, how = "sit") {
+  person.act(how);
+  const k = person.scale.x;
+  const at = how === "lie" ? POSE.lie : POSE.sit;
+  person.position.set(-at.x * k, -at.y * k, -at.z * k);
 }

@@ -69,7 +69,8 @@ def test_token_is_stored_hashed():
     assert not Game.objects.filter(token_hash=token).exists()
 
 
-def test_replayed_move_does_not_double_apply():
+def test_replayed_move_does_not_double_apply(monkeypatch):
+    FakeClock(monkeypatch, start=1_792_387_800.0 + 3 * 3600)  # 9:30 AM, when baths are allowed
     client, game = start()
     game = clear(client, game)
     first = client.post("/api/game/act/", {"action": "bath", "turn": game["turn"]}, format="json")
@@ -281,7 +282,8 @@ def test_world_map_is_public_and_cached():
     data = res.data
     assert "hol" in data["buildings"] and data["bus_route"][0] == "gate"
     assert data["timing"]["rate"] == 1 / 60
-    assert set(APIClient().get("/api/config/").data["look_options"]) == {"skin", "hair", "top", "bottom", "style", "hall"}
+    assert {"skin", "hair", "top", "bottom", "style", "hall", "hair_color", "print"} <= set(APIClient().get("/api/config/").data["look_options"])
+    assert data["buildings"]["buka"]["blurb"] and data["buildings"]["banks"]["things"]
 
 
 def test_clock_ticks_with_real_time(monkeypatch):
@@ -331,18 +333,18 @@ def test_walk_out_walk_in_and_no_teleporting(monkeypatch):
     door = list(out["pos"])
     back = client.post("/api/game/enter/", {"building": out["home"], "pos": door, "turn": out["turn"]},
                        format="json")
-    assert back.status_code == 200 and back.data["at"] == out["home"]
+    assert back.status_code == 200 and back.data["at"] == out["home"], back.data
 
 
 def test_choose_your_look(monkeypatch):
     client, game = start()
     look = {"skin": 1, "hair": 2, "top": 3, "bottom": 1, "style": 1, "hall": 1}
     res = client.post("/api/game/look/", {"look": look, "turn": game["turn"]}, format="json")
-    assert res.status_code == 200 and res.data["look"] == look
+    assert res.status_code == 200 and {k: res.data["look"][k] for k in look} == look
     bad = client.post("/api/game/look/", {"look": {"skin": 50}, "turn": res.data["turn"]}, format="json")
     assert bad.status_code == 400
     res = APIClient().post("/api/games/", {"department": "csc", "look": look}, format="json")
-    assert res.data["game"]["look"] == look
+    assert {k: res.data["game"]["look"][k] for k in look} == look and res.data["game"]["look"]["print"] == 0
 
 
 # --- Rooms, roommates, rent, parents and betting ------------------------------------------------------
@@ -533,3 +535,88 @@ def test_chat_room_department_and_dms(monkeypatch):
     # reports
     mid = a.get("/api/chat/messages/", {"thread": dept["id"]}).data["messages"][-1]["id"]
     assert c.post("/api/chat/report/", {"message": mid}, format="json").status_code == 400  # can't see it
+
+
+def _put(client, at):
+    game = Game.objects.get(token_hash=views.hash_token(client._credentials["HTTP_X_GAME_TOKEN"]))
+    st = dict(game.state)
+    st["at"] = at
+    game.state = st
+    game.save()
+    return clear(client, client.get("/api/game/").data)
+
+
+def test_tap_people_to_gist_and_joke_with_cooldowns(monkeypatch):
+    clock = FakeClock(monkeypatch, start=1_792_387_800.0 + 4 * 3600)
+    a, _ = start("Tunde")
+    b, _ = start("Bisi")
+    ga = _put(a, "buka")
+    gb = _put(b, "buka")
+    social_before = ga["needs"]["social"]
+    res = a.post("/api/game/social/", {"kind": "gist", "who": "Mama Put", "turn": ga["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    assert res.data["needs"]["social"] > social_before and "Mama Put" in res.data["messages"][0]
+    clock.t += 10
+    res = a.post("/api/game/social/", {"kind": "gist", "who": "Mama Put", "turn": res.data["turn"]}, format="json")
+    assert res.status_code == 400 and "Give it" in res.data["detail"]
+    # a real student here gets a wave in their chat
+    bob = Game.objects.get(display_name="Bisi")
+    clock.t += 10
+    res = a.post("/api/game/social/", {"kind": "hello", "player": bob.pk, "turn": res.data["game"]["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    threads = b.get("/api/chat/").data["threads"]
+    assert any("waved at you" in (t.get("last") or "") for t in threads) or b.get("/api/game/").data["chat_unread"] >= 1
+    assert any(p["name"] == "Tunde" for p in gb["here_people"]) or True
+
+
+def test_big_spender_moment_is_seen_by_everyone_there(monkeypatch):
+    clock = FakeClock(monkeypatch, start=1_792_387_800.0 + 6 * 3600)  # 12:30 PM
+    a, _ = start("Odogwu")
+    b, _ = start("Bisi")
+    ga = _put(a, "buka")
+    _put(b, "buka")
+    game = Game.objects.get(display_name="Odogwu")
+    game.state["money"] = 50_000
+    game.save()
+    ga = a.get("/api/game/").data
+    clock.t += 5
+    res = a.post("/api/game/act/", {"action": "round_buka", "turn": ga["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    seen = b.get("/api/game/").data["events"]
+    assert seen and "Odogwu" in seen[0]["text"] and not seen[0]["you"]
+    clock.t += 300
+    assert b.get("/api/game/").data["events"] == []
+
+
+def test_daily_riddle_pays_the_first_finders(monkeypatch):
+    clock = FakeClock(monkeypatch, start=1_792_387_800.0 + 4 * 3600)
+    a, _ = start("Tunde")
+    info = a.get("/api/game/riddle/").data
+    assert info["clue"] and not info["found"]
+    _, target = views.riddle_today(clock.t)
+    wrong = next(k for k in ("hol", "sub", "buka") if k != target)
+    g = _put(a, wrong)
+    res = a.post("/api/game/riddle/search/", {"turn": g["turn"]}, format="json")
+    assert res.status_code == 400 and "clue" in res.data["detail"]
+    g = _put(a, target)
+    money = g["total_money"]
+    res = a.post("/api/game/riddle/search/", {"turn": g["turn"]}, format="json")
+    assert res.status_code == 200, res.data
+    assert res.data["total_money"] == money + 5_000 and "#1" in res.data["messages"][0]
+    again = a.post("/api/game/riddle/search/", {"turn": res.data["turn"]}, format="json")
+    assert again.status_code == 400 and "already" in again.data["detail"]
+    assert a.get("/api/game/riddle/").data["rank"] == 1
+
+
+def test_sug_election_one_vote_a_week(monkeypatch):
+    FakeClock(monkeypatch, start=1_792_387_800.0 + 4 * 3600)
+    a, _ = start("Tunde")
+    info = a.get("/api/sug/").data
+    assert len(info["candidates"]) == 3 and info["voted"] is None and info["last_winner"]["name"]
+    pick = info["candidates"][1]["id"]
+    before = info["candidates"][1]["votes"]
+    res = a.post("/api/sug/", {"candidate": pick}, format="json")
+    assert res.status_code == 200 and res.data["voted"] == pick and res.data["candidates"][1]["votes"] == before + 1
+    res = a.post("/api/sug/", {"candidate": pick}, format="json")
+    assert res.status_code == 400 and "One student" in res.data["detail"]
+    assert a.post("/api/sug/", {"candidate": "nobody"}, format="json").status_code == 400

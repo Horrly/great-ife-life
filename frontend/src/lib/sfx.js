@@ -73,6 +73,6 @@ export function sfx(name) {
 export function soundFor(text) {
   if (/credit alert|\+₦|sent ₦|paid you|landed|bonus|odds landed|counted out/i.test(text)) return "cash";
   if (/level up|badge unlocked|mission done|streak/i.test(text)) return "levelup";
-  if (/getting low|collapsed|missed|lost|stolen|took ₦|bet cut/i.test(text)) return "error";
+  if (/getting low|getting hungry|running on empty|need a bath|bored stiff|alone too long|collapsed|missed|lost|stolen|took ₦|bet cut/i.test(text)) return "error";
   return "notice";
 }

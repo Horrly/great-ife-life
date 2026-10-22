@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { clockText, duration, naira } from "../lib/format";
 import { BankApp } from "./Banking";
 import ChatApp from "./Chat";
+import { SugCard } from "./Extras";
 
 const WALLPAPER = {
   ios: "linear-gradient(160deg, #1f6f4a 0%, #0e4a30 40%, #f2a65a 100%)",
@@ -19,32 +20,46 @@ const APPS = [
   { id: "bank", name: "Bank", icon: "🏦", color: "#2f5f9e", screen: "bank" },
   { id: "call", name: "Call Mummy", icon: "📞", color: "#2fb34a", screen: "parents" },
   { id: "houses", name: "Houses", icon: "🏠", color: "#c0612b", screen: "houses" },
-  { id: "freelance", name: "Freelance", icon: "🧑‍💻", color: "#1dbf73", actions: ["fl_article", "design_gig"] },
-  { id: "bet", name: "OgaBet", icon: "⚽", color: "#0f2f1f", screen: "bet", smart: true },
-  { id: "data", name: "Data Plug", icon: "📶", color: "#f2c230", actions: ["sell_data"] },
-  { id: "canva", name: "Canva", icon: "🎨", color: "#19a7ce", actions: ["logo_gig"] },
-  { id: "gigs", name: "Gigs", icon: "💼", color: "#6b4f2a", actions: ["bug_fix", "website_gig", "bridal_hair", "barb_wedding"] },
-  { id: "social", name: "Socials", icon: "💬", color: "#d6336c", actions: ["scroll", "brand_deal"] },
-  { id: "biz", name: "Business", icon: "🏪", color: "#b5482a", match: (id) => id.startsWith("buy_") && id !== "buy_car" || id.startsWith("sell_") && id !== "sell_data" },
-  { id: "jiji", name: "Jiji", icon: "🚗", color: "#3db83a", actions: ["buy_car"] },
+  { id: "freelance", name: "Freelance", icon: "🧑‍💻", color: "#1dbf73", actions: ["fl_article", "design_gig"], day: 2 },
+  { id: "bet", name: "OgaBet", icon: "⚽", color: "#0f2f1f", screen: "bet", smart: true, day: 3 },
+  { id: "data", name: "Data Plug", icon: "📶", color: "#f2c230", actions: ["sell_data"], day: 2 },
+  { id: "canva", name: "Canva", icon: "🎨", color: "#19a7ce", actions: ["logo_gig"], day: 3 },
+  { id: "gigs", name: "Gigs", icon: "💼", color: "#6b4f2a", actions: ["bug_fix", "website_gig", "bridal_hair", "barb_wedding"], day: 3 },
+  { id: "social", name: "Socials", icon: "💬", color: "#d6336c", actions: ["scroll", "brand_deal"], day: 2 },
+  { id: "biz", name: "Business", icon: "🏪", color: "#b5482a", match: (id) => (id.startsWith("buy_") && id !== "buy_car") || (id.startsWith("sell_") && id !== "sell_data") || id.startsWith("promo_"), day: 4 },
+  { id: "jiji", name: "Jiji", icon: "🚗", color: "#3db83a", actions: ["buy_car"], day: 5 },
   { id: "timetable", name: "Timetable", icon: "🗓", color: "#7a3e9d", screen: "timetable" },
   { id: "maps", name: "Maps", icon: "🗺", color: "#e9c227", screen: "maps" },
 ];
 
+// New students get the basics; more apps open over their first days, so nobody drowns on day one.
+function seenApps() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("gil.apps.seen") || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function markSeen(id) {
+  try {
+    const s = seenApps();
+    s.add(id);
+    localStorage.setItem("gil.apps.seen", JSON.stringify([...s]));
+  } catch {
+    /* fine: the NEW tag just stays */
+  }
+}
+
 function Crack() {
+  // a hairline crack from one corner, the way real dropped phones look
   return (
-    <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" viewBox="0 0 100 200" preserveAspectRatio="none" aria-hidden>
-      <g stroke="rgba(255,255,255,0.75)" strokeWidth="0.45" fill="none">
-        <path d="M70 40 L55 62 L58 80 L40 110 L44 130 L30 160" />
-        <path d="M70 40 L88 52 L96 50" />
-        <path d="M70 40 L76 20 L74 4" />
-        <path d="M70 40 L50 34 L30 40 L10 33" />
-        <path d="M55 62 L75 75 L90 100" />
-        <path d="M58 80 L80 92" />
-        <path d="M40 110 L20 118 L4 130" />
-        <path d="M44 130 L62 150 L70 196" />
+    <svg className="pointer-events-none absolute right-0 top-0 z-20 h-1/3 w-1/2" viewBox="0 0 100 100" aria-hidden>
+      <g stroke="rgba(255,255,255,0.55)" strokeWidth="0.6" fill="none" strokeLinecap="round">
+        <path d="M100 6 L82 18 L78 30 L62 41 L57 58" />
+        <path d="M82 18 L70 14 L58 17" />
+        <path d="M78 30 L90 40 L96 52" />
+        <path d="M62 41 L48 44" />
       </g>
-      <circle cx="70" cy="40" r="3" fill="rgba(255,255,255,0.35)" />
     </svg>
   );
 }
@@ -210,6 +225,7 @@ function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run }) {
     const list = game.phone.filter((a) => (app.match ? app.match(a.id) : app.actions.includes(a.id)));
     body = (
       <>
+        {app.id === "portal" && <SugCard />}
         {app.id === "portal" && (
           <p className="mx-3 mt-3 rounded-xl bg-white/90 px-3 py-2 text-xs text-ink">
             {game.fees_covered ? "School charges are covered for you." : game.fees_paid ? "School charges: PAID. Exam card ready." : `School charges: unpaid (${naira(10000)}).`}
@@ -235,10 +251,21 @@ function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run }) {
 
 function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onParents, onBet, run }) {
   const [app, setAppState] = useState(null);
-  const setApp = (a) => (a?.screen === "maps" ? onMaps() : a?.screen === "houses" ? onHousing() : setAppState(a));
+  const [seen, setSeen] = useState(seenApps);
+  const setApp = (a) => {
+    if (a && !seen.has(a.id)) {
+      markSeen(a.id);
+      setSeen(seenApps());
+    }
+    return a?.screen === "maps" ? onMaps() : a?.screen === "houses" ? onHousing() : setAppState(a);
+  };
+  const daysIn = game.total_days || 1;
+  const isNew = (a) => a.day && daysIn - a.day < 2 && !seen.has(a.id);
   const ios = info.os === "ios";
   const wall = ios ? WALLPAPER.ios : WALLPAPER[info.brand] || WALLPAPER.tecno;
-  const visible = APPS.filter((a) => a.screen || a.always || game.phone.some((x) => (a.match ? a.match(x.id) : a.actions.includes(x.id))));
+  const usable = APPS.filter((a) => a.screen || a.always || game.phone.some((x) => (a.match ? a.match(x.id) : a.actions.includes(x.id))));
+  const visible = usable.filter((a) => !a.day || daysIn >= a.day);
+  const locked = usable.filter((a) => a.day && daysIn < a.day);
   const dock = ios ? visible.slice(0, 4) : [];
   const grid = ios ? visible.slice(4) : visible;
   return (
@@ -275,6 +302,9 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onPare
                       aria-hidden
                     >
                       {a.icon}
+                      {isNew(a) && (
+                        <span className="absolute -right-2 -top-1 rounded-full bg-danger px-1 text-[9px] font-black text-white">NEW</span>
+                      )}
                       {a.id === "chat" && game.chat_unread > 0 && (
                         <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-danger px-1 text-[11px] font-black text-white">
                           {game.chat_unread}
@@ -285,6 +315,19 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onPare
                   </button>
                 </li>
               ))}
+              {locked.length > 0 && (
+                <li className="text-center" title="More apps open over your first days on campus">
+                  <span className={`relative mx-auto grid h-12 w-12 place-items-center bg-black/30 text-lg text-white ${ios ? "rounded-[0.9rem]" : "rounded-full"}`} aria-hidden>
+                    🔒
+                  </span>
+                  <span className="mt-1 block truncate text-[10px] font-bold text-white drop-shadow">
+                    {(() => {
+                      const d = Math.min(...locked.map((a) => a.day));
+                      return `+${locked.filter((a) => a.day === d).length} on day ${d}`;
+                    })()}
+                  </span>
+                </li>
+              )}
             </ul>
             {ios && (
               <div className="mx-3 mb-3 grid grid-cols-4 gap-2 rounded-[1.6rem] bg-white/25 p-2.5 backdrop-blur">

@@ -1,0 +1,10 @@
+People models and animations in this folder
+
+person-m.glb, person-f.glb and person-anims.glb are built from these packs by Quaternius
+(https://quaternius.com), all released under CC0 1.0 (public domain):
+  - Universal Base Characters (Standard)
+  - Modular Character Outfits - Fantasy (Standard)
+  - Universal Animation Library and Universal Animation Library 2 (Standard)
+
+Clothes are retinted, hair is recoloured, textures are resized to WebP, and the animation
+clips are trimmed to the ones the game uses. Thank you, Quaternius.

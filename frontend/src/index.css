@@ -199,3 +199,22 @@ body {
     transform: scale(1.06);
   }
 }
+
+/* emoji rain for big moments */
+.rain { position: absolute; inset: -30vh 0 auto 0; height: 100vh; overflow: hidden; pointer-events: none; }
+.rain span { position: absolute; top: -10%; font-size: 1.7rem; animation: rain-fall 2.6s linear infinite; }
+@keyframes rain-fall { from { transform: translateY(0) rotate(0deg); } to { transform: translateY(120vh) rotate(200deg); } }
+@media (prefers-reduced-motion: reduce) { .rain { display: none; } }
+
+/* phones on their side and other short screens: everything a little smaller so the world still shows */
+@media (max-height: 520px) and (orientation: landscape) {
+  html { font-size: 13px; }
+  h1.display { font-size: 2.5rem !important; }
+}
+@media (max-height: 400px) and (orientation: landscape) {
+  html { font-size: 12px; }
+}
+/* very narrow phones (320 px) */
+@media (max-width: 340px) {
+  html { font-size: 14.5px; }
+}

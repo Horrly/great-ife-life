@@ -142,6 +142,14 @@ export function GameProvider({ children }) {
     }
     return api(`/game/plan/?${q}`);
   }, []);
+  /** Tap a person: say hello, gist, crack a joke, throw shade (player = a real student's id). */
+  const social = useCallback((kind, who, player, role) => move("/game/social/", { kind, who, player, role }), [move]);
+  /** Send money straight to a student you can see (into their account). */
+  const transferTo = useCallback((to, amount, note) => move("/game/bank/transfer/", { to, amount, note }), [move]);
+  const riddle = useCallback(() => api("/game/riddle/"), []);
+  const riddleSearch = useCallback(() => move("/game/riddle/search/", {}), [move]);
+  const sug = useCallback(() => api("/sug/"), []);
+  const vote = useCallback((candidate) => api("/sug/", { method: "POST", body: { candidate } }), []);
   /** Create an account; the game on this device is saved to it. */
   const register = useCallback(async (username, password) => {
     const res = await api("/account/register/", { method: "POST", body: { username, password }, accountToken: null });
@@ -192,7 +200,7 @@ export function GameProvider({ children }) {
     <GameContext.Provider
       value={{ game, loading, busy, error, setError, messages, setMessages, start, resume, act, choose, next, quit,
         travel, enter, leave, setLook, sync, plan, askParents, bet, moveHome, joinRoom, housing, postNote,
-        openBank, bankCounter, atm, pos, transfer, lookupAccount, chat,
+        openBank, bankCounter, atm, pos, transfer, lookupAccount, chat, social, transferTo, riddle, riddleSearch, sug, vote,
         account, register, login, logout, resumeLife, refreshAccount }}
     >
       {children}

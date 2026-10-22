@@ -26,6 +26,14 @@ LINK_RE = re.compile(r"(https?://\S+|www\.\S+|\b\S+\.(com|ng|net|org|io|me|ly|li
 EMAIL_RE = re.compile(r"\b\S+@\S+\.\S+\b")
 HANDLE_RE = re.compile(r"(?<!\w)@\w{3,}")
 PHONE_RE = re.compile(r"(\+?\d[\d\s\-().]{5,}\d)")
+# Game money for real money is how scams start (the worst thing seen in Lagos Life's job board), so
+# offers to buy or sell naira for real cash, "double your money" and "fake alert" never get sent.
+SCAM_RE = re.compile(
+    r"(real[\s-]*(money|cash|naira|life)|fake\s*alert|double\s+(your|ur|my)\s+(money|cash)|"
+    r"\b(opay|palmpay|moniepoint|kuda|paystack|mtn\s*momo)\b|\b(airtime|recharge\s*card|data)\s+for\s+(game|naira|money)|"
+    r"\b(sell|buy)(ing)?\s+(game\s+)?(naira|money|cash)\b|\bcash\s*out\b)", re.I)
+SCAM_TEXT = ("Trading game money for real money isn't allowed: it's how students get scammed. "
+             "Keep naira inside Great Ife Life.")
 WORD_RE = re.compile("|".join(re.escape(w) for w in BLOCKED_WORDS), re.I)
 
 
@@ -189,6 +197,8 @@ def send(game: Game, thread: str, text: str | None = None, share_account: bool =
         bank = C.BANKS.get(game.bank, {}).get("name", "Bank")
         body = f"💳 My account: {bank} {game.account_number} ({game.display_name or 'me'})"
     else:
+        if SCAM_RE.search(str(text or "")):
+            raise ChatError(SCAM_TEXT)
         body = clean_text(text)
     msg = ChatMessage.objects.create(thread=thread, sender=game, text=body)
     ChatRead.objects.update_or_create(game=game, thread=thread, defaults={"last_id": msg.pk})

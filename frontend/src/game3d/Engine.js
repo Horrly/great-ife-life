@@ -12,7 +12,7 @@ const WALK_SPEED = 7.5; // world units per real second: the same as trekking on 
 const RUN_FACTOR = 1.5; // the server allows a little faster than trekking pace
 const ACCEL = 9; // how quickly you speed up and slow down
 const DOOR_TRIGGER = 7;
-const BOUNDS = { x0: -230, x1: 470, z0: -40, z1: 360 };
+let BOUNDS = { x0: -230, x1: 470, z0: -40, z1: 360 }; // replaced by the map's own bounds
 
 function seeded(n) {
   let s = n;
@@ -43,6 +43,7 @@ export default class CampusEngine {
     this.container = container;
     this.opts = { onRoomTap };
     this.map = map;
+    if (map.bounds) BOUNDS = { x0: map.bounds.x0 - 30, x1: map.bounds.x1 + 30, z0: map.bounds.z0 - 30, z1: map.bounds.z1 + 30 };
     this.onNearDoor = onNearDoor || (() => {});
     this.graph = buildGraph(map);
     this.input = { x: 0, y: 0 };
@@ -114,6 +115,8 @@ export default class CampusEngine {
     }
 
     setQuality(!lowPower);
+    // how many campus people get the full body at once: fewer on weak phones
+    this.fullPeople = lowPower ? 4 : 10;
     this.world = buildWorld(map);
     this.scene.add(this.world.group);
     if (this.shadows) {
@@ -152,9 +155,30 @@ export default class CampusEngine {
 
   _shadowPerson(person) {
     if (!this.shadows) return;
-    person.traverse((o) => {
-      if (o.isMesh && !o.userData.blob) o.castShadow = true;
-      if (o.userData.blob) o.visible = false; // real shadows replace the blob
+    const apply = (root) =>
+      root.traverse((o) => {
+        if (o.isMesh && !o.userData.blob) o.castShadow = true;
+        if (o.userData.blob) o.visible = false; // real shadows replace the blob
+      });
+    apply(person);
+    person.userData.onSwap = apply; // when the real body arrives
+  }
+
+  /** Only the people nearest the camera get the full body; the rest are light stand-ins. */
+  _peopleDetail(dt) {
+    this._lodT = (this._lodT || 0) - dt;
+    if (this._lodT > 0) return;
+    this._lodT = 0.6;
+    const me = this.player.position;
+    const near = [];
+    for (const w of this.walkers) if (w.person.visible) near.push(w.person);
+    for (const q of this.queues) if (q.person.visible) near.push(q.person);
+    near.sort((a, b) => a.position.distanceToSquared(me) - b.position.distanceToSquared(me));
+    near.forEach((p, i) => {
+      const d = p.position.distanceTo(me);
+      // a little slack so people don't flicker between the two at the edge
+      const full = p.isReal() ? i < this.fullPeople + 2 && d < 110 : i < this.fullPeople && d < 90;
+      p.setDetail(full);
     });
   }
 
@@ -166,8 +190,9 @@ export default class CampusEngine {
     this.walkers = [];
     for (let i = 0; i < 42; i++) {
       const person = makePerson(randomLook(rand), { bag: rand() < 0.7 });
+      person.setDetail(false);
       const from = nodes[Math.floor(rand() * nodes.length)];
-      const w = { person, mover: null, node: from, speed: 3.6 + rand() * 2.4, side: rand() < 0.5 ? 1 : -1 };
+      const w = { person, mover: null, node: from, speed: 3.2 + rand() * 1.8, side: rand() < 0.5 ? 1 : -1 };
       this._newWalk(w, rand);
       w.mover.s = rand() * w.mover.total;
       this.scene.add(person);
@@ -180,6 +205,8 @@ export default class CampusEngine {
       const at = stopPlacement(this.map, stop);
       for (let i = 0; i < 5; i++) {
         const p = makePerson(randomLook(rand), { bag: rand() < 0.6 });
+        p.setDetail(false);
+        p.act(["idle", "phone", "fold", "idle", "talk"][Math.floor(rand() * 5)]);
         const along = (i - 2) * 1.5;
         p.position.set(at.x + at.dir[0] * along - at.right[0] * 2.2, 0, at.z + at.dir[1] * along - at.right[1] * 2.2);
         p.rotation.y = Math.atan2(-at.right[0], -at.right[1]);
@@ -285,7 +312,7 @@ export default class CampusEngine {
     });
     for (const q of this.queues) {
       q.person.visible = busHours && (busy || q.rank < 2);
-      if (q.person.visible) q.person.walk(dt, 0);
+      if (q.person.visible) q.person.tick(dt);
     }
     for (const v of this.vehicles) {
       if (v.kind === "bus") v.mesh.visible = busHours;
@@ -315,7 +342,9 @@ export default class CampusEngine {
   // --- Time of day -------------------------------------------------------------------------------
 
   setMinute(minute) {
-    this.minute = ((minute % 1440) + 1440) % 1440;
+    this.realMinute = ((minute % 1440) + 1440) % 1440;
+    // the map is always drawn in daylight so you can read it, like a printed campus map
+    this.minute = this.mapMode ? 780 : this.realMinute;
     if (this.roomView) this.roomView.setMinute(this.minute, this.noLight);
     const m = this.minute;
     const sky = skyAt(m);
@@ -362,16 +391,43 @@ export default class CampusEngine {
     // drag on the scene to turn the camera
     const el = this.renderer.domElement;
     let drag = null;
+    const touches = new Map(); // for pinch-zoom on the map
     this._pd = (e) => {
+      touches.set(e.pointerId, [e.clientX, e.clientY]);
       drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, id: e.pointerId, t: performance.now() };
       el.setPointerCapture?.(e.pointerId);
     };
     this._pm = (e) => {
+      if (this.mapMode) {
+        const before = touches.get(e.pointerId);
+        if (!before) return;
+        if (touches.size >= 2) {
+          const [a, b] = [...touches.values()];
+          const d0 = Math.hypot(a[0] - b[0], a[1] - b[1]);
+          touches.set(e.pointerId, [e.clientX, e.clientY]);
+          const [c, d] = [...touches.values()];
+          const d1 = Math.hypot(c[0] - d[0], c[1] - d[1]);
+          if (d0 > 0) this.mapZoom = Math.max(0.45, Math.min(3.2, this.mapZoom * (d1 / d0)));
+          return;
+        }
+        // drag the map: the ground moves with your finger
+        const k = this._mapHeight() / (this.renderer.domElement.clientHeight || 800) * 1.15;
+        this.mapT.x -= (e.clientX - before[0]) * k;
+        this.mapT.z -= (e.clientY - before[1]) * k * 1.25;
+        this._clampMap();
+        touches.set(e.pointerId, [e.clientX, e.clientY]);
+        return;
+      }
       if (!drag || drag.id !== e.pointerId) return;
       this.camYaw -= (e.clientX - drag.x) * 0.008;
       drag.x = e.clientX;
     };
     this._pu = (e) => {
+      touches.delete(e.pointerId);
+      if (this.mapMode) {
+        drag = null;
+        return;
+      }
       // a quick tap (not a drag) walks you there
       if (drag && e.type === "pointerup" && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 10
           && performance.now() - drag.t < 400) {
@@ -385,10 +441,74 @@ export default class CampusEngine {
     el.addEventListener("pointerup", this._pu);
     el.addEventListener("pointercancel", this._pu);
     this._wheel = (e) => {
-      this.camDist = Math.max(12, Math.min(60, this.camDist + e.deltaY * 0.03));
+      if (this.mapMode) this.mapZoom = Math.max(0.45, Math.min(3.2, this.mapZoom * (e.deltaY > 0 ? 0.9 : 1.1)));
+      else this.camDist = Math.max(12, Math.min(60, this.camDist + e.deltaY * 0.03));
       e.preventDefault();
     };
     el.addEventListener("wheel", this._wheel, { passive: false });
+  }
+
+  // --- The map: the same 3D campus seen from above, north up, with React pins on top -------------
+
+  /** Turn the map view on or off. focus = [x, z] to centre on (default: you). */
+  setMapMode(on, focus) {
+    this.mapMode = Boolean(on);
+    if (this.mapMode) {
+      const p = focus || [this.player.position.x, this.player.position.z];
+      this.mapT = new THREE.Vector3(p[0], 0, p[1]);
+      this.mapZoom = this.mapZoom || 0.8;
+      if (this.clouds) this.clouds.visible = false;
+      this._fogWas = [this.scene.fog.near, this.scene.fog.far];
+      this.scene.fog.near = 900;
+      this.scene.fog.far = 2400;
+      for (const s of this.world.labels || []) s.visible = false;
+      this._clampMap();
+      this.setMinute(this.realMinute ?? this.minute);
+      [this.scene.fog.near, this.scene.fog.far] = [900, 2400];
+    } else if (this._fogWas) {
+      if (this.clouds) this.clouds.visible = true;
+      this.setMinute(this.realMinute ?? this.minute);
+      [this.scene.fog.near, this.scene.fog.far] = this._fogWas;
+    }
+  }
+
+  mapCentre(x, z) {
+    if (!this.mapT) return;
+    this.mapT.set(x, 0, z);
+    this._clampMap();
+  }
+
+  zoomMap(factor) {
+    this.mapZoom = Math.max(0.45, Math.min(3.2, (this.mapZoom || 1) * factor));
+  }
+
+  _mapHeight() {
+    return 230 / (this.mapZoom || 1);
+  }
+
+  _clampMap() {
+    const b = this.map.bounds;
+    this.mapT.x = Math.max(b.x0 - 260, Math.min(b.x1 + 40, this.mapT.x));
+    this.mapT.z = Math.max(b.z0 - 40, Math.min(b.z1 + 260, this.mapT.z));
+  }
+
+  /** Where points [x, y, z] are on the screen: [{ x, y, on }] in CSS pixels. */
+  project(points) {
+    const el = this.renderer.domElement;
+    const w = el.clientWidth || 1;
+    const h = el.clientHeight || 1;
+    const v = this._projV || (this._projV = new THREE.Vector3());
+    return points.map(([x, y, z]) => {
+      v.set(x, y, z).project(this.camera);
+      return { x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h, on: v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 };
+    });
+  }
+
+  _mapCamera() {
+    const h = this._mapHeight();
+    this.camera.position.set(this.mapT.x, h, this.mapT.z + h * 0.45);
+    this.camera.lookAt(this.mapT.x, 0, this.mapT.z - h * 0.05);
+    this.sky.position.copy(this.camera.position);
   }
 
   /** Joystick: x right, y up, each -1..1. */
@@ -671,6 +791,7 @@ export default class CampusEngine {
     const raw = Math.min(0.5, this.clock.getDelta());
     const dt = Math.min(0.05, raw); // animation step; journeys use real time so slow phones aren't slower
     this._updateTraffic(dt);
+    this._peopleDetail(raw);
     const p = this.player.position;
 
     if (this.journey) {
@@ -724,6 +845,17 @@ export default class CampusEngine {
       this.player.walk(dt, v);
       this._checkDoors();
     }
+    if (this.mapMode) {
+      this._mapCamera();
+      if (this.camera.far < 3000) {
+        this.camera.far = 3000;
+        this.camera.updateProjectionMatrix();
+      }
+      for (const d of this.world.doors) d.ring.material.opacity = 0;
+      this.renderer.render(this.scene, this.camera);
+      if (this.onMapFrame) this.onMapFrame();
+      return;
+    }
     if (this.roomMode && this.roomView) {
       // inside your own room: draw the room instead of the campus
       this.roomView.tick(raw);
@@ -759,7 +891,22 @@ export default class CampusEngine {
     // door rings pulse; vehicle headlights at night
     const pulse = 0.55 + Math.sin(performance.now() / 300) * 0.3;
     for (const d of this.world.doors) d.ring.material.opacity = d === this.nearDoor ? 1 : pulse;
+    this._fadeLabels();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Building names never sit under the clock and wallet: they fade out as they reach the top band. */
+  _fadeLabels() {
+    const h = this.renderer.domElement.clientHeight || 1;
+    const band = Math.min(0.24, 150 / h); // the HUD's top rows, as a share of the screen
+    const v = this._labelV || (this._labelV = new THREE.Vector3());
+    for (const s of this.world.labels || []) {
+      v.copy(s.position).project(this.camera);
+      const fromTop = (1 - v.y) / 2; // 0 at the top edge
+      const k = THREE.MathUtils.clamp((fromTop - band) / 0.06, 0, 1);
+      s.material.opacity = k;
+      s.visible = k > 0.02 && v.z < 1;
+    }
   }
 
   _unstick() {
@@ -834,8 +981,14 @@ export default class CampusEngine {
   }
 
   /** While an action plays, you walk to where it happens (the cooker, the counter, a desk). */
-  roomActivity(station) {
+  roomActivity(station, emoji) {
     this.roomView?.setActivity(station);
+    this.roomView?.setBubble(station ? emoji : null);
+  }
+
+  /** The person behind a "person:<n>" tap inside a room or place. */
+  personAt(tag) {
+    return this.roomView?.personAt(tag) || null;
   }
 
   /** Show your room (hall or off campus) with your roommates in it. */

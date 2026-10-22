@@ -214,6 +214,12 @@ def upgrade(state: dict) -> dict:
     for key in ("tdb", "collapses", "business_income", "loans", "skits", "trekked", "early", "trips"):
         state["stats"].setdefault(key, 0)
     state["stats"].setdefault("modes", {})
+    if state.get("map", 1) < 2:
+        # the campus was rearranged to match the real OAU map: stand at the door of wherever you are
+        state["map"] = 2
+        where = state.get("at") if state.get("at") in W.BUILDINGS else state.get("housing", {}).get("building")
+        if where in W.BUILDINGS:
+            state["pos"] = list(W.NODES[W.BUILDINGS[where]["node"]])
     if state.get("version", 1) < 3:
         # v2 had four time slots a day. Put the player at home at that slot's time.
         slot = state.pop("slot", 0)
@@ -922,6 +928,11 @@ def _check(state, action) -> str | None:
         return "You already own one"
     if special == "sell_business" and action["business"] not in state["businesses"]:
         return "You don't own this"
+    if special == "promote":
+        if not state["businesses"]:
+            return "Start a business first"
+        if (state.get("promo") or {}).get("until", 0) > state["total_days"]:
+            return "A promotion is already running"
     req = action.get("requires", {})
     if req.get("min_prep") and state["prep"] < req["min_prep"]:
         return f"You need {req['min_prep']}% readiness to teach"
@@ -1270,6 +1281,10 @@ def _do_action(state, action, messages):
     elif special == "buy_business":
         state["businesses"][action["business"]] = state["total_days"]
         line = f"You started a {C.BUSINESSES[action['business']]['name'].lower()}! It pays out every night."
+    elif special == "promote":
+        p = C.PROMOS[action["promo"]]
+        state["promo"] = {"boost": p["boost"], "until": state["total_days"] + p["nights"], "label": p["label"]}
+        line = f"{p['label']}: done! Your business takings are up {int(p['boost'] * 100)}% for {p['nights']} night{'s' if p['nights'] > 1 else ''}."
     elif special == "sell_business":
         b = C.BUSINESSES[action["business"]]
         back = int(b["price"] * C.BUSINESS_RESALE)
@@ -1388,6 +1403,9 @@ def _business_payouts(state, messages):
         if state["strike_days"]:
             amount //= 2  # campus is half empty during a strike
         amount = int(amount * (1 + C.HUSTLING_BONUS * (skill_level(state, "hustling") - 1)))
+        promo = state.get("promo") or {}
+        if promo.get("until", 0) > state["total_days"]:
+            amount = int(amount * (1 + promo["boost"]))
         total += amount
     if total > 0:
         _add_money(state, total)
@@ -1701,7 +1719,8 @@ def _clean_pos(pos):
             or not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in pos)):
         raise GameError("Where are you?")
     x, z = float(pos[0]), float(pos[1])
-    if not (-280 <= x <= 500 and -80 <= z <= 400):
+    b = W.bounds()
+    if not (b["x0"] - 40 <= x <= b["x1"] + 40 and b["z0"] - 40 <= z <= b["z1"] + 40):
         raise GameError("That's off the map.")
     return [round(x, 1), round(z, 1)]
 
@@ -1941,7 +1960,7 @@ def plan_trip(state, to: str, mode: str, pos=None, now=None) -> dict:
         cost = W.tiered(info["fares"], length)
     elif mode == "cab":
         if not _night(t):
-            return unavailable("Night cabs start at 9:00 PM")
+            return unavailable("Night cabs run from 9 PM to 6 AM")
         inbound = start in ("town", "gate") and dest not in ("town", "gate")
         outbound = dest in ("town", "gate") and start not in ("town", "gate")
         if not (inbound or outbound):
@@ -3042,6 +3061,7 @@ def view(state: dict, now: float | None = None) -> dict:
         "missions": [{**item, "label": _mission_def(item["id"])["label"], "reward": C.MISSION_REWARDS[item["tier"]][0]}
                      for item in state["missions"]["list"]] if state["missions"]["day"] == state["total_days"] else [],
         "missions_bonus": state["missions"]["bonus"],
+        "people": people_list(state),
         "streak": state["streak"]["day"],
         "moodlets": active_moodlets(state),
         "phone_info": phone_info(state),
@@ -3098,3 +3118,117 @@ def view(state: dict, now: float | None = None) -> dict:
         "badges": [{"id": k, "name": n, "description": d, "earned": k in state["badges"]} for k, (n, d) in C.BADGES.items()],
         "log": state["log"][-12:][::-1],
     }
+
+
+# --- People you tap ----------------------------------------------------------------------------------
+
+def social_chance(state) -> int:
+    """The chance a joke lands, in percent: charisma helps."""
+    bonus = 6 if has_trait(state, "smooth_talker") else 0
+    return min(95, 52 + 5 * skill_level(state, "charisma") + bonus)
+
+
+def friend_level(bond: float) -> dict:
+    """Stranger → Acquaintance → Friend → Close friend → Bestie, with how far to the next one."""
+    name, floor, nxt = C.FRIEND_LEVELS[0][1], 0, None
+    for i, (at, label) in enumerate(C.FRIEND_LEVELS):
+        if bond >= at:
+            name, floor = label, at
+            nxt = C.FRIEND_LEVELS[i + 1] if i + 1 < len(C.FRIEND_LEVELS) else None
+    return {"level": name, "floor": floor, "next": nxt[0] if nxt else None, "next_name": nxt[1] if nxt else None}
+
+
+def _person(state, who):
+    return state.setdefault("people", {}).get(who) or {"bond": 0}
+
+
+def social(state: dict, kind: str, who: str, now: float | None = None, role: str = "", player: bool = False
+           ) -> tuple[dict, list[str]]:
+    """Say hello, gist, joke, hang out (and more, as you get closer) with someone where you are."""
+    state = upgrade(copy.deepcopy(state))
+    messages = _begin(state, now)
+    if state["phase"] != "play":
+        raise GameError("Finish what's on screen first.")
+    spec = C.SOCIAL.get(kind)
+    if not spec:
+        raise GameError("Unknown thing to do.")
+    who = " ".join(str(who or "").split())[:24] or "Someone"
+    if not state.get("at"):
+        raise GameError("Go somewhere with people first.")
+    if spec.get("npc_only") and player:
+        raise GameError("You can't beg real students for money here. Ask them in chat if you must.")
+    bond = _person(state, who)["bond"]
+    if bond < spec.get("needs", 0):
+        need = friend_level(spec["needs"])["level"]
+        raise GameError(f"{spec['label']} opens when you and {who} are {need}s ({int(bond)}/{spec['needs']}).")
+    cds = state["flags"].setdefault("social_cd", {})
+    key = f"{kind}:{who}"
+    last = cds.get(key)
+    if last is not None and state["clock"] - last < spec["cooldown"]:
+        wait = int(spec["cooldown"] - (state["clock"] - last)) + 1
+        raise GameError(f"You just did that with {who}. Give it {wait} min." if wait < 120
+                        else f"You asked {who} already. Try again tomorrow.")
+    cds[key] = state["clock"]
+    if len(cds) > 40:  # keep the save small
+        for k in sorted(cds, key=cds.get)[:len(cds) - 40]:
+            cds.pop(k)
+    rng = _rng(state, f"social-{key}")
+    effects = dict(spec["effects"])
+    gain = spec.get("bond", 0)
+    fmt = {"who": who}
+    if spec.get("chance"):
+        won = rng.random() * 100 < social_chance(state)
+        lines = C.SOCIAL_LINES["joke_win" if won else "joke_fail"]
+        if not won:
+            effects = {"social": -2, "fun": 2}
+            gain = -1
+    elif kind == "borrow":
+        yes = rng.random() < 0.35 + bond / 300
+        lines = C.SOCIAL_LINES["borrow_yes" if yes else "borrow_no"]
+        if yes:
+            fmt["amount"] = rng.randrange(C.BORROW_RANGE[0], C.BORROW_RANGE[1] + 1, 50)
+            _receive(state, fmt["amount"], f"From {who}", prefer="cash")
+        else:
+            gain = 0
+    else:
+        lines = C.SOCIAL_LINES[kind]
+    if effects.get("social", 0) > 0:
+        _gain_xp(state, "charisma", max(1, round(effects["social"] / 5)), messages)
+        effects["social"] = effects["social"] * (1 + C.CHARISMA_BONUS * (skill_level(state, "charisma") - 1))
+    _apply_effects(state, effects)
+    messages.insert(0, rng.choice(lines).format(**fmt))
+    # how close you are now
+    people = state.setdefault("people", {})
+    p = people.get(who) or {"bond": 0, "met": state["total_days"]}
+    before = friend_level(p["bond"])["level"]
+    p["bond"] = max(0, min(C.BOND_MAX, p["bond"] + gain))
+    p["last"] = state["clock"] + 1440 * state["total_days"]
+    p["role"] = (" ".join(str(role or "").split())[:40]) or p.get("role", "")
+    p["player"] = bool(player)
+    people[who] = p
+    after = friend_level(p["bond"])["level"]
+    if after != before:
+        up = p["bond"] > 0 and [lv for _, lv in C.FRIEND_LEVELS].index(after) > [lv for _, lv in C.FRIEND_LEVELS].index(before)
+        messages.append(f"🤝 You and {who} are {after}s now!" if up else f"💔 You and {who} are only {after}s now.")
+    if len(people) > C.PEOPLE_KEEP:
+        for k in sorted(people, key=lambda n: people[n].get("last", 0))[:len(people) - C.PEOPLE_KEEP]:
+            people.pop(k)
+    return _finish(state, messages, now, spec["seconds"])
+
+
+def people_list(state) -> list[dict]:
+    out = []
+    for name, p in state.get("people", {}).items():
+        out.append({"name": name, "bond": p["bond"], "role": p.get("role", ""), "player": p.get("player", False),
+                    **friend_level(p["bond"])})
+    out.sort(key=lambda x: -x["bond"])
+    return out
+
+
+def gift(state: dict, amount: int, label: str, now: float | None = None) -> tuple[dict, list[str]]:
+    """Money that comes from the game itself (a riddle prize): into your account if you have one."""
+    state = upgrade(copy.deepcopy(state))
+    messages = _begin(state, now)
+    _receive(state, int(amount), label)
+    messages.append(f"+₦{int(amount):,} · {label}")
+    return _finish(state, messages, now, 0)

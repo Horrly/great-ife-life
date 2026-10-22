@@ -632,6 +632,51 @@ function busStop(map, nodeId, name) {
   return g;
 }
 
+/** Ile-Ife town outside the gate: each student area is a cluster of houses and lodges with its name on a board. */
+function townAreas(map) {
+  const g = new THREE.Group();
+  for (const line of map.town_roads || []) {
+    for (let i = 1; i < line.length; i++) for (const m of road(line[i - 1], line[i], "town")) g.add(m);
+  }
+  const rand = seeded(91);
+  const wallGeo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+  const roofGeo = new THREE.ConeGeometry(0.78, 0.5, 4, 1).rotateY(Math.PI / 4).translate(0, 0.25, 0);
+  const walls = ["#e5d8bd", "#d9c9a8", "#c8d6c0", "#e8dcc2", "#d0c4d8", "#f0e6d2", "#cfd8dc"].map((c) => mat(c));
+  const roofs = ["#8e979c", "#7a4a2a", "#5f6b73", "#9a3b2e"].map((c) => mat(c));
+  for (const a of map.town_areas || []) {
+    const n = 16;
+    for (let i = 0; i < n; i++) {
+      const ang = rand() * Math.PI * 2;
+      const r = 14 + rand() * 40;
+      const x = a.x + Math.cos(ang) * r;
+      const z = a.z + Math.sin(ang) * r;
+      const w = 9 + rand() * 7;
+      const d = 7 + rand() * 6;
+      const h = rand() < 0.25 ? 9 + rand() * 4 : 4.5 + rand() * 2; // some two-storey lodges
+      const house = new THREE.Mesh(wallGeo, walls[Math.floor(rand() * walls.length)]);
+      house.scale.set(w, h, d);
+      house.position.set(x, 0, z);
+      house.rotation.y = Math.round(rand() * 4) * (Math.PI / 2) + (rand() - 0.5) * 0.2;
+      const roof = new THREE.Mesh(roofGeo, roofs[Math.floor(rand() * roofs.length)]);
+      roof.scale.set(w * 1.12, 3, d * 1.12);
+      roof.position.set(x, h, z);
+      roof.rotation.y = house.rotation.y;
+      g.add(house, roof);
+    }
+    // the area's name on a big roadside board
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(18, 3), new THREE.MeshLambertMaterial({
+      map: signTexture(a.name.toUpperCase(), { bg: "#1f6f4a", fg: "#ffffff", border: "#f2c230" }), side: THREE.DoubleSide }));
+    sign.position.set(a.x, 7.5, a.z);
+    g.add(sign);
+    for (const sx of [-7, 7]) {
+      const pole = box(0.5, 6, 0.5, mat("#5b5e58"));
+      pole.position.set(a.x + sx, 3, a.z);
+      g.add(pole);
+    }
+  }
+  return g;
+}
+
 function townStrip(map) {
   // Asherifa: shops and houses along the road outside the gate.
   const g = new THREE.Group();
@@ -846,6 +891,7 @@ export function buildWorld(map) {
   const [gx, gz] = map.nodes.gate;
   colliders.push({ id: "gate", cameraOnly: true, h: 11, x0: gx - 8, x1: gx - 4, z0: gz - 10, z1: gz + 10 });
   group.add(townStrip(map));
+  group.add(townAreas(map));
   for (const s of map.bus_stops) group.add(busStop(map, s, map.stop_names?.[s] || s));
 
   return { group, doors, colliders, lamps: lampSet, nightMaterials: [...nightMaterials], labels };

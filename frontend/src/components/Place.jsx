@@ -58,7 +58,7 @@ function PlaceChat({ building, here }) {
 }
 
 export default function PlacePanel({ game, building, atHome, title, sub, onAct, run, busy, onClose, onLeave, onMap, onHome, onHide, onLaptop,
-  postNote, initialStation, hall, setHall }) {
+  postNote, initialStation, hall, setHall, receipt }) {
   const money = game.banking.branch || game.banking.atm || game.banking.pos;
   const stations = useMemo(() => {
     const order = ["class", "room", "money", "study", "food", "care", "rest", "fun", "hustle", "shop"];
@@ -83,12 +83,13 @@ export default function PlacePanel({ game, building, atHome, title, sub, onAct, 
         <div>
           <span className="display block truncate text-[1.45rem] text-ife-900">{title}</span>
           <span className="block truncate text-sm text-muted">{sub}</span>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex items-center gap-2">
             <Btn icon="🚪" label="Go outside" onClick={onLeave} />
             <Btn icon="🗺" label="Map" onClick={onMap} />
             {!atHome && <Btn icon="🏠" label="Go home" onClick={onHome} />}
             {game.has_laptop && <Btn icon="💻" label="Laptop" onClick={onLaptop} />}
             <Btn icon="👁" label={atHome ? "Look at your room" : "Look around"} onClick={onHide} />
+            {receipt}
           </div>
         </div>
       }>

@@ -182,3 +182,38 @@ class ChatReport(models.Model):
     reporter = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="chat_reports")
     created_at = models.DateTimeField(auto_now_add=True)
     handled = models.BooleanField(default=False)
+
+
+class Vote(models.Model):
+    """One vote per student per week in the SUG election (the week is the real Lagos week, e.g. 2026-W43)."""
+
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="votes")
+    week = models.CharField(max_length=10, db_index=True)
+    candidate = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["game", "week"], name="one_vote_per_week")]
+
+
+class RiddleFind(models.Model):
+    """Who solved the daily campus riddle, in order (the day is the real Lagos date)."""
+
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name="riddle_finds")
+    day = models.CharField(max_length=10, db_index=True)
+    prize = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["game", "day"], name="one_find_per_day")]
+
+
+class PlaceEvent(models.Model):
+    """A big moment everyone in a place sees: someone bought food for the whole buka."""
+
+    place = models.CharField(max_length=20, db_index=True)
+    game = models.ForeignKey(Game, null=True, on_delete=models.SET_NULL, related_name="place_events")
+    text = models.CharField(max_length=140)
+    emoji = models.CharField(max_length=8, default="🎉")
+    t = models.FloatField(db_index=True, help_text="When it happened (the game's clock, seconds).")
+    created_at = models.DateTimeField(auto_now_add=True)

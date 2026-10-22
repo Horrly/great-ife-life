@@ -304,3 +304,46 @@ Great Ife Life borrows what makes Lagos Life fun: fast actions on a real clock, 
 ## License
 
 MIT © Toheeb Olatunde
+
+
+## Real people (October 2026)
+
+Every student and campus person is a rigged human body with real animation: idle breathing, walking,
+jogging, sitting, eating, talking on the phone, lying down to sleep. The models are CC0 packs by
+Quaternius (see `frontend/public/models/CREDITS.txt`), packed into three GLB files (about 4.5 MB in
+total, cached by the browser). Skin tone, hair style and colour, beard, top colour, fabric print
+(Ankara, Adire, Aso-oke), trousers or skirt, and shoes are all chosen in the look editor.
+
+Only the people nearest the camera get the full body; the rest of the campus crowd uses a light
+stand-in, so the game stays smooth on cheaper phones.
+
+## Added from the Lagos Life review
+
+- Tap anyone in a place: say hello, gist, crack a joke (with a success chance) or throw shade.
+  Real students can also be messaged, sent money straight into their account, invited to your room,
+  or blocked.
+- The place sheet shows a blurb, what you can do there, and who is there now.
+- The map fits the campus, has category filters and search, and shows closed places.
+- A bubble floats over your head while you're doing something; needs under 20% warn you once.
+- SUG election in the OAU Portal (one vote per student per week).
+- A daily campus riddle: go to the right place and search; the first finders win naira.
+- Big-spender moments: buy food for the whole buka and everyone there sees a gold banner.
+- A till slip of what you've spent at a place.
+- Works on small phones, phones on their side, tablets and desktops.
+
+## Added from the Lagos Life design guide
+
+- **Friendships.** Everyone you talk to moves from Stranger → Acquaintance → Friend → Close friend → Bestie. Tapping a person shows how close you are and a progress bar. *Hype them up* opens at Acquaintance, *Talk about life* and *Hang out* at Friend, and *Ask for small money* at Close friend (campus people only, once a day). Shade costs friendship. You → 👥 People lists everyone you know.
+- **Safer money and chat.** Chat messages and transfer notes that offer to trade game money for real money ("OPay", "fake alert", "cash out"…) are refused with a plain explanation. This closes the scam hole the guide ranked worst.
+- **Chat.** DMs show a 🔒 private line, a "Say hi" empty state and one-tap Pidgin quick replies.
+- **Send money.** The button echoes the amount and fee ("Send ₦5,000 · fee ₦10"), and there's a Max chip.
+- **Closed places say when they open** ("🔒 Closed now · opens 7:00 AM").
+- **Keyboard:** `?` shows every shortcut and `F` opens People. *You* moved from `S` to `Y`, because `S` also walks backwards.
+
+### Round two from the guide
+
+- **Faster first load on slow data.** `npm run build` now also writes `.br` and `.gz` copies of the game code and 3D people (`frontend/scripts/compress.mjs`), and WhiteNoise sends the smallest copy the phone accepts. The female model drops from 2.0 MB to 0.8 MB, and everything together from 5.6 MB to about 2 MB.
+- **Flat map option.** On data-saver or 2G connections the map opens flat; a **2D** button on the 3D map and **Show the 3D map** on the flat one switch views, and the choice is remembered.
+- **Apps open over the first days.** Day 1 has the essentials (Portal, Gist, Bank, Call Mummy, Houses, Timetable, Maps). Data Plug, Socials and Freelance arrive on day 2; Gigs, Canva and OgaBet on day 3; Business on day 4; Jiji on day 5. New apps wear a red NEW tag until opened.
+- **Student hustles.** A puff-puff and buns stand joins the businesses, and the Business app can promote them: WhatsApp status (+10% tonight), flyers (+20% tonight) or a campus influencer (+50% for two nights).
+- **More shared moments.** Lead an SUG rally at the SUB (weekdays 3–7 PM), lead your hall's war cry at the Sports Complex (4–8 PM), and walk the red carpet at the departmental dinner in Oduduwa Hall (Fri/Sat nights). Everyone there sees the gold banner.

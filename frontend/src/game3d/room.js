@@ -3,7 +3,7 @@
 // or a 2-bedroom flat for at most two tenants. Roommates who are in sit on their beds, sleepers lie down,
 // and the beds of people who are out have their names on them.
 import * as THREE from "three";
-import { HIP, makePerson, mat, surface } from "./characters";
+import { makePerson, mat, seat as seatPerson, surface } from "./characters";
 import { labelTexture } from "./textures";
 
 const SHEETS = ["#2f5f9e", "#b03a2e", "#f2c230", "#1f6f4a", "#7a3e9d", "#e07a5f", "#3d405b", "#81b29a"];
@@ -147,7 +147,8 @@ export default class RoomView {
     this.camera.position.set(tx + Math.sin(sway) * dist * Math.cos(elev), ty + Math.sin(elev) * dist,
       tz + Math.cos(sway) * dist * Math.cos(elev));
     this.camera.lookAt(tx, ty, tz);
-    for (const p of this.people) p.update?.(this.t);
+    const mine = this.you?.children[0];
+    for (const p of this.people) if (p !== mine || !this.walkGoal) p.tick?.(dt);
     renderer.render(this.scene, this.camera);
   }
 
@@ -169,6 +170,52 @@ export default class RoomView {
     });
     this.group = null;
     this.people = [];
+    this.persons = [];
+    this.bubble = null;
+  }
+
+  /** A little emoji bubble over your head while you're busy doing something. null hides it. */
+  setBubble(emoji) {
+    if (this.bubble) {
+      this.bubble.parent?.remove(this.bubble);
+      this.bubble.material.map.dispose();
+      this.bubble.material.dispose();
+      this.bubble = null;
+    }
+    if (!emoji || !this.you) return;
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const g = c.getContext("2d");
+    g.fillStyle = "#ffffff";
+    g.shadowColor = "rgba(0,0,0,0.25)";
+    g.shadowBlur = 8;
+    g.beginPath();
+    g.arc(64, 58, 46, 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.moveTo(52, 98);
+    g.lineTo(64, 122);
+    g.lineTo(76, 98);
+    g.fill();
+    g.shadowBlur = 0;
+    g.font = "56px serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(emoji, 64, 62);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    s.scale.set(1.1, 1.1, 1);
+    s.position.set(0, 4.6, 0);
+    s.renderOrder = 12;
+    this.you.add(s);
+    this.bubble = s;
+  }
+
+  /** Who is behind a "person:<n>" tap. */
+  personAt(tag) {
+    const i = Number(String(tag || "").split(":")[1]);
+    return Number.isInteger(i) ? this.persons?.[i] || null : null;
   }
 
   // --- tapping things ----------------------------------------------------------------------------
@@ -554,37 +601,33 @@ export default class RoomView {
       }
       const person = makePerson(p.look || {}, { scale: 1.05 });
       person.traverse((o) => {
-        if (o.userData.blob) o.visible = false;
         if (o.isMesh) o.castShadow = !this.lowPower;
       });
-      const { legs, arms, body, head } = person.userData.parts;
       const pivot = new THREE.Group();
       pivot.add(person);
       if (p.where === "asleep") {
-        person.rotation.x = -Math.PI / 2;
-        pivot.position.set(seat.x, seat.y + 0.45, seat.z + 2.6);
+        // lying on the bed, head towards the wall
+        seatPerson(person, "lie");
+        pivot.position.set(seat.x, seat.y + 0.2, seat.z + 0.9);
         if (seat.sofa) pivot.rotation.y = Math.PI / 2;
         this.label(`${name} 😴`, seat.x, seat.y + 1.9, seat.z, 0.75);
       } else {
-        // sitting on the edge of the bed (or on the sofa), facing the room
-        legs[0].rotation.x = legs[1].rotation.x = -Math.PI / 2;
-        person.userData.parts.knees.forEach((k) => (k.rotation.x = Math.PI / 2));
-        pivot.position.set(seat.x + (seat.bed ? (seat.side || 1) * 0.9 : 0), seat.y - HIP * 1.05 + 0.25 + (seat.floorMattress ? 0.2 : 0),
+        // sitting on the edge of the bed (or on the sofa), facing the room; some chat, some are on their phones
+        const kind = ["sit", "sit_talk", "sit"][i % 3];
+        seatPerson(person, kind);
+        pivot.position.set(seat.x + (seat.bed ? (seat.side || 1) * 0.9 : 0), seat.y + 0.3 + (seat.floorMattress ? 0.2 : 0),
           seat.z + (seat.bed ? 1.2 : 0));
         pivot.rotation.y = seat.bed && !seat.top ? (seat.side || 1) * Math.PI / 2 : 0;
         if (seat.top) pivot.rotation.y = 0;
-        this.label(name, pivot.position.x, pivot.position.y + 3.95, pivot.position.z, 0.7, p.you ? "you" : "player");
-        let phase = i * 1.7;
-        person.update = (t) => {
-          head.rotation.y = Math.sin(t * 0.6 + phase) * 0.5;
-          arms[0].rotation.x = -0.5 + Math.sin(t * 1.3 + phase) * 0.15;
-          arms[1].rotation.x = -0.5 + Math.cos(t * 1.1 + phase) * 0.15;
-          body.position.y = HIP + Math.sin(t * 1.6 + phase) * 0.012;
-          phase += 0;
-        };
+        this.label(name, pivot.position.x, pivot.position.y + 2.6, pivot.position.z, 0.7, p.you ? "you" : "player");
         this.people.push(person);
       }
-      this.tag(pivot, p.you ? "self" : "room");
+      if (p.you) this.tag(pivot, "self");
+      else {
+        this.persons = this.persons || [];
+        this.persons.push({ kind: "player", id: p.id, name: p.name, look: p.look, role: `Your roommate · ${p.department || ""}`.trim() });
+        this.tag(pivot, `person:${this.persons.length - 1}`);
+      }
       if (p.you) this.you = pivot;
       this.group.add(pivot);
     });
@@ -621,42 +664,33 @@ export default class RoomView {
   _person(p, spot) {
     const person = makePerson(p.look || {}, { scale: 1.05, bag: p.kind !== "npc" && !spot.sit && Math.random() < 0.5 });
     person.traverse((o) => {
-      if (o.userData.blob) o.visible = !spot.sit;
       if (o.isMesh) o.castShadow = !this.lowPower;
     });
-    const { legs, knees, arms, body, head } = person.userData.parts;
     const pivot = new THREE.Group();
     pivot.add(person);
+    // what they're doing: writing and typing sit at a desk, eating at the buka, talking, on the phone…
+    const busy = spot.pose;
     if (spot.sit) {
-      legs[0].rotation.x = legs[1].rotation.x = -Math.PI / 2;
-      knees.forEach((k) => (k.rotation.x = Math.PI / 2));
-      pivot.position.set(spot.x, spot.y - HIP * 1.05 + 0.28, spot.z);
+      seatPerson(person, busy === "talk" ? "sit_talk" : "sit");
+      pivot.position.set(spot.x, (spot.y || 0) + 1.15, spot.z);
     } else {
+      const stand = { talk: "talk", eat: "eat", phone: "phone", write: "fold", type: "interact" }[busy]
+        || ["idle", "idle", "phone", "fold", "talk"][Math.floor(Math.random() * 5)];
+      person.act(stand);
       pivot.position.set(spot.x, spot.y || 0, spot.z);
     }
     pivot.rotation.y = spot.rot ?? 0;
-    const phase = Math.random() * 6;
-    const busy = spot.pose;
-    person.update = (t) => {
-      head.rotation.y = Math.sin(t * 0.5 + phase) * (busy === "write" ? 0.15 : 0.45);
-      if (busy === "write" || busy === "type") {
-        arms[0].rotation.x = arms[1].rotation.x = -1.1 + Math.sin(t * 6 + phase) * 0.05;
-        head.rotation.x = 0.35;
-      } else if (busy === "talk") {
-        arms[0].rotation.x = -0.4 + Math.sin(t * 2.2 + phase) * 0.35;
-      } else if (busy === "eat") {
-        arms[1].rotation.x = -1.2 + Math.abs(Math.sin(t * 2 + phase)) * 0.6;
-      } else if (!spot.sit) {
-        arms[0].rotation.x = Math.sin(t * 0.8 + phase) * 0.05;
-      }
-      body.position.y = HIP + Math.sin(t * 1.6 + phase) * 0.01;
-    };
     this.people.push(person);
     const tag = p.kind === "you" ? "You" : p.kind === "player" ? `@${p.name}` : p.name;
     const lbl = this.label(tag, 0, 4.0, 0, 0.62, p.kind === "npc" ? "npc" : p.kind);
     this.group.remove(lbl);
     pivot.add(lbl); // the tag moves with the person
-    this.tag(pivot, p.kind === "you" ? "self" : spot.station || "fun");
+    if (p.kind === "you") this.tag(pivot, "self");
+    else {
+      this.persons = this.persons || [];
+      this.persons.push({ kind: p.kind === "player" ? "player" : "npc", id: p.id, name: p.name, look: p.look, role: p.role });
+      this.tag(pivot, `person:${this.persons.length - 1}`);
+    }
     this.group.add(pivot);
     return pivot;
   }
@@ -1013,6 +1047,8 @@ export default class RoomView {
     const to = station ? this.anchors[station] || this.anchors.idle : this.youHome || this.anchors.idle;
     if (!to) return;
     this.walkGoal = to;
+    this.doing = station;
+    if (!station) this.setBubble(null);
   }
 
   tick(dt) {
@@ -1023,14 +1059,18 @@ export default class RoomView {
       const d = Math.hypot(dx, dz);
       const person = this.you.children[0];
       if (d > 0.15) {
-        const step = Math.min(d, dt * 5);
+        const step = Math.min(d, dt * 3.6);
         p.x += (dx / d) * step;
         p.z += (dz / d) * step;
         this.you.rotation.y = Math.atan2(dx, dz);
-        person.walk?.(dt, 5);
+        person.walk?.(dt, 3.6);
       } else {
         this.walkGoal = null;
-        person.walk?.(dt, 0);
+        // once there, do the thing: eat at the pot, read standing at the shelf, wash at the bucket…
+        const act = { food: "eat", study: "interact", class: "fold", care: "kneel", rest: "fold", fun: "phone", hustle: "interact",
+          shop: "pickup", money: "interact" }[this.doing];
+        if (act) person.act?.(act);
+        else person.walk?.(dt, 0);
       }
     }
     if (this.fanBlades) this.fanBlades.rotation.y += dt * 12;

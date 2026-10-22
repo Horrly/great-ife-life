@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useGame } from "../lib/game";
 
+// Pidgin quick replies, one tap to send
+const QUICK = ["How far? 👋🏾", "I dey o 😄", "Wetin dey happen?", "Where you dey?", "You don chop? 🍲", "See you for class 📚", "LOL 😂"];
+
 function ago(at) {
   const s = Math.max(0, Date.now() / 1000 - at);
   if (s < 60) return "now";
@@ -69,7 +72,7 @@ function ThreadList({ onOpen }) {
   );
 }
 
-function Thread({ id, onBack, onOpen }) {
+export function Thread({ id, onBack, onOpen }) {
   const { chat, game } = useGame();
   const [info, setInfo] = useState(null);
   const [msgs, setMsgs] = useState([]);
@@ -131,7 +134,16 @@ function Thread({ id, onBack, onOpen }) {
         )}
       </div>
       <div ref={box} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-[#e9e2d6] p-2.5">
-        {msgs.length === 0 && <p className="mt-6 text-center text-xs text-muted">No messages yet. Say hi!</p>}
+        {info?.kind === "dm" && (
+          <p className="mx-auto w-fit rounded-full bg-white/70 px-3 py-1 text-center text-[11px] text-muted">🔒 Private · only you and {info.title} can see this</p>
+        )}
+        {msgs.length === 0 && (
+          <div className="mt-6 text-center">
+            <p className="text-4xl" aria-hidden>👋🏾</p>
+            <p className="mt-1 text-sm font-bold text-ink">Say hi{info?.kind === "dm" ? ` to ${info.title}` : ""}</p>
+            <p className="text-xs text-muted">Tap a quick reply below or type your own.</p>
+          </div>
+        )}
         {msgs.map((m) => (
           <div key={m.id} className={`flex ${m.you ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[82%] rounded-2xl px-3 py-1.5 text-sm shadow-sm ${m.you ? "rounded-br-sm bg-[#d4f7c5]" : "rounded-bl-sm bg-white"}`}>
@@ -178,6 +190,19 @@ function Thread({ id, onBack, onOpen }) {
         </div>
       )}
       {err && <p className="bg-ink px-3 py-1 text-xs text-white" role="status">{err}</p>}
+      <div className="chip-row flex gap-1.5 overflow-x-auto bg-[#f4efe6] px-2 pt-2" aria-label="Quick replies">
+        {QUICK.map((q) => (
+          <button key={q} type="button" className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-ink shadow-sm"
+            onClick={async () => {
+              setErr("");
+              try {
+                merge(await chat.send(id, q, last.current, false));
+              } catch (ex) {
+                setErr(ex.message);
+              }
+            }}>{q}</button>
+        ))}
+      </div>
       <form onSubmit={send} className="flex gap-1.5 bg-[#f4efe6] p-2">
         {game.bank && (
           <button type="button" title="Share your account number" aria-label="Share your account number"

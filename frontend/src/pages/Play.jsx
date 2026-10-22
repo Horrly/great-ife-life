@@ -7,6 +7,10 @@ import {
   MoreMenu, NavBar, NeedsCard, NeedsPill, NextClassPill, PhoneButton, PlaceCard, PlaceSheet, RoundIcon, StatusDrawer, WalletPill,
 } from "../components/Hud";
 import Phone from "../components/Phone";
+import MapView from "../components/MapView";
+import { DmSheet, PersonSheet } from "../components/Person";
+import { Receipt, RiddleSheet, Spectacle } from "../components/Extras";
+import { randomLook } from "../game3d/look";
 import PlacePanel from "../components/Place";
 import MeSheet, { InboxSheet } from "../components/MeSheet";
 import { HousingChooser, SleepOverlay } from "../components/Home";
@@ -109,10 +113,10 @@ function npcsFor(id, type, minute) {
   const peak = (type === "buka" && (hour === 12 || hour === 13 || hour === 18)) || (type === "lecture" && hour >= 8 && hour < 16)
     || (type === "library" && hour >= 19);
   const n = Math.round((BUSY[type] || 4) * (open ? (peak ? 1 : 0.55) : 0.15) * (0.7 + rand() * 0.5));
+  const ROLE = { lecture: "Student", classroom: "Student", library: "Reading for exams", buka: "Eating", market: "Shopping",
+    bank: "Queueing at the bank", clinic: "Waiting to see the nurse", sports: "Playing ball", amphi: "Watching the show" };
   return Array.from({ length: n }, () => ({
-    kind: "npc", name: NPC_NAMES[Math.floor(rand() * NPC_NAMES.length)],
-    look: { skin: Math.floor(rand() * 5), hair: Math.floor(rand() * 6), top: Math.floor(rand() * 7), bottom: Math.floor(rand() * 5),
-      style: Math.floor(rand() * 2), hall: Math.floor(rand() * 2) },
+    kind: "npc", name: NPC_NAMES[Math.floor(rand() * NPC_NAMES.length)], look: randomLook(rand), role: ROLE[type] || "Student",
   }));
 }
 
@@ -142,12 +146,31 @@ function useInbox(log) {
 
 export default function Play() {
   const { game, busy, error, setError, messages, setMessages, act, choose, next, travel, enter, leave, sync, plan, account,
-    askParents, bet, moveHome, joinRoom, housing, postNote } = useGame();
+    askParents, bet, moveHome, joinRoom, housing, postNote, social, chat, transferTo, riddleSearch } = useGame();
   const navigate = useNavigate();
   const host = useRef(null);
   const engine = useRef(null);
   const [world, setWorld] = useState(null);
   const [no3d, setNo3d] = useState(false);
+  // the flat map is the default on slow or data-saver connections; players can switch either way
+  const [flatMap, setFlatMapState] = useState(() => {
+    try {
+      const saved = localStorage.getItem("gil.flatmap");
+      if (saved) return saved === "1";
+    } catch {
+      /* storage blocked: fall through */
+    }
+    const c = navigator.connection;
+    return Boolean(c && (c.saveData || /(^|-)2g/.test(c.effectiveType || "")));
+  });
+  const setFlatMap = (on) => {
+    setFlatMapState(on);
+    try {
+      localStorage.setItem("gil.flatmap", on ? "1" : "0");
+    } catch {
+      /* fine: it just won't be remembered */
+    }
+  };
   const [near, setNear] = useState(null);
   // one sheet at a time: "place" | "map" | "to" | "phone" | "me" | "inbox" | "laptop" | "housing" | "save"
   const [panel, setPanel] = useState(null);
@@ -158,6 +181,28 @@ export default function Play() {
   const [running, setRunning] = useState(false);
   const [lookAround, setLookAround] = useState(false);
   const [journey, setJourney] = useState(null);
+  const [person, setPerson] = useState(null);
+  const [dm, setDm] = useState(null);
+  // what you've bought at this place on this visit (a till slip)
+  const [tab, setTab] = useState({ at: null, items: [] });
+  // A need falling under 20% gets one warning; it can warn again once it has been back above 40%.
+  const warned = useRef({});
+  useEffect(() => {
+    if (!game?.needs) return;
+    const LOW = { hunger: "You're getting hungry. Find food soon 🍲", energy: "You're running on empty. Rest soon 😴",
+      hygiene: "You need a bath 🪣", fun: "You're bored stiff. Do something fun 🎉", social: "You've been alone too long. Gist with someone 💬" };
+    const out = [];
+    for (const [k, v] of Object.entries(game.needs)) {
+      if (v < 20 && !warned.current[k] && LOW[k]) {
+        warned.current[k] = true;
+        out.push(LOW[k]);
+      } else if (v > 40) warned.current[k] = false;
+    }
+    if (out.length) {
+      setMessages((m) => [...(m || []), ...out]);
+      navigator.vibrate?.([60, 80, 60]);
+    }
+  }, [game?.needs]); // eslint-disable-line react-hooks/exhaustive-deps
   const [jp, setJp] = useState({ p: 0, seg: null });
   const [lapse, setLapse] = useState(null);
   const [lp, setLp] = useState(0);
@@ -244,14 +289,50 @@ export default function Play() {
   async function playback(label, g, icon, station) {
     if (!g?.playback) return;
     setLapse({ label, icon });
-    engine.current?.roomActivity(station || null);
+    engine.current?.roomActivity(station || null, icon);
     await animate(g.playback, setLp);
     setLapse(null);
     engine.current?.roomActivity(null);
   }
 
+  async function onSocial(who, kind) {
+    const g = await social(kind, who.name, who.kind === "player" ? who.id : undefined, who.role);
+    if (!g) return;
+    setPanel(null);
+    await playback({ hello: "Saying hello", gist: `Gisting with ${who.name}`, joke: "Cracking a joke", shade: "Throwing shade",
+      hype: `Hyping up ${who.name}`, life: `Talking about life with ${who.name}`, hang: `Hanging out with ${who.name}`,
+      borrow: `Asking ${who.name} for small money` }[kind],
+      g, { hello: "👋🏾", gist: "💬", joke: "😂", shade: "😒", hype: "🙌🏾", life: "🫶🏾", hang: "🚶🏾", borrow: "🙏🏾" }[kind], "fun");
+  }
+
+  async function onChatWith(who) {
+    try {
+      const res = await chat.dm({ game: who.id });
+      setDm({ thread: res.thread.id, name: who.name });
+      setPanel("dm");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function onSendTo(who, amount, note) {
+    const g = await transferTo(who.id, amount, note);
+    return Boolean(g);
+  }
+
+  async function onRiddleSearch() {
+    const g = await riddleSearch();
+    if (g) {
+      setPanel(null);
+      await playback("Searching…", g, "🔎");
+    }
+  }
+
   async function onAct(action) {
     const g = await act(action.id);
+    if (g && action.cost > 0 && action.at !== "phone" && action.at !== "laptop") {
+      setTab((t) => ({ at: g.at, items: [...(t.at === g.at ? t.items : []), { label: action.label.split(" (")[0], cost: action.cost }] }));
+    }
     setPanel((p) => (p === "phone" || p === "laptop" ? null : p));
     if (!g || action.id === "sleep" || action.id === "wake") return;
     await playback(action.label, g, iconFor(action), action.station);
@@ -351,7 +432,7 @@ export default function Play() {
       e.showPlace({
         type, name: building.name, hall: game.at === "banks" ? bankHall : null, banks: world?.banks,
         people: [{ kind: "you", name: "You", look: game.look },
-          ...(game.here_people || []).map((p) => ({ kind: "player", name: p.name, look: p.look })),
+          ...(game.here_people || []).map((p) => ({ kind: "player", id: p.id, name: p.name, look: p.look, role: p.department ? `${p.department} student` : "" })),
           ...npcsFor(game.at, type, minute)],
       }, noLight);
     } else e.hideRoom();
@@ -365,7 +446,13 @@ export default function Play() {
     sfx("open");
     if (station === "leave") onLeave();
     else if (station === "self") setPanel("self");
-    else {
+    else if (station.startsWith("person:")) {
+      const who = engine.current?.personAt(station);
+      if (who) {
+        setPerson(who);
+        setPanel("person");
+      }
+    } else {
       setPlaceStation(station);
       setPanel("place");
     }
@@ -382,14 +469,16 @@ export default function Play() {
     setDrawer(false);
   };
 
-  // desktop shortcuts: M map, P phone, S you, I inbox, H home, C class
+  // desktop shortcuts: M map, P phone, Y you, F people, ? help, I inbox, H home, C class
   useEffect(() => {
     const onKey = (e) => {
       if (e.target.closest?.("input, textarea, select") || e.metaKey || e.ctrlKey || !controls) return;
       const k = e.key.toLowerCase();
-      if (k === "m") setPanel((p) => (p === "map" ? null : "map"));
+      if (k === "?" || (k === "/" && e.shiftKey)) setPanel((p) => (p === "keys" ? null : "keys"));
+      else if (k === "f") openMe("people");
+      else if (k === "m") setPanel((p) => (p === "map" ? null : "map"));
       else if (k === "p") setPanel((p) => (p === "phone" ? null : "phone"));
-      else if (k === "s") openMe();
+      else if (k === "y") openMe(); // not S: S walks backwards
       else if (k === "i") setPanel("inbox");
       else if (k === "h") goTo(game.home);
       else if (k === "c") goTo(classTarget);
@@ -401,10 +490,10 @@ export default function Play() {
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
   const navItems = [
-    { id: "home", label: "Home", icon: "🏠", active: atHome, onClick: () => (atHome ? setPanel("place") : goTo(game.home)) },
-    { id: "class", label: game.test ? "Test" : "Class", icon: game.test ? "✍️" : "📚", active: inside && game.at === classTarget,
+    { id: "home", label: "Home", icon: "🏠", active: atHome && panel !== "map", onClick: () => (atHome ? setPanel("place") : goTo(game.home)) },
+    { id: "class", label: game.test ? "Test" : "Class", icon: game.test ? "✍️" : "📚", active: inside && game.at === classTarget && panel !== "map",
       onClick: () => (inside && game.at === classTarget ? setPanel("place") : goTo(classTarget)) },
-    { id: "map", label: "Map", icon: "🗺", onClick: () => setPanel("map") },
+    { id: "map", label: "Map", icon: "🗺", active: panel === "map", onClick: () => setPanel((p) => (p === "map" ? null : "map")) },
   ];
   const more = [
     ...(game.has_laptop ? [{ icon: "💻", label: "Open your laptop", onClick: () => setPanel("laptop") }] : []),
@@ -446,13 +535,14 @@ export default function Play() {
             setPanel("phone");
           }} />
         </div>
-        {!clean && (
+        {!clean && panel !== "map" && (
           <div className="mx-auto mt-2 flex max-w-5xl items-start justify-between gap-2">
-            <div className="flex min-w-0 flex-col items-start gap-2">
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
               {lapse && <ActionChip lapse={lapse} progress={lp} />}
               {controls && !lapse && (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full min-w-0 items-center gap-2">
                   <RoundIcon icon="🎯" label="Today's missions" badge={game.missions.filter((m) => !m.done).length || null} onClick={() => openMe("goals")} />
+                  <RoundIcon icon="🔎" label="Campus riddle" onClick={() => setPanel("riddle")} />
                   <NextClassPill game={game} onClick={() => goTo(classTarget)} />
                 </div>
               )}
@@ -472,7 +562,7 @@ export default function Play() {
             setPanel("phone");
           }} />
       )}
-      <Toast messages={messages} error={error} onDismiss={() => setError("")} onDone={() => setMessages([])} top={clean ? "3.6rem" : "6.6rem"} />
+      <Toast messages={journey ? [] : messages} error={error} onDismiss={() => setError("")} onDone={() => setMessages([])} top={clean ? "3.6rem" : "6.6rem"} />
 
       {/* Bottom band: things you press */}
       {controls && clean && (
@@ -485,7 +575,7 @@ export default function Play() {
         </div>
       )}
 
-      {controls && !clean && !inside && (
+      {controls && !clean && !inside && panel !== "map" && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto flex max-w-5xl items-end justify-between gap-2">
             <div className="flex flex-col items-start gap-3">
@@ -520,7 +610,7 @@ export default function Play() {
         </div>
       )}
 
-      {controls && !clean && inside && building && panel !== "place" && (
+      {controls && !clean && inside && building && panel !== "place" && panel !== "map" && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto flex max-w-[560px] flex-col gap-2">
             {!lookAround ? (
@@ -548,10 +638,26 @@ export default function Play() {
         </div>
       )}
 
+      {controls && panel === "map" && engine.current && !no3d && !flatMap && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-[560px] flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <AvatarButton game={game} onClick={() => openMe()} />
+              <NeedsPill needs={game.needs} onClick={() => openMe("needs")} />
+            </div>
+            <div className="flex items-end justify-between gap-2">
+              <NavBar items={navItems} />
+              <PhoneButton game={game} onClick={() => setPanel("phone")} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sheets */}
       {panel === "place" && building && controls && (
         <PlacePanel key={placeStation || "place"} game={game} building={game.at} atHome={atHome} title={placeTitle} sub={placeSub} onAct={onAct} run={runMove}
           initialStation={placeStation} hall={bankHall} setHall={setBankHall}
+          receipt={tab.at === game.at ? <Receipt items={tab.items} place={placeTitle} /> : null}
           busy={busy} onClose={() => {
             setPanel(null);
             setPlaceStation(null);
@@ -559,12 +665,17 @@ export default function Play() {
           onHide={() => setPanel(null)}
           onLaptop={() => setPanel("laptop")} postNote={postNote} />
       )}
-      {panel === "map" && world && !overlayOpen && (
+      {panel === "map" && world && !overlayOpen && (engine.current && !no3d && !flatMap ? (
+        <MapView engine={engine.current} world={world} game={showGame} onPick={goTo} onClose={close} onFlat={() => setFlatMap(true)}
+          playerPos={game.at ? [world.buildings[game.at].x, world.buildings[game.at].z] : engine.current?.playerPos() || game.pos} />
+      ) : (
         <MapSheet world={world} game={showGame} onPick={goTo} onClose={close}
+          on3d={engine.current && !no3d ? () => setFlatMap(false) : null}
           playerPos={game.at ? world.nodes[world.buildings[game.at].node] : engine.current?.playerPos() || game.pos} />
-      )}
+      ))}
       {panel === "to" && world && travelTo && !overlayOpen && (
         <PlaceSheet world={world} game={showGame} to={travelTo} onPlan={planFrom} onGo={onGo} busy={busy}
+          people={game.open[travelTo] ? npcsFor(travelTo, INSIDE[world.buildings[travelTo]?.style] || "common", minute) : []}
           onClose={close} onBack={() => setPanel("map")} />
       )}
       {panel === "phone" && !journey && game.phase === "play" && (
@@ -591,6 +702,19 @@ export default function Play() {
         <MeSheet game={game} account={account} tab={meTab} onClose={close} onSave={() => setPanel("save")} onTitle={() => navigate("/")} />
       )}
       {panel === "inbox" && <InboxSheet game={game} onClose={close} />}
+      {panel === "keys" && (
+        <BottomSheet title="Keyboard shortcuts" onClose={close} height="auto">
+          <ul className="grid grid-cols-2 gap-1.5 text-sm">
+            {[["M", "Map"], ["P", "Phone"], ["H", "Go home"], ["C", "Go to class"], ["Y", "You: needs and skills"], ["F", "People you know"],
+              ["I", "Inbox"], ["W A S D", "Walk"], ["Esc", "Close"], ["?", "This list"]].map(([k, v]) => (
+              <li key={k} className="flex items-center gap-2 rounded-xl bg-slab px-3 py-2">
+                <kbd className="min-w-[2rem] rounded-md bg-white px-1.5 py-0.5 text-center font-mono text-xs font-bold shadow">{k}</kbd>
+                <span>{v}</span>
+              </li>
+            ))}
+          </ul>
+        </BottomSheet>
+      )}
       {panel === "self" && controls && (
         <BottomSheet title="What should you do?" subtitle="Things you can do right here, by yourself" onClose={close} height="60%">
           <ActionCards actions={[...game.actions.filter((a) => ["fun", "rest", "study"].includes(a.station)),
@@ -601,6 +725,12 @@ export default function Play() {
         </BottomSheet>
       )}
       {panel === "save" && <SaveSheet onClose={close} />}
+      {panel === "person" && person && controls && (
+        <PersonSheet person={person} game={game} busy={busy} onClose={close} onSocial={onSocial} onChat={onChatWith} onSend={onSendTo} />
+      )}
+      {panel === "dm" && dm && <DmSheet thread={dm.thread} name={dm.name} onClose={close} />}
+      {panel === "riddle" && controls && <RiddleSheet game={game} busy={busy} onClose={close} onSearch={onRiddleSearch} />}
+      {!journey && <Spectacle events={game.events} />}
 
       {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} fromName={journey.fromName} />}
       {game.asleep && game.phase === "play" && !journey && (

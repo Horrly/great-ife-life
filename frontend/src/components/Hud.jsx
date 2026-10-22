@@ -110,7 +110,7 @@ export function StatusDrawer({ game, minute, onNeeds, onBank, onStudies }) {
 
 export function InboxButton({ count, onClick }) {
   return (
-    <button onClick={onClick} className="float pointer-events-auto relative grid h-10 w-12 place-items-center rounded-full text-lg"
+    <button onClick={onClick} className="float pointer-events-auto relative grid h-10 w-12 shrink-0 place-items-center rounded-full text-lg"
       aria-label={`Inbox${count ? `, ${count} new` : ""}`}>
       <span aria-hidden>✉️</span>
       {count > 0 && <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-danger px-1 text-center text-[11px] font-black text-white">{count > 9 ? "9+" : count}</span>}
@@ -148,7 +148,7 @@ export function NextClassPill({ game, onClick }) {
   const text = game.test ? `✍️ ${game.test.label}` : next ? `📚 ${next.code} · ${next.time} · ${next.venue_name}` : null;
   if (!text) return null;
   return (
-    <button onClick={onClick} className="float pointer-events-auto h-11 max-w-[58vw] truncate rounded-full px-3.5 text-sm font-semibold">
+    <button onClick={onClick} className="float pointer-events-auto h-11 min-w-0 max-w-[26rem] shrink truncate rounded-full px-3.5 text-sm font-semibold">
       {text}
     </button>
   );
@@ -412,52 +412,102 @@ export function placeIcon(id, b) {
 }
 
 /** The campus as a map with pins. Tap a pin to see that place. On a tall phone screen the map stands upright. */
-export function CampusMap({ world, game, selected, onSelect, playerPos }) {
-  const { x0, x1, z0, z1 } = world.bounds;
+const MAP_GROUPS = [
+  ["all", "All"], ["class", "📚 Classes"], ["food", "🍲 Food"], ["home", "🛏 Halls"], ["money", "🏦 Money"], ["campus", "🏛 Campus"],
+];
+function mapGroup(b) {
+  if (b.kind === "lecture" || b.kind === "faculty") return "class";
+  if (b.kind === "food") return "food";
+  if (b.kind === "hall" || b.kind === "home") return "home";
+  if (b.kind === "bank") return "money";
+  return "campus";
+}
+
+export function CampusMap({ world, game, selected, onSelect, playerPos, filter = "all", query = "" }) {
   const [portrait] = useState(() => typeof window !== "undefined" && window.innerHeight > window.innerWidth * 1.15);
+  const shown = Object.entries(world.buildings).filter(([id, b]) => !(b.kind === "home" && id !== game.home));
+  // fit the map to the places on it (and you), not to the roads that run off to town
+  const pts = shown.map(([, b]) => [b.x, b.z]);
+  if (playerPos) pts.push(playerPos);
+  const pad = 34;
+  const x0 = Math.min(...pts.map((p) => p[0])) - pad;
+  const x1 = Math.max(...pts.map((p) => p[0])) + pad;
+  const z0 = Math.min(...pts.map((p) => p[1])) - pad;
+  const z1 = Math.max(...pts.map((p) => p[1])) + pad;
   // portrait: turn the map a quarter so the long side runs down the screen
   const P = (x, z) => (portrait ? [z1 - z + z0, x] : [x, z]);
   const box = portrait ? `${z0} ${x0} ${z1 - z0} ${x1 - x0}` : `${x0} ${z0} ${x1 - x0} ${z1 - z0}`;
-  const pin = portrait ? 14 : 10.5;
+  const pin = portrait ? 15 : 11;
+  const q = query.trim().toLowerCase();
+  const match = (id, b) => (filter === "all" || mapGroup(b) === filter) && (!q || b.name.toLowerCase().includes(q));
+  // where the road to town leaves the map: an arrow on the edge
+  const town = world.nodes.town;
+  let exit = null;
+  if (town && (town[0] < x0 || town[0] > x1 || town[1] < z0 || town[1] > z1)) {
+    const tx = Math.max(x0 + 8, Math.min(x1 - 8, town[0]));
+    const tz = Math.max(z0 + 8, Math.min(z1 - 8, town[1]));
+    exit = P(tx, tz);
+  }
   return (
-    <svg viewBox={box} className="w-full rounded-2xl bg-[#86ad5a]" role="group" aria-label="Campus map">
+    <svg viewBox={box} className="w-full rounded-2xl" role="group" aria-label="Campus map" style={{ background: "linear-gradient(160deg,#9cc46b,#7aa653)" }}>
+      <defs>
+        <filter id="pinShadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" floodOpacity="0.35" />
+        </filter>
+      </defs>
       {world.edges.map(([a, b]) => {
         const [ax, ay] = P(...world.nodes[a]);
         const [bx, by] = P(...world.nodes[b]);
-        return <line key={`${a}-${b}`} x1={ax} y1={ay} x2={bx} y2={by} stroke="#5b5e61" strokeWidth="7" strokeLinecap="round" />;
+        return (
+          <g key={`${a}-${b}`}>
+            <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#4a4d50" strokeWidth="9" strokeLinecap="round" />
+            <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#f2d24a" strokeWidth="0.8" strokeDasharray="5 6" />
+          </g>
+        );
       })}
-      {Object.entries(world.buildings).map(([id, b]) => {
+      {shown.map(([id, b]) => {
         const [cx, cy] = P(b.x, b.z);
         const [w, h] = portrait ? [b.d, b.w] : [b.w, b.d];
-        return <rect key={id} x={cx - w / 2} y={cy - h / 2} width={w} height={h} rx="3" fill="#efe9dc" opacity="0.75" />;
+        return <rect key={id} x={cx - w / 2} y={cy - h / 2} width={w} height={h} rx="3" fill="#f3eee2" opacity={match(id, b) ? 0.85 : 0.4} />;
       })}
-      {Object.entries(world.buildings).map(([id, b]) => {
-        if (b.kind === "home" && id !== game.home) return null;
+      {exit && (
+        <text x={exit[0]} y={exit[1]} textAnchor="middle" fontSize="10" fontWeight="900" fill="#fff" stroke="#16201a" strokeWidth="2.5" paintOrder="stroke">
+          ◀ To town
+        </text>
+      )}
+      {shown.map(([id, b]) => {
+        const on = match(id, b);
         const sel = selected === id;
         const next = game.next_venue === id;
         const here = game.at === id;
         const [cx, cy] = P(b.x, b.z);
+        const r = sel ? pin + 3 : pin;
         return (
-          <g key={id} onClick={() => onSelect(id)} className="cursor-pointer" role="button" tabIndex={0}
+          <g key={id} onClick={() => onSelect(id)} className="cursor-pointer" role="button" tabIndex={0} opacity={on ? 1 : 0.3}
             aria-label={`${b.name}${game.open[id] ? "" : " (closed now)"}${next ? ", your next lecture" : ""}`}
             onKeyDown={(e) => e.key === "Enter" && onSelect(id)}>
-            <circle cx={cx} cy={cy} r={sel ? pin + 2.5 : pin} fill={sel ? "#f2c230" : "#ffffff"} stroke={next ? "#1c9a5e" : here ? "#16201a" : "rgba(0,0,0,.25)"}
-              strokeWidth={next || here ? 3 : 1} opacity={game.open[id] ? 1 : 0.65} />
-            <text x={cx} y={cy + pin * 0.42} textAnchor="middle" fontSize={pin * 1.1} style={{ pointerEvents: "none" }}>{placeIcon(id, b)}</text>
-            <text x={cx} y={cy + pin + 9} textAnchor="middle" fontSize={portrait ? 9 : 7.5} fontWeight="800" fill="#16201a" stroke="#fff" strokeWidth="2.4"
-              paintOrder="stroke" style={{ pointerEvents: "none" }}>
-              {b.name.replace(/ \(.*\)/, "").replace("Faculty of ", "").replace("Your self-con", "Self-con").replace(" Seater LT", " Seater")}
-            </text>
-            {next && <text x={cx} y={cy - pin - 4} textAnchor="middle" fontSize="8" fontWeight="900" fill="#fff" stroke="#1c9a5e" strokeWidth="3" paintOrder="stroke">NEXT CLASS</text>}
+            <circle cx={cx} cy={cy} r={r} fill={sel ? "#f2c230" : "#ffffff"} filter="url(#pinShadow)"
+              stroke={next ? "#1c9a5e" : here ? "#16201a" : "rgba(0,0,0,.18)"} strokeWidth={next || here ? 3 : 1} />
+            {!game.open[id] && <circle cx={cx + r * 0.72} cy={cy - r * 0.72} r={r * 0.36} fill="#16201a" />}
+            {!game.open[id] && <text x={cx + r * 0.72} y={cy - r * 0.6} textAnchor="middle" fontSize={r * 0.42} style={{ pointerEvents: "none" }}>🔒</text>}
+            <text x={cx} y={cy + r * 0.38} textAnchor="middle" fontSize={r * 1.05} style={{ pointerEvents: "none" }}>{placeIcon(id, b)}</text>
+            {(on || sel) && (
+              <text x={cx} y={cy + r + 10} textAnchor="middle" fontSize={portrait ? 9.5 : 7.5} fontWeight="800" fill="#16201a" stroke="#fff" strokeWidth="2.6"
+                paintOrder="stroke" style={{ pointerEvents: "none" }}>
+                {b.name.replace(/ \(.*\)/, "").replace("Faculty of ", "").replace("Your self-con", "Self-con").replace(" Seater LT", " Seater")}
+              </text>
+            )}
+            {next && <text x={cx} y={cy - r - 4} textAnchor="middle" fontSize="8.5" fontWeight="900" fill="#fff" stroke="#1c9a5e" strokeWidth="3" paintOrder="stroke">NEXT CLASS</text>}
           </g>
         );
       })}
       {playerPos && (() => {
         const [px, py] = P(playerPos[0], playerPos[1]);
         return (
-          <g>
+          <g style={{ pointerEvents: "none" }}>
+            <circle cx={px} cy={py} r="11" fill="rgba(214,69,53,.25)" />
             <circle cx={px} cy={py} r="6.5" fill="#d64535" stroke="#fff" strokeWidth="2.5" />
-            <text x={px} y={py - 10} textAnchor="middle" fontSize="9" fontWeight="900" fill="#fff" stroke="#d64535" strokeWidth="2.5" paintOrder="stroke">YOU</text>
+            <text x={px} y={py - 12} textAnchor="middle" fontSize="9" fontWeight="900" fill="#fff" stroke="#d64535" strokeWidth="2.5" paintOrder="stroke">YOU</text>
           </g>
         );
       })()}
@@ -465,36 +515,49 @@ export function CampusMap({ world, game, selected, onSelect, playerPos }) {
   );
 }
 
-/** "Where to?": the map, or a searchable list grouped by kind of place. */
-export function MapSheet({ world, game, onPick, onClose, playerPos }) {
+export function MapSheet({ world, game, onPick, onClose, playerPos, on3d }) {
   const [view, setView] = useState("map");
   const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all");
   const groups = useMemo(() => {
     const out = {};
     for (const [id, b] of Object.entries(world.buildings)) {
       if (id === game.at || (b.kind === "home" && id !== game.home)) continue;
       if (q && !b.name.toLowerCase().includes(q.toLowerCase())) continue;
+      if (filter !== "all" && mapGroup(b) !== filter) continue;
       (out[b.kind] ||= []).push([id, b]);
     }
     return Object.entries(world.kinds).filter(([k]) => out[k]).map(([k, label]) => [label, out[k]]);
-  }, [world, game.at, game.home, q]);
+  }, [world, game.at, game.home, q, filter]);
   return (
     <BottomSheet title="📍 Where to?" subtitle="Tap a place to see how to get there" onClose={onClose} label="Map">
-      <div className="mb-2 grid grid-cols-2 gap-1 rounded-full bg-chip p-1">
-        {[["map", "Map"], ["list", "List"]].map(([id, label]) => (
-          <button key={id} onClick={() => setView(id)} aria-pressed={view === id}
-            className={`rounded-full py-1.5 text-sm font-bold ${view === id ? "bg-white shadow" : "text-muted"}`}>{label}</button>
+      {on3d && (
+        <button className="mb-2 w-full rounded-full bg-chip py-2 text-sm font-bold" onClick={on3d}>🏙 Show the 3D map</button>
+      )}
+      <div className="mb-2 flex gap-2">
+        <input className="min-w-0 flex-1 rounded-full bg-chip px-4 py-2.5 text-sm outline-none" placeholder="Search a place" value={q}
+          onChange={(e) => setQ(e.target.value)} aria-label="Search a place" />
+        <div className="grid shrink-0 grid-cols-2 gap-1 rounded-full bg-chip p-1">
+          {[["map", "Map"], ["list", "List"]].map(([id, label]) => (
+            <button key={id} onClick={() => setView(id)} aria-pressed={view === id}
+              className={`rounded-full px-3 py-1.5 text-sm font-bold ${view === id ? "bg-white shadow" : "text-muted"}`}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="chip-row -mx-4 mb-2 flex gap-1.5 overflow-x-auto px-4" role="tablist" aria-label="Show">
+        {MAP_GROUPS.map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={filter === id} onClick={() => setFilter(id)}
+            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-semibold ${filter === id ? "bg-ink text-white" : "bg-chip"}`}>{label}</button>
         ))}
       </div>
       {view === "map" ? (
-        <CampusMap world={world} game={game} onSelect={onPick} playerPos={playerPos} />
+        <CampusMap world={world} game={game} onSelect={onPick} playerPos={playerPos} filter={filter} query={q} />
       ) : (
         <>
-          <input className="mb-2 w-full rounded-xl bg-chip px-3 py-2.5 text-sm outline-none" placeholder="Search a place" value={q}
-            onChange={(e) => setQ(e.target.value)} aria-label="Search a place" />
+          {groups.length === 0 && <p className="py-6 text-center text-sm text-muted">No place matches “{q}”.</p>}
           {groups.map(([label, list]) => (
             <section key={label} className="mb-3">
-              <h3 className="mb-1 text-xs font-bold text-muted">{label.toUpperCase()}</h3>
+              <h3 className="mb-1 text-xs font-bold text-muted">{label}</h3>
               <ul className="divide-y divide-line/60 rounded-2xl bg-slab">
                 {list.map(([id, b]) => (
                   <li key={id}>
@@ -503,7 +566,7 @@ export function MapSheet({ world, game, onPick, onClose, playerPos }) {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold">{id === game.home ? `${b.name} (home)` : b.name}</span>
                         <span className="block text-xs text-muted">
-                          {game.next_venue === id ? "Your next class" : game.open[id] ? "Open now" : "🔒 Closed now"}
+                          {game.next_venue === id ? "Your next class" : game.open[id] ? "Open now" : `🔒 Closed now${b.hours ? ` · opens ${clockText(b.hours[0])}` : ""}`}
                         </span>
                       </span>
                       <span aria-hidden className="text-muted">›</span>
@@ -519,8 +582,9 @@ export function MapSheet({ world, game, onPick, onClose, playerPos }) {
   );
 }
 
-/** One place: what it is, whether it's open, and the ways to get there. Ends with "Go · ₦150". */
-export function PlaceSheet({ world, game, to, onPlan, onGo, onClose, onBack, busy }) {
+export function PlaceSheet({ world, game, to, onPlan, onGo, onClose, onBack, busy, people = [] }) {
+  const planRef = useRef(onPlan);
+  planRef.current = onPlan;
   const b = world.buildings[to];
   const [quote, setQuote] = useState(null);
   const [error, setError] = useState("");
@@ -529,7 +593,7 @@ export function PlaceSheet({ world, game, to, onPlan, onGo, onClose, onBack, bus
     let live = true;
     setQuote(null);
     setError("");
-    onPlan(to).then((qq) => {
+    planRef.current(to).then((qq) => {
       if (!live) return;
       setQuote(qq);
       const first = qq.options.find((o) => o.available);
@@ -538,10 +602,10 @@ export function PlaceSheet({ world, game, to, onPlan, onGo, onClose, onBack, bus
     return () => {
       live = false;
     };
-  }, [to, onPlan]);
+  }, [to]); // only when the destination changes, so the options never reload while you choose
   const opt = quote?.options.find((o) => o.mode === mode);
   return (
-    <BottomSheet onClose={onClose} label={`To ${b.name}`} height="74%"
+    <BottomSheet onClose={onClose} label={`To ${b.name}`} height="80%"
       header={
         <div className="flex items-center gap-3">
           <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-chip text-2xl">{placeIcon(to, b)}</span>
@@ -563,9 +627,33 @@ export function PlaceSheet({ world, game, to, onPlan, onGo, onClose, onBack, bus
       <div className="flex flex-wrap gap-1.5">
         {game.next_venue === to && <span className="rounded-full bg-ife-50 px-2.5 py-1 text-xs font-bold text-ife-700">📚 Your next class is here</span>}
         {game.exam_venue === to && <span className="rounded-full bg-bulb-soft px-2.5 py-1 text-xs font-bold">✍️ Exam hall</span>}
-        {!game.open[to] && <span className="rounded-full bg-danger-soft px-2.5 py-1 text-xs font-bold text-danger">🔒 Closed now</span>}
+        {!game.open[to] && (
+          <span className="rounded-full bg-danger-soft px-2.5 py-1 text-xs font-bold text-danger">
+            🔒 Closed now{b.hours ? ` · opens ${clockText(b.hours[0])}` : ""}
+          </span>
+        )}
         {onBack && <button className="ml-auto text-sm font-bold text-ife-600" onClick={onBack}>‹ Map</button>}
       </div>
+      {b.blurb && <p className="mt-2 text-[0.95rem] leading-snug text-ink">{b.blurb}</p>}
+      {b.things?.length > 0 && (
+        <ul className="mt-2.5 flex flex-wrap gap-1.5" aria-label="Things to do there">
+          {b.things.map((t) => <li key={t} className="rounded-full bg-chip px-2.5 py-1 text-xs font-semibold">{t}</li>)}
+        </ul>
+      )}
+      {people.length > 0 && (
+        <div className="mt-3 flex items-center gap-2">
+          <span className="flex -space-x-2" aria-hidden>
+            {people.slice(0, 4).map((p, i) => (
+              <span key={i} className={`grid h-7 w-7 place-items-center rounded-full text-[11px] font-black text-white ring-2 ring-white ${p.kind === "player" ? "bg-[#2f7de1]" : "bg-ink/80"}`}>
+                {p.name.slice(0, 1)}
+              </span>
+            ))}
+          </span>
+          <span className="text-sm text-muted">
+            <b className="text-ink">Here now:</b> {people.slice(0, 2).map((p) => p.name).join(", ")}{people.length > 2 ? ` and ${people.length - 2} more` : ""}
+          </span>
+        </div>
+      )}
       {error && <p className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
       {!quote && !error && <p className="mt-4 text-sm text-muted" role="status">Checking the roads…</p>}
       {quote && (
@@ -585,7 +673,7 @@ export function PlaceSheet({ world, game, to, onPlan, onGo, onClose, onBack, bus
                   mode === o.mode ? "bg-[#e3f3ea] ring-2 ring-go" : "bg-chip"}`}>
                 <span aria-hidden className="text-2xl leading-none">{MODE_ICON[o.mode] || "🚶"}</span>
                 <span className="mt-1 text-xs font-semibold">{o.name.replace("CNG campus bus", "CNG bus").replace("Night cab", "Cab")}</span>
-                <span className="text-xs font-black">{o.available ? (o.cost ? naira(o.cost) : "Free") : "—"}</span>
+                <span className="text-xs font-black">{o.available ? (o.cost ? naira(o.cost) : "Free") : o.mode === "cab" ? "9 PM+" : "Not now"}</span>
               </button>
             ))}
           </div>
@@ -616,8 +704,8 @@ export function JourneyBar({ journey, progress, segment, fromName }) {
   const text = segment ? (segment.kind === "ride" ? SEGMENT_TEXT.ride[segment.mode] : segment.label || SEGMENT_TEXT[segment.kind]) : "Moving";
   return (
     <>
-      <div className="pointer-events-none absolute inset-x-0 top-14 z-20 flex justify-center px-4">
-        <p className="float rounded-full px-4 py-2 text-sm font-semibold">{MODE_ICON[journey.mode] || "🚶"} On the way to {journey.toName}…</p>
+      <div className="pointer-events-none absolute inset-x-0 top-[max(3.5rem,calc(env(safe-area-inset-top)+3rem))] z-20 mx-auto flex max-w-5xl justify-start pl-3 pr-20">
+        <p className="float min-w-0 truncate rounded-full px-4 py-2 text-sm font-semibold">{MODE_ICON[journey.mode] || "🚶"} On the way to {journey.toName}…</p>
       </div>
       <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex justify-center p-3" aria-live="polite">
         <div className="float w-full max-w-[560px] rounded-3xl p-4">
