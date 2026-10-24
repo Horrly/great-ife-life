@@ -360,3 +360,10 @@ stand-in, so the game stays smooth on cheaper phones.
 ## Map fix: Akintola beside Fajuyi
 
 Akintola Hall now stands right beside Fajuyi Hall. Coming along the hall road from ETF you reach Akintola first, and a paved footpath runs between the two halls down to Ojaja market (`FOOTPATHS` in `world.py`). Saved games move players standing at Akintola to its new door.
+
+## A living campus day
+
+- **Tap anyone walking about campus.** They stop, turn to face you, and their sheet opens: say hello, gist, joke or build a friendship, the same as with people inside places. They walk on once you're done.
+- **Names match the person** (men's and women's names), and everyone has a role: 100L student, final-year, course rep, corps member…
+- **Crowds follow the timetable.** Paths fill up when classes change (ten to the hour till ten past, 8 AM–5 PM), thin out in the evening, and are nearly empty late at night. In the morning people head to faculties and lecture theatres, at lunch to the buka and market, and in the evening back to the halls, the library and the sports complex.
+- **Friends stop to gist.** Two students who meet on the road sometimes stop and talk for a few seconds before carrying on.

@@ -21,6 +21,16 @@ export const HAIR_NAMES = {
 };
 export const PRINT_NAMES = { plain: "Plain", ankara: "Ankara", adire: "Adire", aso_oke: "Aso-oke" };
 
+// Names that match the body (look.hall: 0 man, 1 woman)
+const MEN = ["Tolu", "Emeka", "Kunle", "Femi", "Chidi", "Seun", "Dayo", "Yusuf", "Tobi", "Segun", "Ibrahim", "Uche", "Gbenga",
+  "Musa", "Wale", "Obinna", "Sola", "Damilare", "Kayode", "Ifeanyi"];
+const WOMEN = ["Aisha", "Zainab", "Bisola", "Halima", "Ngozi", "Ifeoma", "Kemi", "Amaka", "Funke", "Chioma", "Temitope", "Hauwa",
+  "Ronke", "Adaeze", "Bukola", "Yetunde", "Nkechi", "Mariam", "Esther", "Damilola"];
+export function nameFor(look, rand = Math.random) {
+  const list = (look?.hall ?? 0) === 1 ? WOMEN : MEN;
+  return list[Math.floor(rand() * list.length)];
+}
+
 export function randomLook(rand = Math.random) {
   const pick = (arr) => Math.floor(rand() * arr.length);
   const look = {};

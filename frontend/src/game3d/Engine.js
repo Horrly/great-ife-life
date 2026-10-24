@@ -7,6 +7,10 @@ import RoomView from "./room";
 import { buildGraph, Mover, pointsFor, route } from "./traffic";
 import { makeBus, makeCab, makeKeke, makeTownBus, makeVehicle } from "./vehicles";
 import { buildWorld, stopPlacement } from "./world";
+import { nameFor } from "./look";
+
+const WALKER_ROLES = ["100L student", "200L student", "300L student", "400L student", "Final-year student", "Postgraduate student",
+  "Course rep", "Corps member", "Hall porter's son", "Exchange student"];
 
 // People are drawn at 1.88 world units to the metre, so a real brisk walk (about 1.5 m/s) is ~3 units a
 // second and a jog (about 3 m/s) is ~6. Anything faster looked like everyone was rushing to an exam.
@@ -41,9 +45,9 @@ function skyAt(minute) {
 }
 
 export default class CampusEngine {
-  constructor(container, map, { look, pos, onNearDoor, onRoomTap, lowPower = false } = {}) {
+  constructor(container, map, { look, pos, onNearDoor, onRoomTap, onPersonTap, lowPower = false } = {}) {
     this.container = container;
-    this.opts = { onRoomTap };
+    this.opts = { onRoomTap, onPersonTap };
     this.map = map;
     if (map.bounds) BOUNDS = { x0: map.bounds.x0 - 30, x1: map.bounds.x1 + 30, z0: map.bounds.z0 - 30, z1: map.bounds.z1 + 30 };
     this.onNearDoor = onNearDoor || (() => {});
@@ -191,10 +195,12 @@ export default class CampusEngine {
     const nodes = Object.keys(this.map.nodes).filter((n) => n !== "town");
     this.walkers = [];
     for (let i = 0; i < 42; i++) {
-      const person = makePerson(randomLook(rand), { bag: rand() < 0.7 });
+      const look = randomLook(rand);
+      const person = makePerson(look, { bag: rand() < 0.7 });
       person.setDetail(false);
       const from = nodes[Math.floor(rand() * nodes.length)];
-      const w = { person, mover: null, node: from, speed: 2.3 + rand() * 0.9, side: rand() < 0.5 ? 1 : -1 };
+      const w = { person, mover: null, node: from, speed: 2.3 + rand() * 0.9, side: rand() < 0.5 ? 1 : -1,
+        look, name: nameFor(look, rand), role: WALKER_ROLES[Math.floor(rand() * WALKER_ROLES.length)], pause: 0, chatCd: rand() * 20 };
       this._newWalk(w, rand);
       w.mover.s = rand() * w.mover.total;
       this.scene.add(person);
@@ -218,9 +224,36 @@ export default class CampusEngine {
     }
   }
 
+  /** Where people head at this time of day: class in the morning, food at lunch, halls and the library at night. */
+  _destinations() {
+    if (!this._dest) {
+      const by = (kinds) => [...new Set(Object.values(this.map.buildings).filter((b) => kinds.includes(b.kind)).map((b) => b.node))];
+      this._dest = { halls: by(["hall", "home"]), classes: by(["lecture", "faculty"]), food: by(["food", "shop", "market"]),
+        campus: by(["campus", "library", "bank", "sports"]), all: Object.keys(this.map.nodes).filter((n) => n !== "town") };
+      for (const k of Object.keys(this._dest)) if (!this._dest[k].length) this._dest[k] = this._dest.all;
+    }
+    const m = this.minute;
+    const d = this._dest;
+    if (m >= 420 && m < 600) return [[d.classes, 0.65], [d.food, 0.1], [d.all, 0.25]];
+    if (m >= 600 && m < 720) return [[d.classes, 0.4], [d.campus, 0.3], [d.all, 0.3]];
+    if (m >= 720 && m < 840) return [[d.food, 0.5], [d.classes, 0.25], [d.all, 0.25]];
+    if (m >= 840 && m < 1020) return [[d.classes, 0.35], [d.campus, 0.3], [d.halls, 0.35]];
+    if (m >= 1020 && m < 1200) return [[d.halls, 0.45], [d.food, 0.25], [d.campus, 0.3]];
+    return [[d.halls, 0.6], [d.campus, 0.25], [d.all, 0.15]];
+  }
+
   _newWalk(w, rand = this.rand) {
-    const nodes = Object.keys(this.map.nodes).filter((n) => n !== "town" && n !== w.node);
-    const to = nodes[Math.floor(rand() * nodes.length)];
+    let list = this._destinations();
+    let r = rand();
+    let pool = list[list.length - 1][0];
+    for (const [l, p] of list) {
+      if ((r -= p) <= 0) {
+        pool = l;
+        break;
+      }
+    }
+    list = pool.filter((n) => n !== w.node);
+    const to = list.length ? list[Math.floor(rand() * list.length)] : Object.keys(this.map.nodes).find((n) => n !== w.node);
     const path = route(this.graph, w.node, to);
     w.to = to;
     w.mover = new Mover(pointsFor(this.map, path), { speed: w.speed, offset: w.side * 5.6 });
@@ -290,11 +323,48 @@ export default class CampusEngine {
     const day = this.minute >= 360 && this.minute < 1290;
     const busHours = this.minute >= 390 && this.minute < 1260;
     const busy = (this.minute >= 420 && this.minute < 600) || (this.minute >= 960 && this.minute < 1080);
-    // fewer people out at night
-    const active = day ? (busy ? this.walkers.length : Math.round(this.walkers.length * 0.7)) : 6;
+    // How many are out: packed when classes change (ten to the hour till ten past), quiet late at night
+    const m = this.minute;
+    const changeover = m >= 470 && m < 1030 && (m % 60 >= 50 || m % 60 < 10);
+    const share = m < 330 || m >= 1350 ? 0.08 : m < 390 ? 0.3 : changeover || busy ? 1 : m >= 1260 ? 0.3 : m >= 1110 ? 0.55 : 0.65;
+    const active = Math.max(3, Math.round(this.walkers.length * share));
+    this._chatCheck = (this._chatCheck || 0) - dt;
+    const checkChats = this._chatCheck <= 0;
+    if (checkChats) this._chatCheck = 0.5;
     this.walkers.forEach((w, i) => {
-      w.person.visible = i < active;
+      w.person.visible = i < active || w.pause > 0;
       if (!w.person.visible) return;
+      w.chatCd -= dt;
+      if (w.pause > 0) {
+        // stopped: chatting with a friend, or talking to you
+        w.pause -= dt;
+        if (w.faceTo) {
+          const want = Math.atan2(w.faceTo.x - w.person.position.x, w.faceTo.z - w.person.position.z);
+          w.person.rotation.y = lerpAngle(w.person.rotation.y, want, Math.min(1, dt * 5));
+        }
+        w.person.tick(dt);
+        if (w.pause <= 0) {
+          w.faceTo = null;
+          w.chatCd = 25 + Math.random() * 30;
+        }
+        return;
+      }
+      if (checkChats && w.chatCd <= 0) {
+        // bump into a friend: stop and gist for a bit
+        const pos = w.person.position;
+        const friend = this.walkers.find((o, j) => j !== i && j < active && o.pause <= 0 && o.chatCd <= 0
+          && Math.hypot(o.person.position.x - pos.x, o.person.position.z - pos.z) < 3.5);
+        if (friend && Math.random() < 0.35) {
+          const t = 6 + Math.random() * 8;
+          for (const [a, b] of [[w, friend], [friend, w]]) {
+            a.pause = t;
+            a.faceTo = b.person.position;
+            a.person.act(Math.random() < 0.5 ? "talk" : "idle");
+          }
+          return;
+        }
+        w.chatCd = 3 + Math.random() * 5;
+      }
       const p = w.mover.update(dt);
       // step aside if you're in the way
       const me = this.player.position;
@@ -430,11 +500,11 @@ export default class CampusEngine {
         drag = null;
         return;
       }
-      // a quick tap (not a drag) walks you there
+      // a quick tap (not a drag): a person opens their sheet, anywhere else walks you there
       if (drag && e.type === "pointerup" && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 10
           && performance.now() - drag.t < 400) {
         if (this.roomMode && this.roomView) this._tapRoom(e.clientX, e.clientY);
-        else this._tapToWalk(e.clientX, e.clientY);
+        else if (!this._tapWalker(e.clientX, e.clientY)) this._tapToWalk(e.clientX, e.clientY);
       }
       drag = null;
     };
@@ -527,6 +597,43 @@ export default class CampusEngine {
   cancelAutoWalk() {
     this.autoPath = null;
     this.marker.visible = false;
+  }
+
+  /** Tap someone walking about campus: they stop, turn to you, and their sheet opens (like Lagos Life). */
+  _tapWalker(clientX, clientY) {
+    if (this.inside || this.journey || !this.opts.onPersonTap) return false;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector3();
+    let best = null;
+    let bestD = 44; // px: generous, people are small on a phone
+    for (const w of this.walkers) {
+      if (!w.person.visible) continue;
+      for (const y of [1.2, 2.4, 3.4]) {
+        v.set(w.person.position.x, y, w.person.position.z).project(this.camera);
+        if (v.z > 1) continue;
+        const d = Math.hypot((v.x + 1) / 2 * rect.width + rect.left - clientX, (1 - v.y) / 2 * rect.height + rect.top - clientY);
+        if (d < bestD) {
+          bestD = d;
+          best = w;
+        }
+      }
+    }
+    if (!best) return false;
+    best.pause = 1e9; // until you're done talking
+    best.faceTo = this.player.position;
+    best.person.act("idle");
+    this.talkingTo = best;
+    // and you face them
+    this.cancelAutoWalk();
+    this.player.rotation.y = Math.atan2(best.person.position.x - this.player.position.x, best.person.position.z - this.player.position.z);
+    this.opts.onPersonTap({ kind: "npc", name: best.name, look: best.look, role: best.role });
+    return true;
+  }
+
+  /** The person you were talking to goes on their way after a moment. */
+  releaseWalker() {
+    if (this.talkingTo) this.talkingTo.pause = 1.5;
+    this.talkingTo = null;
   }
 
   /** Tap the ground or a building: walk there along the roads, around buildings. */

@@ -3171,8 +3171,7 @@ def social(state: dict, kind: str, who: str, now: float | None = None, role: str
     if not spec:
         raise GameError("Unknown thing to do.")
     who = " ".join(str(who or "").split())[:24] or "Someone"
-    if not state.get("at"):
-        raise GameError("Go somewhere with people first.")
+    # inside a place or out on campus: anyone you can tap, you can talk to
     if spec.get("npc_only") and player:
         raise GameError("You can't beg real students for money here. Ask them in chat if you must.")
     bond = _person(state, who)["bond"]

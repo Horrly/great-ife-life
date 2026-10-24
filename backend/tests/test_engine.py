@@ -1175,3 +1175,10 @@ def test_skipping_playback_only_lets_you_move_on():
     money = s["money"]
     s2, _ = E.skip_playback(s, now)
     assert s2["busy_until"] == now and s2["money"] == money
+
+
+def test_you_can_gist_with_people_out_on_campus():
+    s = at(new(seed="out"), 10, where=None)
+    assert not s.get("at")
+    s2, msgs = E.social(s, "gist", "Gbenga", t_of(s), role="Course rep")
+    assert "Gbenga" in msgs[0] and s2["people"]["Gbenga"]["bond"] > 0

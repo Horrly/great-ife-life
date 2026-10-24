@@ -10,7 +10,7 @@ import Phone from "../components/Phone";
 import MapView from "../components/MapView";
 import { DmSheet, PersonSheet } from "../components/Person";
 import { Receipt, RiddleSheet, Spectacle } from "../components/Extras";
-import { randomLook } from "../game3d/look";
+import { nameFor, randomLook } from "../game3d/look";
 import PlacePanel from "../components/Place";
 import MeSheet, { InboxSheet } from "../components/MeSheet";
 import { HousingChooser, SleepOverlay } from "../components/Home";
@@ -100,8 +100,6 @@ function SaveSheet({ onClose }) {
 // What each building looks like inside.
 const INSIDE = { theatre: "lecture", faculty: "classroom", library: "library", buka: "buka", market: "market", sub: "sub",
   banks: "bank", clinic: "clinic", auditorium: "auditorium", amphitheatre: "amphi", sports: "sports", tower: "office" };
-const NPC_NAMES = ["Tolu", "Emeka", "Aisha", "Kunle", "Zainab", "Femi", "Bisola", "Chidi", "Halima", "Seun", "Ngozi", "Dayo",
-  "Ifeoma", "Yusuf", "Kemi", "Tobi", "Amaka", "Segun"];
 const BUSY = { lecture: 12, classroom: 7, library: 9, buka: 8, market: 7, sub: 6, bank: 5, clinic: 3, auditorium: 14, amphi: 8, sports: 8, office: 3, common: 6 };
 
 /** Campus NPCs in a place: how many depends on the kind of place and the hour; the same people all hour. */
@@ -115,9 +113,10 @@ function npcsFor(id, type, minute) {
   const n = Math.round((BUSY[type] || 4) * (open ? (peak ? 1 : 0.55) : 0.15) * (0.7 + rand() * 0.5));
   const ROLE = { lecture: "Student", classroom: "Student", library: "Reading for exams", buka: "Eating", market: "Shopping",
     bank: "Queueing at the bank", clinic: "Waiting to see the nurse", sports: "Playing ball", amphi: "Watching the show" };
-  return Array.from({ length: n }, () => ({
-    kind: "npc", name: NPC_NAMES[Math.floor(rand() * NPC_NAMES.length)], look: randomLook(rand), role: ROLE[type] || "Student",
-  }));
+  return Array.from({ length: n }, () => {
+    const look = randomLook(rand);
+    return { kind: "npc", name: nameFor(look, rand), look, role: ROLE[type] || "Student" };
+  });
 }
 
 const SEEN_KEY = "gil.inboxSeen";
@@ -211,6 +210,7 @@ export default function Play() {
   const [placeStation, setPlaceStation] = useState(null);
   const [bankHall, setBankHall] = useState(null);
   const roomTap = useRef(() => {});
+  const personTap = useRef(() => {});
   const clock = useLiveClock(game);
   const minute = ((clock % 1440) + 1440) % 1440;
   const [inboxCount, markInboxSeen] = useInbox(game.log);
@@ -239,6 +239,7 @@ export default function Play() {
         pos: game.pos,
         onNearDoor: setNear,
         onRoomTap: (station) => roomTap.current(station),
+        onPersonTap: (who) => personTap.current(who),
         // only really old phones skip shadows: 2 GB of memory or 2 cores
         lowPower: !window.__campusHQ && ((navigator.deviceMemory || 4) <= 2 || (navigator.hardwareConcurrency || 4) <= 2),
       });
@@ -454,6 +455,20 @@ export default function Play() {
   useEffect(() => {
     if (game.at !== "banks") setBankHall(null);
   }, [game.at]);
+  // whoever you stopped to talk to walks on once the sheet closes and any gist has finished
+  useEffect(() => {
+    if (panel !== "person" && !lapse) engine.current?.releaseWalker();
+  }, [panel, lapse]);
+  // tapping someone walking about campus
+  personTap.current = (who) => {
+    if (!controls || busy || lapse) {
+      engine.current?.releaseWalker();
+      return;
+    }
+    sfx("open");
+    setPerson(who);
+    setPanel("person");
+  };
   // tapping things inside: open what you can do with them
   roomTap.current = (station) => {
     if (!controls || busy || lapse) return;
