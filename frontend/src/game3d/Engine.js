@@ -327,7 +327,8 @@ export default class CampusEngine {
     const m = this.minute;
     const changeover = m >= 470 && m < 1030 && (m % 60 >= 50 || m % 60 < 10);
     const share = m < 330 || m >= 1350 ? 0.08 : m < 390 ? 0.3 : changeover || busy ? 1 : m >= 1260 ? 0.3 : m >= 1110 ? 0.55 : 0.65;
-    const active = Math.max(3, Math.round(this.walkers.length * share));
+    const wet = this.weather === "rain" ? 0.5 : this.weather === "heavy" ? 0.25 : 1; // people stay in when it pours
+    const active = Math.max(3, Math.round(this.walkers.length * share * wet));
     this._chatCheck = (this._chatCheck || 0) - dt;
     const checkChats = this._chatCheck <= 0;
     if (checkChats) this._chatCheck = 0.5;
@@ -391,7 +392,22 @@ export default class CampusEngine {
       if (v.kind === "keke" || v.kind === "parked_keke") v.mesh.visible = this.minute >= 360 && this.minute < 1320;
       if (v.kind === "cab") v.mesh.visible = this.minute >= 1260 || this.minute < 360;
       if (v.kind === "parked_keke" || !v.mesh.visible || v === this.journey?.vehicle) continue;
-      const p = v.mover.update(dt);
+      // slow down and stop if you're standing in the road ahead
+      const me = this.player.position;
+      const hx = Math.sin(v.mesh.rotation.y);
+      const hz = Math.cos(v.mesh.rotation.y);
+      const rx = me.x - v.mesh.position.x;
+      const rz = me.z - v.mesh.position.z;
+      const ahead = rx * hx + rz * hz;
+      const side = Math.abs(rx * hz - rz * hx);
+      const yieldTo = this.player.visible && !this.inside && !this.journey && ahead > 0 && ahead < 14 && side < 3.2;
+      v.brake = lerp(v.brake ?? 1, yieldTo ? Math.max(0, (ahead - 6) / 8) : 1, Math.min(1, dt * 4));
+      if (yieldTo && ahead < 9 && !v.honked && v.kind !== "bus") {
+        v.honked = true;
+        this.onHonk?.();
+      }
+      if (!yieldTo) v.honked = false;
+      const p = v.mover.update(dt * v.brake);
       v.mesh.position.set(p.x, 0, p.z);
       v.mesh.rotation.y = p.heading;
       if (v.kind === "bus") {
@@ -413,6 +429,59 @@ export default class CampusEngine {
 
   // --- Time of day -------------------------------------------------------------------------------
 
+  /** Rain or shine (from the server, the same for everyone): drops, a grey sky, dimmer light, fewer people out. */
+  setWeather(w) {
+    const kind = w?.rain ? (w.heavy ? "heavy" : "rain") : w?.label === "Cloudy" ? "cloudy" : "clear";
+    if (kind === this.weather) return;
+    this.weather = kind;
+    const wet = kind === "rain" || kind === "heavy";
+    if (wet && !this.rain) {
+      const n = this.lowPower ? 500 : 1400;
+      const pos = new Float32Array(n * 6);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      this.rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: "#dfe8f1", transparent: true, opacity: 0.75 }));
+      this.rain.frustumCulled = false;
+      this.rainDrops = Array.from({ length: n }, () => [Math.random() * 120 - 60, Math.random() * 60, Math.random() * 120 - 60]);
+      this.scene.add(this.rain);
+    }
+    if (this.rain) this.rain.visible = wet && !this.mapMode;
+    this.setMinute(this.realMinute ?? this.minute ?? 720);
+  }
+
+  _tickRain(dt) {
+    if (!this.rain?.visible) return;
+    const heavy = this.weather === "heavy";
+    const fall = heavy ? 19 : 16; // about 9 m/s: real raindrops, not a blur
+    const n = heavy ? this.rainDrops.length : Math.floor(this.rainDrops.length * 0.55);
+    const arr = this.rain.geometry.attributes.position.array;
+    const c = this.target;
+    for (let i = 0; i < this.rainDrops.length; i++) {
+      const d = this.rainDrops[i];
+      d[1] -= fall * dt;
+      d[0] += 1.2 * dt; // a light wind
+      if (d[1] < 0) {
+        d[1] += 60;
+        d[0] = Math.random() * 120 - 60;
+        d[2] = Math.random() * 120 - 60;
+      }
+      const o = i * 6;
+      if (i >= n) {
+        arr.fill(0, o, o + 6);
+        continue;
+      }
+      const x = c.x + d[0];
+      const z = c.z + d[2];
+      arr[o] = x;
+      arr[o + 1] = d[1];
+      arr[o + 2] = z;
+      arr[o + 3] = x - 0.08;
+      arr[o + 4] = d[1] + (heavy ? 1.3 : 0.9);
+      arr[o + 5] = z;
+    }
+    this.rain.geometry.attributes.position.needsUpdate = true;
+  }
+
   setMinute(minute) {
     this.realMinute = ((minute % 1440) + 1440) % 1440;
     // the map is always drawn in daylight so you can read it, like a printed campus map
@@ -420,8 +489,12 @@ export default class CampusEngine {
     if (this.roomView) this.roomView.setMinute(this.minute, this.noLight);
     const m = this.minute;
     const sky = skyAt(m);
+    // overcast and rain wash the sky grey and dim the sun (the printed-style map stays bright)
+    const gloom = this.mapMode ? 0 : { cloudy: 0.25, rain: 0.55, heavy: 0.75 }[this.weather] || 0;
+    if (gloom) sky.lerp(new THREE.Color("#6f7a84").multiplyScalar(0.35 + 0.65 * Math.max(0.15, Math.sin(Math.PI * Math.min(1, Math.max(0, (m - 375) / 750))))), gloom);
     this.scene.background = sky;
     this.scene.fog.color.copy(sky);
+    if (!this.mapMode) [this.scene.fog.near, this.scene.fog.far] = gloom > 0.5 ? [70, 300] : gloom ? [130, 460] : [160, 520];
     // sun rises ~6:15 in the east (+x), sets ~18:45 in the west
     const t = (m - 375) / (1125 - 375);
     const up = Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
@@ -432,13 +505,13 @@ export default class CampusEngine {
     setSky(this.sky, sky, m, daylight, this.sunDir);
     if (this.scene.environment) this.scene.environmentIntensity = 0.08 + daylight * 0.42;
     for (const c of this.clouds.children) c.material.color.setScalar(0.25 + daylight * 0.75);
-    this.sun.intensity = 0.05 + daylight * (this.shadows ? 2.4 : 1.7);
+    this.sun.intensity = (0.05 + daylight * (this.shadows ? 2.4 : 1.7)) * (1 - gloom * 0.8);
     this.sun.color.set(daylight < 0.4 ? "#ffc58a" : "#fff1d6");
-    this.hemi.intensity = 0.2 + daylight * (this.shadows ? 0.6 : 1.0);
+    this.hemi.intensity = (0.2 + daylight * (this.shadows ? 0.6 : 1.0)) * (1 - gloom * 0.25);
     this.hemi.color.set(daylight < 0.25 ? "#5a6f9e" : "#cfe6ff"); // moonlight blue at night
     this.ambient.intensity = 0.05 + daylight * 0.22;
     const night = 1 - daylight;
-    const lampOn = night > 0.55;
+    const lampOn = night > 0.55 || (gloom > 0.6 && night > 0.3);
     this.world.lamps.headMat.emissive.set(lampOn ? "#ffd27a" : "#000000");
     for (const mat of this.world.nightMaterials) mat.emissive.setScalar(night > 0.6 ? 0.9 : 0);
     this.night = night;
@@ -525,6 +598,7 @@ export default class CampusEngine {
   /** Turn the map view on or off. focus = [x, z] to centre on (default: you). */
   setMapMode(on, focus) {
     this.mapMode = Boolean(on);
+    if (this.rain) this.rain.visible = !this.mapMode && (this.weather === "rain" || this.weather === "heavy");
     if (this.mapMode) {
       const p = focus || [this.player.position.x, this.player.position.z];
       this.mapT = new THREE.Vector3(p[0], 0, p[1]);
@@ -906,6 +980,27 @@ export default class CampusEngine {
 
     if (this.journey) {
       this._updateJourney(raw);
+    } else if (!this.inside && this.chatWith) {
+      // walk up to the person you're talking to, then talk with your hands
+      const w = this.chatWith;
+      const dx = w.person.position.x - p.x;
+      const dz = w.person.position.z - p.z;
+      const d = Math.hypot(dx, dz);
+      this.player.rotation.y = lerpAngle(this.player.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 6));
+      if (d > 2.2) {
+        const step = Math.min(d - 2.2, WALK_SPEED * raw);
+        p.x += (dx / d) * step;
+        p.z += (dz / d) * step;
+        this.player.walk(dt, WALK_SPEED);
+        this.chatTalking = false;
+      } else {
+        if (!this.chatTalking) {
+          this.chatTalking = true;
+          this.player.act("talk");
+          w.person.act("talk");
+        }
+        this.player.tick(dt);
+      }
     } else if (!this.inside) {
       const mv = this._moveVector();
       const step = Math.min(raw, 0.15); // real time, so a slow phone doesn't walk slower
@@ -952,7 +1047,22 @@ export default class CampusEngine {
           this.camYaw = lerpAngle(this.camYaw, this.player.rotation.y + Math.PI, Math.min(1, dt * 0.9 * Math.min(1, v / WALK_SPEED)));
         }
       }
-      this.player.walk(dt, v);
+      // standing still for a while: check your phone, fold your arms, shift your weight… like a real person
+      if (v > 0.05 || mv.len > 0.05 || this.autoPath) {
+        this.stillFor = 0;
+        this.idleAct = null;
+        this.player.walk(dt, v);
+      } else {
+        this.stillFor = (this.stillFor || 0) + raw;
+        if (this.stillFor > 6 && (!this.idleAct || this.stillFor > this.idleUntil)) {
+          const options = ["phone", "fold", "idle", "phone", "idle", "talk"].filter((a) => a !== this.idleAct);
+          this.idleAct = options[Math.floor(Math.random() * options.length)];
+          this.idleUntil = this.stillFor + 7 + Math.random() * 8;
+          this.player.act(this.idleAct);
+        }
+        if (this.idleAct) this.player.tick(dt);
+        else this.player.walk(dt, 0);
+      }
       this._checkDoors();
     }
     if (this.mapMode) {
@@ -994,6 +1104,7 @@ export default class CampusEngine {
       this.sun.position.copy(this.target).add(this.sunDir);
       this.sun.target.position.copy(this.target);
     }
+    this._tickRain(raw);
     this.sky.position.copy(this.camera.position);
     this.clouds.position.x = this.target.x + ((performance.now() / 1000) * 0.8) % 600 - 300;
     this.clouds.position.z = this.target.z;
@@ -1093,6 +1204,15 @@ export default class CampusEngine {
   /** While an action plays, you walk to where it happens (the cooker, the counter, a desk). */
   roomActivity(station, emoji, actionId) {
     this.roomView?.setActivity(station, actionId);
+    // outside: a gist with someone you stopped on the road
+    if (!this.roomMode) {
+      this.chatWith = station && actionId?.startsWith("social") && this.talkingTo ? this.talkingTo : null;
+      this.chatTalking = false;
+      if (!this.chatWith) {
+        this.idleAct = null;
+        this.stillFor = 0;
+      }
+    }
     this.roomView?.setBubble(station ? emoji : null);
   }
 

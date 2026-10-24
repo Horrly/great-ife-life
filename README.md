@@ -367,3 +367,10 @@ Akintola Hall now stands right beside Fajuyi Hall. Coming along the hall road fr
 - **Names match the person** (men's and women's names), and everyone has a role: 100L student, final-year, course rep, corps member…
 - **Crowds follow the timetable.** Paths fill up when classes change (ten to the hour till ten past, 8 AM–5 PM), thin out in the evening, and are nearly empty late at night. In the morning people head to faculties and lecture theatres, at lunch to the buka and market, and in the evening back to the halls, the library and the sports complex.
 - **Friends stop to gist.** Two students who meet on the road sometimes stop and talk for a few seconds before carrying on.
+
+## Weather, body language and road sense
+
+- **Rainy season weather.** The sky is the same for every player and changes every three hours, decided by the real date: about a 30% chance of rain from April to October, much less in the dry season. Rain falls at a real speed, the sky turns grey and the light dims, fewer people are out, and rain patters softly if sound is on. The clock shows 🌧️/⛈️/⛅. Kekes and night cabs charge a 25% "rain price", and trekking in the rain leaves you soaked (hygiene drops).
+- **Gisting looks like gisting.** Outside, your student walks up to the person you stopped and you both talk with your hands. Inside, you walk over to the person you tapped, they turn to you and talk back (people sitting stay seated).
+- **Idle like a real person.** Stand still for a few seconds and your student checks their phone, folds their arms or shifts their weight, changing every so often.
+- **Vehicles stop for you.** Kekes, cabs and buses slow down and stop if you're standing in the road ahead of them.

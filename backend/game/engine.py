@@ -333,6 +333,30 @@ def _clamp(value, lo=0, hi=100):
     return max(lo, min(hi, value))
 
 
+# --- Weather: the same sky for everyone, changing every three hours ------------------------------------
+RAINY_MONTHS = range(4, 11)   # April to October is the rainy season in Ile-Ife
+RAIN_FARE = 1.25              # keke and cab drivers charge more when it rains
+
+
+def weather(state, now: float | None = None) -> dict:
+    """Clear, cloudy, light rain or a heavy downpour, decided by the real date and time of day."""
+    import datetime
+    import hashlib
+    ts = (state["epoch"] + state["clock"] * 60) if state.get("epoch") is not None else (now or time.time())
+    lagos = ts + WAT
+    day, block = int(lagos // 86400), int((lagos % 86400) // 10800)
+    month = datetime.datetime.fromtimestamp(lagos, datetime.timezone.utc).month
+    h = hashlib.sha256(f"ife-weather-{day}-{block}".encode()).digest()
+    r, r2 = h[0] / 255, h[1] / 255
+    chance = 0.3 if month in RAINY_MONTHS else 0.06
+    if r < chance:
+        heavy = r2 < 0.35
+        return {"rain": True, "heavy": heavy, "label": "Heavy rain" if heavy else "Light rain", "icon": "⛈️" if heavy else "🌧️"}
+    if r < chance + 0.25:
+        return {"rain": False, "heavy": False, "label": "Cloudy", "icon": "⛅"}
+    return {"rain": False, "heavy": False, "label": "Clear", "icon": None}
+
+
 def tod(state) -> int:
     """Minutes after midnight today."""
     return state["clock"] % 1440
@@ -1970,6 +1994,8 @@ def plan_trip(state, to: str, mode: str, pos=None, now=None) -> dict:
             return unavailable(f"Kekes run {clock_text(lo)} to {clock_text(hi)}")
         length = ride(start, dest, "keke", "Waiting for a keke")
         cost = W.tiered(info["fares"], length)
+        if weather(state, now)["rain"]:
+            cost = _fare(cost * RAIN_FARE)
     elif mode == "cab":
         if not _night(t):
             return unavailable("Night cabs run from 9 PM to 6 AM")
@@ -1992,6 +2018,8 @@ def plan_trip(state, to: str, mode: str, pos=None, now=None) -> dict:
             if dest == "town":
                 walk("gate", "town", "Walk to Asherifa")
         cost = W.tiered(info["fares"], length)
+        if weather(state, now)["rain"]:
+            cost = _fare(cost * RAIN_FARE)
     else:  # bus: town bus to/from the gate if you live in town, and the CNG campus bus inside
         bus_lo, bus_hi = info["hours"]
         tb = W.MODES["town_bus"]
@@ -2051,7 +2079,8 @@ def plan_trip(state, to: str, mode: str, pos=None, now=None) -> dict:
     return {"mode": mode, "name": name, "available": reason is None, "reason": reason, "blurb": info.get("blurb", ""),
             "minutes": minutes, "walk": walk_m, "wait": wait_m, "cost": cost, "arrive_at": arrive, "seconds": seconds,
             "arrive": clock_text(arrive), "segments": segments, "trekked": round(trekked, 1), "to": to,
-            "rush": _rush(t) and mode == "bus"}
+            "rush": _rush(t) and mode == "bus",
+            "rain": weather(state, now)["rain"] and mode in ("keke", "cab")}
 
 
 def plan(state: dict, to: str, pos=None, now: float | None = None) -> dict:
@@ -2086,6 +2115,11 @@ def travel(state: dict, to: str, mode: str, pos=None, now: float | None = None):
         kind = "cycle" if seg["mode"] == "bike" else seg["kind"]
         _fatigue(state, seg["minutes"], C.TRAVEL_EFFECTS[kind])
     state["stats"]["trekked"] = round(state["stats"]["trekked"] + trip["trekked"], 1)
+    w = weather(state, now)
+    if w["rain"] and trip["trekked"] > 20:
+        # walking in the rain: you arrive soaked
+        _apply_effects(state, {"hygiene": -12 if w["heavy"] else -6, "fun": -3})
+        messages.append("🌧️ You got soaked walking in the rain." if not w["heavy"] else "⛈️ The rain beat you thoroughly on the way.")
     state["stats"]["trips"] += 1
     state["stats"]["modes"][mode] = state["stats"]["modes"].get(mode, 0) + 1
     b = W.BUILDINGS[to]
@@ -3080,6 +3114,7 @@ def view(state: dict, now: float | None = None) -> dict:
                      for item in state["missions"]["list"]] if state["missions"]["day"] == state["total_days"] else [],
         "missions_bonus": state["missions"]["bonus"],
         "people": people_list(state),
+        "weather": weather(state, now),
         "streak": state["streak"]["day"],
         "moodlets": active_moodlets(state),
         "phone_info": phone_info(state),

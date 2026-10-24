@@ -1182,3 +1182,14 @@ def test_you_can_gist_with_people_out_on_campus():
     assert not s.get("at")
     s2, msgs = E.social(s, "gist", "Gbenga", t_of(s), role="Course rep")
     assert "Gbenga" in msgs[0] and s2["people"]["Gbenga"]["bond"] > 0
+
+
+def test_weather_is_shared_and_changes_through_the_day():
+    s = at(new(seed="w1"), 10)
+    other = at(new(seed="w2"), 10)
+    w = E.weather(s)
+    assert w == E.weather(other)  # everyone sees the same sky
+    assert w["label"] in ("Clear", "Cloudy", "Light rain", "Heavy rain")
+    seen = {E.weather(at(s, h))["label"] for d in range(30) for h in (1, 4, 7, 10, 13, 16, 19, 22)
+            for _ in [s.__setitem__("total_days", s["total_days"] + 1)]}
+    assert "Clear" in seen and ({"Light rain", "Heavy rain"} & seen)

@@ -76,3 +76,41 @@ export function soundFor(text) {
   if (/getting low|getting hungry|running on empty|need a bath|bored stiff|alone too long|collapsed|missed|lost|stolen|took ₦|bet cut/i.test(text)) return "error";
   return "notice";
 }
+
+// --- Rain on the roof: soft filtered noise while it rains (only after a tap has unlocked audio) ---------------
+let rainNode = null;
+/** level: 0 (dry), 1 (light rain) or 2 (downpour). */
+export function setRain(level) {
+  try {
+    if (!level || !soundOn()) {
+      if (rainNode) {
+        rainNode.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.6);
+        const n = rainNode;
+        setTimeout(() => n.src.stop(), 2500);
+        rainNode = null;
+      }
+      return;
+    }
+    if (!ctx || ctx.state !== "running") return; // browsers only allow sound after a tap
+    const want = level === 2 ? 0.05 : 0.025;
+    if (!rainNode) {
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 1400;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      src.connect(filter).connect(gain).connect(ctx.destination);
+      src.start();
+      rainNode = { src, gain };
+    }
+    rainNode.gain.gain.setTargetAtTime(want, ctx.currentTime, 1.2);
+  } catch {
+    /* no audio here */
+  }
+}

@@ -15,7 +15,7 @@ import PlacePanel from "../components/Place";
 import MeSheet, { InboxSheet } from "../components/MeSheet";
 import { HousingChooser, SleepOverlay } from "../components/Home";
 import { BottomSheet, DecisionCard, Toast } from "../components/ui";
-import { sfx } from "../lib/sfx";
+import { setRain, sfx } from "../lib/sfx";
 import CampusEngine from "../game3d/Engine";
 import { save } from "../lib/api";
 import { clockText } from "../lib/format";
@@ -263,6 +263,11 @@ export default function Play() {
   }, [game.at]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => engine.current?.setLook(game.look), [game.look]);
   useEffect(() => {
+    engine.current?.setWeather(game.weather);
+    setRain(game.weather?.rain ? (game.weather.heavy ? 2 : 1) : 0);
+    return () => setRain(0);
+  }, [game.weather?.label, world]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
     sync(game.at ? null : game.pos);
     const id = setTimeout(() => setHint(false), 15000);
     return () => clearTimeout(id);
@@ -317,7 +322,8 @@ export default function Play() {
     await playback({ hello: "Saying hello", gist: `Gisting with ${who.name}`, joke: "Cracking a joke", shade: "Throwing shade",
       hype: `Hyping up ${who.name}`, life: `Talking about life with ${who.name}`, hang: `Hanging out with ${who.name}`,
       borrow: `Asking ${who.name} for small money` }[kind],
-      g, { hello: "👋🏾", gist: "💬", joke: "😂", shade: "😒", hype: "🙌🏾", life: "🫶🏾", hang: "🚶🏾", borrow: "🙏🏾" }[kind], "fun");
+      g, { hello: "👋🏾", gist: "💬", joke: "😂", shade: "😒", hype: "🙌🏾", life: "🫶🏾", hang: "🚶🏾", borrow: "🙏🏾" }[kind], "fun",
+      `social:${who.tag || ""}`);
   }
 
   async function onChatWith(who) {
@@ -478,7 +484,7 @@ export default function Play() {
     else if (station.startsWith("person:")) {
       const who = engine.current?.personAt(station);
       if (who) {
-        setPerson(who);
+        setPerson({ ...who, tag: station });
         setPanel("person");
       }
     } else {

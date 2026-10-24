@@ -1083,6 +1083,27 @@ export default class RoomView {
       this.jog = { s: 0 };
       return;
     }
+    // a gist with someone in here: walk up to them, and they turn and talk back
+    if (station && actionId?.startsWith("social:")) {
+      const tag = actionId.slice(7);
+      const them = this.tappables.find((o) => o.userData.station === tag);
+      if (them) {
+        const dx = this.you.position.x - them.position.x;
+        const dz = this.you.position.z - them.position.z;
+        const d = Math.hypot(dx, dz) || 1;
+        this.walkGoal = [them.position.x + (dx / d) * 2, them.position.z + (dz / d) * 2];
+        this.doing = station;
+        this.doingAction = "gist";
+        this.faceTarget = them;
+        const person = them.children[0];
+        if (!them.userData.spot?.sit && !person.userData.managed) {
+          them.rotation.y = Math.atan2(dx, dz);
+          person.act?.("talk");
+        }
+        return;
+      }
+    }
+    this.faceTarget = null;
     const to = station ? this.anchors[station] || this.anchors.idle : this.youHome || this.anchors.idle;
     if (!to) return;
     this.walkGoal = to;
@@ -1273,6 +1294,9 @@ export default class RoomView {
         person.walk?.(dt, 2.4);
       } else {
         this.walkGoal = null;
+        if (this.faceTarget) {
+          this.you.rotation.y = Math.atan2(this.faceTarget.position.x - p.x, this.faceTarget.position.z - p.z);
+        }
         // once there, do the thing: eat at the pot, read standing at the shelf, wash at the bucket…
         const act = ACT_FOR_ACTION[this.doingAction] || { food: "eat", study: "interact", class: "fold", care: "kneel", rest: "fold", fun: "phone",
           hustle: "interact", shop: "pickup", money: "interact" }[this.doing];

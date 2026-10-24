@@ -34,8 +34,8 @@ export function ClockPill({ game, minute, onClick }) {
   const [time, ampm] = clockText(minute).split(" ");
   return (
     <button onClick={onClick} className="glass pointer-events-auto flex h-[38px] items-center gap-1.5 rounded-full pl-3 pr-2"
-      aria-label={`Game time ${clockText(minute)}, ${m.label}. More`}>
-      <span aria-hidden className="text-sm">{night ? "🌙" : "☀️"}</span>
+      aria-label={`Game time ${clockText(minute)}, ${game.weather?.label || ""}, ${m.label}. More`}>
+      <span aria-hidden className="text-sm" title={game.weather?.label}>{game.weather?.icon && (game.weather.rain || !night) ? game.weather.icon : night ? "🌙" : "☀️"}</span>
       <span className="num text-[1.05rem] leading-none">{time}</span>
       <span className="text-[0.7rem] font-bold text-white/70">{ampm}</span>
       <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full text-sm" style={{ background: m.color }}>{m.face}</span>
@@ -685,7 +685,7 @@ export function PlaceSheet({ world, game, to, onPlan, onGo, onClose, onBack, bus
           {opt ? (
             <p className="mt-3 text-sm text-muted">
               {duration(opt.minutes)} trip{opt.wait >= 10 ? " · long queue" : ""}{opt.walk && opt.mode !== "trek" ? ` · ${opt.walk} min walk` : ""}
-              {opt.rush ? " · rush hour" : ""}. Plays in about {Math.round(opt.seconds)} seconds.
+              {opt.rush ? " · rush hour" : ""}{opt.rain ? " · rain price 🌧️" : ""}. Plays in about {Math.round(opt.seconds)} seconds.
             </p>
           ) : (
             <p className="mt-3 text-sm text-muted">{quote.options.find((o) => !o.available)?.reason}</p>
