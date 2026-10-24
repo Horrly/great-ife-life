@@ -264,14 +264,15 @@ DAY = [(H(6), H(23, 59))]
 # "minutes": how long it takes (the clock jumps forward; needs keep falling meanwhile).
 ACTIONS = [
     # --- Home
-    {"id": "sleep", "at": "home", "label": "Sleep", "hours": [(H(20), H(32))], "minutes": "sleep",
-     "effects": {}, "special": "sleep", "blurb": "Lights off till your alarm. Sleep takes real hours.", "done": "You slept like a baby."},
-    {"id": "nap", "at": "home", "label": "Nap (1 hour)", "hours": [(H(9), H(20))], "minutes": 60,
+    {"id": "sleep", "at": "home", "label": "Sleep", "hours": [(0, H(24))], "minutes": "sleep",
+     "effects": {}, "special": "sleep", "blurb": "Lights off. At night you sleep till your alarm; in the day until you're rested.",
+     "done": "You slept like a baby."},
+    {"id": "nap", "at": "home", "label": "Nap (1 hour)", "hours": [(0, H(24))], "minutes": 60,
      "effects": {"energy": 14, "fun": 2}, "blurb": "Just one hour. (It's never one hour.)", "done": "Short nap. You feel better."},
-    {"id": "bath", "at": "home", "label": "Have a bath", "hours": [(H(5), H(24))], "minutes": 20,
+    {"id": "bath", "at": "home", "label": "Have a bath", "hours": [(0, H(24))], "minutes": 20,
      "effects": {"hygiene": 60, "energy": 3}, "special": "bath", "blurb": "Fetch water, bathe, feel like a person again.",
      "done": "Fresh. You feel like a person again."},
-    {"id": "cook", "at": "home", "label": "Cook noodles and egg", "hours": [(H(6), H(24))], "minutes": 40, "cost": 600,
+    {"id": "cook", "at": "home", "label": "Cook noodles and egg", "hours": [(0, H(24))], "minutes": 40, "cost": 600,
      "effects": {"hunger": 40}, "special": "cook",
      "blurb": "Two packs, one egg, zero shame. Free if you have foodstuff from the market.",
      "done": "Noodles and egg: chef of the year."},
@@ -304,7 +305,7 @@ ACTIONS = [
     {"id": "hol_read", "at": "hol", "label": "Read at HOL (2 hrs)", "hours": [(H(8), H(20))], "minutes": 120,
      "effects": {"prep": 10, "energy": -9, "fun": -6}, "study": True, "blurb": "Find a seat, guard your seat, read."},
     {"id": "hol_tdb", "at": "hol", "label": "Read till dawn (TDB)", "hours": [(H(21), H(25))], "minutes": "till_dawn",
-     "effects": {"prep": 16, "energy": -20, "fun": -6}, "study": True,
+     "effects": {"prep": 16, "energy": -20, "fun": -6}, "study": True, "tdb": True,
      "blurb": "Night reading room till 5 AM. Coffee is a food group."},
 
     # --- Amphitheatre
@@ -315,6 +316,20 @@ ACTIONS = [
      "earn": 4_000, "effects": {"prep": 4, "energy": -12, "social": 10}, "hustle": True,
      "requires": {"min_prep": 60}, "skill": "tutoring", "xp": 10,
      "blurb": "You know this course well enough to charge for it."},
+
+    # --- Night reading: the 1000 Seater and ODLT stay open all night
+    {"id": "lt_read", "at": "thousand", "label": "Night reading in the LT (2 hrs)", "hours": [(H(18), H(28))], "minutes": 120,
+     "effects": {"prep": 9, "energy": -10, "fun": -5, "social": 3}, "study": True,
+     "blurb": "Fans on, lights on, a hundred students reading in silence."},
+    {"id": "lt_tdb", "at": "thousand", "label": "Read till dawn in the LT (TDB)", "hours": [(H(21), H(26))], "minutes": "till_dawn",
+     "effects": {"prep": 15, "energy": -20, "fun": -6}, "study": True, "tdb": True,
+     "blurb": "Bring a sweater, a torch and your notes. Security walks past at 2 AM."},
+    {"id": "odlt_read", "at": "odlt", "label": "Night reading at ODLT (2 hrs)", "hours": [(H(18), H(28))], "minutes": 120,
+     "effects": {"prep": 9, "energy": -10, "fun": -5, "social": 3}, "study": True,
+     "blurb": "The back rows are for sleeping. The front rows are for reading."},
+    {"id": "odlt_tdb", "at": "odlt", "label": "Read till dawn at ODLT (TDB)", "hours": [(H(21), H(26))], "minutes": "till_dawn",
+     "effects": {"prep": 15, "energy": -20, "fun": -6}, "study": True, "tdb": True,
+     "blurb": "Exam season TDB. Somebody always has a kettle."},
 
     # --- Buka
     {"id": "amala", "at": "buka", "label": "Amala, ewedu and gbegiri", "hours": [(H(7), H(20, 30))], "minutes": 30,
@@ -365,6 +380,10 @@ ACTIONS = [
     {"id": "snake", "at": "phone", "label": "Play Snake", "hours": [(0, H(24))], "minutes": 20, "effects": {"fun": 8},
      "requires": {"keypad": True}, "blurb": "The torchlight phone's one game. Still undefeated.",
      "done": "You played Snake. New high score."},
+    {"id": "order_food", "at": "phone", "label": "Order food delivery (any time)", "hours": [(0, H(24))], "minutes": 35,
+     "cost": 2_200, "effects": {"hunger": 50, "fun": 3}, "requires": {"smartphone": True},
+     "blurb": "Jollof and chicken from a campus kitchen, delivered to wherever you are. Costs more than the buka.",
+     "done": "Delivery came hot. Jollof and chicken: sorted."},
     {"id": "sell_data", "once_per_day": True, "requires": {"smartphone": True}, "at": "phone", "label": "Sell data bundles", "hours": DAY, "minutes": 60,
      "effects": {"energy": -4, "social": 3}, "hustle": True, "special": "sell_data",
      "blurb": "Your hall's unofficial data plug."},
@@ -1046,7 +1065,7 @@ SOCIAL = {
              "bond": 4, "needs": 10},
     "life": {"label": "Talk about life", "emoji": "🫶🏾", "effects": {"social": 18, "fun": 4}, "seconds": 9, "cooldown": 90,
              "bond": 6, "needs": 30},
-    "hang": {"label": "Hang out", "emoji": "🚶🏾", "effects": {"social": 20, "fun": 14, "energy": -4}, "seconds": 14,
+    "hang": {"label": "Hang out", "emoji": "🚶🏾", "effects": {"social": 20, "fun": 14, "energy": -4}, "seconds": 12,
              "cooldown": 120, "bond": 7, "needs": 30},
     "borrow": {"label": "Ask for small money", "emoji": "🙏🏾", "effects": {"social": -2}, "seconds": 5, "cooldown": 1440,
                "bond": -3, "needs": 60, "npc_only": True},

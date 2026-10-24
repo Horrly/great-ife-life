@@ -93,13 +93,13 @@ BUILDINGS = {
 
     # --- Lecture theatres and faculties
     "odlt": {"name": "ODLT", "node": "odu", "x": 130, "z": 90, "w": 30, "d": 22, "h": 10, "style": "theatre",
-             "kind": "lecture", "wall": "#d9cfbd", "roof": "#5f6b5a", "hours": (7 * H, 21 * H),
+             "kind": "lecture", "wall": "#d9cfbd", "roof": "#5f6b5a", "hours": None,  # open all night for reading
              "sign": "ODUDUWA LECTURE THEATRES"},
     "ajose": {"name": "Ajose LT", "node": "aj", "x": 240, "z": -95, "w": 28, "d": 22, "h": 10, "style": "theatre",
               "kind": "lecture", "wall": "#e2d6c2", "roof": "#6b5a3f", "hours": (7 * H, 21 * H),
               "sign": "AJOSE LECTURE THEATRE"},
     "thousand": {"name": "1000 Seater LT", "node": "sci", "x": -5, "z": -95, "w": 36, "d": 28, "h": 13,
-                 "style": "theatre", "kind": "lecture", "wall": "#cfc6b4", "roof": "#3f5f4a", "hours": (7 * H, 21 * H),
+                 "style": "theatre", "kind": "lecture", "wall": "#cfc6b4", "roof": "#3f5f4a", "hours": None,  # night reading
                  "sign": "1000 SEATER LECTURE THEATRE"},
     "booc": {"name": "BOO Theatres", "node": "ne", "x": -25, "z": -155, "w": 30, "d": 22, "h": 10, "style": "theatre",
              "kind": "lecture", "wall": "#dccfbf", "roof": "#4a5f6b", "hours": (7 * H, 21 * H),
@@ -290,7 +290,7 @@ BLURBS = {
     "angola": "Angola Hall, next door to Mozambique at AngloMoz. Close-knit, loud on hall week, far from the faculties.",
     "staff": "Staff Quarters on Road 7. Leafy, calm, and a long walk from everything.",
     "offcampus": "Your self-con in Asherifa. Your own key, your own light bill, your own peace.",
-    "odlt": "The big lecture theatre. Come early or stand at the back.",
+    "odlt": "The big lecture theatre. Come early or stand at the back. Open all night for reading.",
     "ajose": "Ajose LT: fans that work sometimes, and lecturers who never miss a class.",
     "thousand": "The 1000 Seater. General courses, big exams, and nowhere to hide.",
     "booc": "BOO Theatres: science lectures and practicals.",

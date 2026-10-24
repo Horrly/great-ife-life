@@ -28,11 +28,11 @@ WAT = 3600          # Lagos is UTC+1 all year
 OFFLINE_AFTER = 45  # no request for this many minutes: you were away, and life went on gently
 AWAY_FLOOR = 20     # while you're away, needs don't fall below this
 FATIGUE = 0.5       # an action costs this share of the needs its nominal time would have taken
-ACTION_SECONDS = (5.0, 30.0)  # actions play out over real seconds: long enough to watch, never rushed
+ACTION_SECONDS = (4.0, 13.0)  # every action plays out in at most 13 real seconds
 JOURNEY_SPEEDUP = 1.5     # journeys play back at 1.5 nominal minutes per real second
-JOURNEY_MIN_SECONDS = 5
-JOURNEY_MAX_SECONDS = 35
-BET_MATCH_SECONDS = 45     # a virtual match plays out over 45 real seconds (two halves), not in a blink
+JOURNEY_MIN_SECONDS = 4
+JOURNEY_MAX_SECONDS = 13  # nothing in the game takes more than 13 seconds to watch
+BET_MATCH_SECONDS = 13     # a virtual match plays out over 13 real seconds (two halves), not in a blink
 RECOVER_MINUTES = 45      # a collapse keeps you at the Health Centre this long (real minutes)
 WALK_UNITS_PER_SECOND = 7.5  # the fastest the 3D student may move (a jog is ~6); used to reject teleports
 DOOR_RADIUS = 34          # how close (world units) you must be to a door to go in
@@ -733,9 +733,14 @@ def _maybe_wake(state, messages):
             messages.append("The nurse says you can go. Eat something and rest properly.")
         return
     woke = None
-    if C.WAKE_UP <= t < C.H(20) and energy >= 99.5:
+    slept = state["clock"] - asleep.get("since", state["clock"])
+    if not asleep.get("night"):
+        # a daytime sleep: up when you're rested, or after about three hours
+        if energy >= 97 or slept >= 180:
+            woke = "You woke up from your afternoon sleep, rested." if energy >= 90 else f"You woke up. It's {clock_text(t)}."
+    elif C.WAKE_UP <= t < C.H(20) and energy >= 99.5:
         woke = "You woke up fully rested."
-    elif C.WAKE_UP <= t < C.H(20) and energy >= 80 and asleep.get("night"):
+    elif C.WAKE_UP <= t < C.H(20) and energy >= 80:
         woke = f"Your alarm went off. Good morning, it's {clock_text(t)}!"
     elif C.H(11) <= t < C.H(20):
         woke = f"You overslept! It's {clock_text(t)}."
@@ -1156,7 +1161,7 @@ def _begin(state, now, *, waking=False) -> list[str]:
 def action_seconds(minutes: float) -> float:
     """How long an action plays out on screen (it 'takes' its minutes, but you don't wait them)."""
     lo, hi = ACTION_SECONDS
-    return round(max(lo, min(hi, minutes / 4)), 1)  # an hour's work takes 15 s; a long shift 30 s
+    return round(max(lo, min(hi, minutes / 6)), 1)  # an hour takes 10 s; anything longer tops out at 13 s
 
 
 def journey_seconds(minutes: float) -> float:
@@ -1330,8 +1335,10 @@ def _do_action(state, action, messages):
     elif special == "sleep":
         state["asleep"] = {"kind": "sleep", "since": state["clock"], "night": not C.WAKE_UP <= t0 < C.H(20)}
         line = (f"Lights off. Your alarm is set for {clock_text(C.WAKE_UP)}. "
-                "Sleep takes real hours: come back in the morning, or wake up any time.")
-    if action["id"] == "hol_tdb":
+                "Sleep takes real hours: come back in the morning, or wake up any time."
+                if state["asleep"]["night"] else
+                "Afternoon sleep. You'll wake up when you're rested (about three hours at most), or wake up any time.")
+    if action.get("tdb"):
         state["stats"]["tdb"] += 1
 
     if action.get("earn"):

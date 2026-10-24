@@ -390,3 +390,10 @@ Akintola Hall now stands right beside Fajuyi Hall. Coming along the hall road fr
 ## Every OAU course
 
 New students now choose from **60 real OAU courses across 11 faculties**: Technology, Science, Social Sciences, Administration, Arts, Law, Education, Pharmacy, the College of Health Sciences (Medicine, Dentistry, Nursing, Medical Rehab, Anatomy, Physiology), Agriculture and Environmental Design & Management. The picker has a search box and faculty filters. Six new faculty buildings sit east of Senate (Law, Education, Pharmacy, Health Sciences, Agriculture, EDM; positions estimated) with their own roads, and every faculty has its own pop-quiz questions. Medicine, Dentistry and Engineering are the hardest; most Arts and Education courses are kinder.
+
+## Quick actions, any-time basics, night reading
+
+- **Nothing takes more than 13 seconds to watch.** Reading, lectures, shifts, journeys, gists and OgaBet matches all finish within 13 real seconds (an hour of game time plays in about 10). You can still tap to skip.
+- **Bath, sleep and eat any time.** Bathing, cooking and napping work at any hour at home. Sleeping at night runs till your alarm; sleeping in the day lasts until you're rested (about three hours at most). **Order food delivery** from your phone at any hour, wherever you are (it costs more than the buka).
+- **No electric poles or overhead wires** cluttering the campus roads (street lamps stay).
+- **Night reading in lecture theatres.** The 1000 Seater LT and ODLT stay open all night: read for two hours in the evening or read till dawn (TDB), as well as at HOL.

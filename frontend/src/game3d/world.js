@@ -90,48 +90,6 @@ function roofTanks(g, b, top, n = 2) {
   }
 }
 
-/** NEPA poles with sagging wires along the main roads. */
-function powerLines(map) {
-  const g = new THREE.Group();
-  const poleGeo = new THREE.CylinderGeometry(0.18, 0.26, 10, 6).translate(0, 5, 0);
-  const armGeo = new THREE.BoxGeometry(2.2, 0.18, 0.18);
-  const poleMat = mat("#6b5134");
-  const wireMat = new THREE.LineBasicMaterial({ color: "#1a1a1a" });
-  for (const [a, b, kind] of map.edges) {
-    if (kind === "town") continue;
-    const A = map.nodes[a];
-    const B = map.nodes[b];
-    const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
-    const nx = (B[1] - A[1]) / len;
-    const nz = -(B[0] - A[0]) / len;
-    const pts = [];
-    for (let t = 8; t < len - 4; t += 38) {
-      const x = A[0] + ((B[0] - A[0]) * t) / len + nx * (ROAD_W / 2 + 4.2);
-      const z = A[1] + ((B[1] - A[1]) * t) / len + nz * (ROAD_W / 2 + 4.2);
-      const pole = new THREE.Mesh(poleGeo, poleMat);
-      pole.position.set(x, 0, z);
-      const arm = new THREE.Mesh(armGeo, poleMat);
-      arm.position.set(x, 9.4, z);
-      arm.rotation.y = Math.atan2(B[0] - A[0], B[1] - A[1]) + Math.PI / 2;
-      g.add(pole, arm);
-      pts.push([x, z]);
-    }
-    for (let i = 1; i < pts.length; i++) {
-      for (const off of [-0.9, 0.9]) {
-        const [x1, z1] = pts[i - 1];
-        const [x2, z2] = pts[i];
-        const line = [];
-        for (let k = 0; k <= 8; k++) {
-          const t = k / 8;
-          const sag = Math.sin(Math.PI * t) * 1.1;
-          line.push(new THREE.Vector3(x1 + (x2 - x1) * t + nx * off, 9.35 - sag, z1 + (z2 - z1) * t + nz * off));
-        }
-        g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line), wireMat));
-      }
-    }
-  }
-  return g;
-}
 
 // --- Building styles ------------------------------------------------------------------------------
 
@@ -922,7 +880,7 @@ export function buildWorld(map) {
   const lampSet = lamps(map);
   group.add(...lampSet.meshes);
   group.add(gate(map));
-  group.add(powerLines(map));
+  // (no electric poles or overhead wires on campus: they cluttered the view)
   const [gx, gz] = map.nodes.gate;
   colliders.push({ id: "gate", cameraOnly: true, h: 11, x0: gx - 8, x1: gx - 4, z0: gz - 10, z1: gz + 10 });
   group.add(townStrip(map));

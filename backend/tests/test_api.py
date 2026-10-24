@@ -81,11 +81,11 @@ def test_replayed_move_does_not_double_apply(monkeypatch):
 
 
 def test_illegal_move_is_refused_with_current_state(monkeypatch):
-    FakeClock(monkeypatch, start=1_792_387_800.0 + 3 * 3600)  # 9:30 AM: too early to sleep
+    FakeClock(monkeypatch, start=1_792_387_800.0 + 3 * 3600)  # 9:30 AM: HOL reading is fine, but not from home
     client, game = start()
     game = clear(client, game)
-    res = client.post("/api/game/act/", {"action": "sleep", "turn": game["turn"]}, format="json")  # morning
-    assert res.status_code == 400 and "starts" in res.data["detail"].lower()
+    res = client.post("/api/game/act/", {"action": "hol_read", "turn": game["turn"]}, format="json")
+    assert res.status_code == 400 and "go there" in res.data["detail"].lower()
     assert res.data["game"]["turn"] == game["turn"]
     res = client.post("/api/game/act/", {"action": "print_money", "turn": game["turn"]}, format="json")
     assert res.status_code == 400

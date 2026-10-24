@@ -189,9 +189,9 @@ def test_you_can_wake_up_early():
     assert not s["asleep"] and "got up" in msgs[0]
 
 
-def test_sleeping_is_for_night():
+def test_you_can_sleep_any_time_at_home():
     s = at(new(), 10, where="staff")
-    assert "Starts" in action(s, "sleep")["reason"]
+    assert action(s, "sleep")["reason"] is None
 
 
 def test_activities_take_time_and_happen_in_their_building():
@@ -1205,3 +1205,28 @@ def test_every_oau_course_can_be_studied():
         assert s["courses"][0]["code"].startswith(d["code"]) and s["timetable"]
         view = E.view(s, t_of(s))
         assert view["department"]["name"] == d["name"]
+
+
+def test_nothing_takes_more_than_13_seconds_to_watch():
+    assert E.action_seconds(600) <= 13 and E.journey_seconds(500) <= 13 and E.BET_MATCH_SECONDS <= 13
+    assert all(spec["seconds"] <= 13 for spec in C.SOCIAL.values())
+
+
+def test_bath_sleep_and_food_any_time_of_day():
+    for hour in (2, 10, 15, 23):
+        s = at(new(seed=f"any{hour}"), hour, where="staff")
+        s["money"] = 50_000
+        enabled = ids(s)
+        assert {"bath", "sleep", "cook"} <= enabled, (hour, enabled)
+    s = at(new(seed="day-sleep"), 14, where="staff")
+    s["needs"]["energy"] = 40
+    s, _ = E.act(s, "sleep", t_of(s))
+    assert s["asleep"] and not s["asleep"]["night"]
+    s2, msgs = later(s, 200)
+    assert not s2.get("asleep")  # a daytime sleep ends after about three hours
+
+
+def test_lecture_theatres_open_for_night_reading():
+    s = at(new(seed="night-read"), 23, where="thousand")
+    assert E.building_open("thousand", E.tod(s)) and E.building_open("odlt", E.tod(s))
+    assert "lt_tdb" in ids(s)

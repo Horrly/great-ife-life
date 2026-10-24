@@ -136,7 +136,7 @@ function ParentsScreen({ game, busy, onParents }) {
   );
 }
 
-const MATCH_SECONDS = 45; // the server keeps you "watching" this long
+const MATCH_SECONDS = 13; // the server keeps you "watching" this long
 
 /** The match plays out: 90 minutes over 45 real seconds, half-time included, goals as they happen. */
 function LiveMatch({ bet, busyFor }) {
@@ -152,17 +152,17 @@ function LiveMatch({ bet, busyFor }) {
     const id = setInterval(() => setTick((n) => n + 1), 250);
     return () => clearInterval(id);
   }, [live, bet.at]);
-  // first half 0–20 s, half-time 20–25 s, second half 25–45 s
-  const minute = !live ? 90 : elapsed < 20 ? Math.floor((elapsed / 20) * 45) : elapsed < 25 ? 45 : 45 + Math.floor(((elapsed - 25) / 20) * 45);
+  // first half 0–6 s, half-time 6–7 s, second half 7–13 s
+  const minute = !live ? 90 : elapsed < 6 ? Math.floor((elapsed / 6) * 45) : elapsed < 7 ? 45 : 45 + Math.floor(((elapsed - 7) / 6) * 45);
   const scored = (bet.goals || []).filter(([m]) => m <= minute);
   const h = scored.filter(([, side]) => side === "home").length;
   const a = scored.length - h;
   const latest = scored[scored.length - 1];
-  const fresh = live && latest && minute - latest[0] < 6;
+  const fresh = live && latest && minute - latest[0] < 12;
   return (
     <div className={`rounded-xl px-3 py-2.5 ${live ? "bg-[#0b2416]" : bet.won ? "bg-[#1f7a46]" : "bg-[#7a1f1f]"}`} aria-live="polite">
       <div className="flex items-center justify-between text-[11px] font-bold opacity-85">
-        <span>{live ? (elapsed >= 20 && elapsed < 25 ? "Half-time" : `🔴 LIVE ${minute}'`) : "Full time"}</span>
+        <span>{live ? (elapsed >= 6 && elapsed < 7 ? "Half-time" : `🔴 LIVE ${minute}'`) : "Full time"}</span>
         <span>Your pick: {bet.pick === "1" ? bet.home : bet.pick === "2" ? bet.away : "Draw"}</span>
       </div>
       <div className="mt-1 flex items-center justify-between gap-2 text-sm font-black">
@@ -185,7 +185,7 @@ function BetScreen({ game, busy, onBet }) {
     return (
       <div className="space-y-3 p-4 text-white">
         <p className="display text-3xl">OgaBet ⚽</p>
-        <p className="text-sm">Virtual football: each match plays out over about 45 seconds. The bookie keeps about 12% of every naira, so over time the app wins.</p>
+        <p className="text-sm">Virtual football: each match plays out over about 13 seconds. The bookie keeps about 12% of every naira, so over time the app wins.</p>
         <label className="flex items-start gap-2 rounded-xl bg-white/15 p-3 text-sm">
           <input type="checkbox" className="mt-1 h-4 w-4" onChange={(e) => setAdult(e.target.checked)} />
           I'm 18 or older
