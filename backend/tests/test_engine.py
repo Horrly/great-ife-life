@@ -93,7 +93,7 @@ def test_admission_is_random_but_fixed_per_seed():
     assert profiles == set(C.PROFILES)
     assert E.new_state("same", "csc")["profile"] == E.new_state("same", "csc")["profile"]
     with pytest.raises(E.GameError):
-        E.new_state("x", "law")
+        E.new_state("x", "astrology")
 
 
 def test_you_wake_up_at_home_with_a_look():
@@ -1193,3 +1193,15 @@ def test_weather_is_shared_and_changes_through_the_day():
     seen = {E.weather(at(s, h))["label"] for d in range(30) for h in (1, 4, 7, 10, 13, 16, 19, 22)
             for _ in [s.__setitem__("total_days", s["total_days"] + 1)]}
     assert "Clear" in seen and ({"Light rain", "Heavy rain"} & seen)
+
+
+def test_every_oau_course_can_be_studied():
+    assert len(C.DEPARTMENTS) >= 50
+    assert {"law", "med", "phm", "mee", "arc", "nsc"} <= set(C.DEPARTMENTS)
+    for did, d in C.DEPARTMENTS.items():
+        assert d["faculty"] in W.BUILDINGS and W.BUILDINGS[d["faculty"]]["kind"] == "faculty", did
+        assert all(v in W.BUILDINGS for v in d["venues"]) and d["exams"] in W.BUILDINGS
+        s = new(dept=did, seed="t-" + did)
+        assert s["courses"][0]["code"].startswith(d["code"]) and s["timetable"]
+        view = E.view(s, t_of(s))
+        assert view["department"]["name"] == d["name"]

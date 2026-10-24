@@ -43,6 +43,11 @@ NODES = {
     "akn": (-128, 26),   # Akintola Hall gate, on the hall road just before Fajuyi
     "bk": (-235, 95),    # the buka by the gate road
     "aj": (250, -65),    # Ajose LT
+    # the other faculties (positions estimated; the real OAU layout spreads them east of Senate)
+    "fac": (230, 4),     # Law and Education junction
+    "med": (245, 115),   # Pharmacy and the College of Health Sciences
+    "agr": (275, -62),   # Faculty of Agriculture
+    "edm": (370, 10),    # Environmental Design and Management
 }
 
 # Two-way roads. "town" roads are outside campus: no campus bus.
@@ -51,7 +56,8 @@ EDGES = [
     ("awo", "hc", "road"), ("hc", "mor", "road"), ("mor", "faj", "road"), ("w", "akn", "road"), ("akn", "faj", "road"),
     ("buka", "mkt", "road"), ("mor", "c", "road"), ("c", "sci", "road"), ("sci", "ne", "road"), ("ne", "n", "road"),
     ("sci", "amp", "road"), ("amp", "n", "road"), ("c", "hol", "road"), ("odu", "hol", "road"), ("hol", "amp", "road"),
-    ("hol", "sen", "road"), ("sen", "e", "road"), ("e", "tech", "road"), ("e", "staff", "road"), ("mkt", "subn", "road"),
+    ("hol", "sen", "road"), ("sen", "fac", "road"), ("fac", "e", "road"), ("fac", "med", "road"),
+    ("aj", "agr", "road"), ("tech", "edm", "road"), ("e", "tech", "road"), ("e", "staff", "road"), ("mkt", "subn", "road"),
     ("subn", "odu", "road"), ("subn", "sport", "road"), ("sport", "bank", "road"), ("bank", "sen", "road"), ("c", "subn", "road"),
     ("bk", "buka", "road"), ("e", "aj", "road"),
 ]
@@ -113,6 +119,25 @@ BUILDINGS = {
     "arts": {"name": "Humanities (Arts)", "node": "sen", "x": 205, "z": -32, "w": 32, "d": 22, "h": 13,
              "style": "faculty", "kind": "faculty", "wall": "#e9dfcb", "roof": "#6b4a3f", "hours": (7 * H, 20 * H),
              "sign": "HUMANITIES BLOCKS"},
+
+    "law": {"name": "Faculty of Law", "node": "fac", "x": 205, "z": 45, "w": 30, "d": 22, "h": 13,
+            "style": "faculty", "kind": "faculty", "wall": "#ece4d4", "roof": "#2f3f5f", "hours": (7 * H, 20 * H),
+            "sign": "FACULTY OF LAW"},
+    "education": {"name": "Faculty of Education", "node": "fac", "x": 262, "z": 45, "w": 30, "d": 22, "h": 12,
+                  "style": "faculty", "kind": "faculty", "wall": "#e4dccb", "roof": "#5f4a2f", "hours": (7 * H, 20 * H),
+                  "sign": "FACULTY OF EDUCATION"},
+    "pharm": {"name": "Faculty of Pharmacy", "node": "med", "x": 210, "z": 122, "w": 28, "d": 22, "h": 12,
+              "style": "faculty", "kind": "faculty", "wall": "#e8e8e0", "roof": "#2f6b5f", "hours": (7 * H, 20 * H),
+              "sign": "FACULTY OF PHARMACY"},
+    "chs": {"name": "College of Health Sciences", "node": "med", "x": 285, "z": 122, "w": 36, "d": 26, "h": 14,
+            "style": "faculty", "kind": "faculty", "wall": "#f0ece4", "roof": "#3f6b8f", "hours": (7 * H, 20 * H),
+            "sign": "COLLEGE OF HEALTH SCIENCES"},
+    "agric": {"name": "Faculty of Agriculture", "node": "agr", "x": 300, "z": -75, "w": 34, "d": 26, "h": 11,
+              "style": "faculty", "kind": "faculty", "wall": "#e6dcc0", "roof": "#4f6b2f", "hours": (7 * H, 20 * H),
+              "sign": "FACULTY OF AGRICULTURE"},
+    "edm": {"name": "Environmental Design & Mgt", "node": "edm", "x": 385, "z": 40, "w": 34, "d": 24, "h": 13,
+            "style": "faculty", "kind": "faculty", "wall": "#e2dccf", "roof": "#6b3f2f", "hours": (7 * H, 20 * H),
+            "sign": "ENVIRONMENTAL DESIGN AND MANAGEMENT"},
 
     # --- Campus life
     "oduduwa": {"name": "Oduduwa Hall", "node": "odu", "x": 75, "z": 30, "w": 36, "d": 28, "h": 14,
@@ -274,6 +299,12 @@ BLURBS = {
     "science": "Faculty of Science. Labs, practicals and the smell of reagents.",
     "socsci": "Social Sciences & Admin. Debates in the corridor, case studies in the hall.",
     "arts": "Humanities. Beautiful buildings, deep arguments, and the best campus photos.",
+    "law": "Future learned friends in suits, moot court on Fridays, and the heaviest textbooks on campus.",
+    "education": "Tomorrow's teachers and counsellors. Micro-teaching practice in the afternoons.",
+    "pharm": "B.Pharm: five years, a lot of chemistry, and the cleanest lab coats in Ife.",
+    "chs": "Medicine, Nursing, Dentistry and Medical Rehab. Ward rounds at OAUTHC come later.",
+    "agric": "Teaching and research farm next door: crops, poultry, fish ponds and a lot of fresh air.",
+    "edm": "Architecture, Estate Management, Urban Planning, Quantity Surveying and Building. Studio nights are long.",
     "oduduwa": "Oduduwa Hall: convocation, concerts and every big event on campus.",
     "health": "The Health Centre. Free check-ups for students, and a pharmacy that is out of everything.",
     "market": "New Market, Ojaja to everyone. Foodstuff, phone repairs, printing, and noise.",

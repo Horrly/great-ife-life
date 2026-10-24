@@ -1665,7 +1665,8 @@ def _maybe_class_moment(state, rng, lecture_line):
     if rng.random() >= C.CLASS_MOMENT_CHANCE:
         return
     if rng.random() < C.QUIZ_CHANCE:
-        bank = C.QUIZZES.get(state["department"], []) + C.QUIZZES["gst"]
+        group = C.DEPARTMENTS[state["department"]].get("group", "")
+        bank = C.QUIZZES.get(state["department"], []) + C.QUIZZES.get(f"fac:{group}", []) + C.QUIZZES["gst"]
         q, options, answer = bank[rng.randrange(len(bank))]
         state["pending"] = {"id": "pop_quiz", "title": "Pop quiz!",
                             "text": f"The lecturer fires a question at the class: {q}",

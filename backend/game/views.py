@@ -173,7 +173,9 @@ def account_for(request, required=True):
 class ConfigView(APIView):
     def get(self, request):
         return Response({
-            "departments": [{"id": k, "name": v["name"], "code": v["code"]} for k, v in C.DEPARTMENTS.items()],
+            "departments": [{"id": k, "name": v["name"], "code": v["code"], "faculty": C.FACULTIES[v["group"]]}
+                            for k, v in C.DEPARTMENTS.items()],
+            "faculties": list(C.FACULTIES.values()),
             "profiles": [{"id": k, "name": v["name"], "tagline": v["tagline"], "weight": v["weight"]}
                          for k, v in C.PROFILES.items()],
             "housing": C.HOUSING,

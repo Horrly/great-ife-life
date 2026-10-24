@@ -7,13 +7,19 @@ export default function NewGame() {
   const { start } = useGame();
   const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
+  const [faculties, setFaculties] = useState([]);
+  const [q, setQ] = useState("");
+  const [faculty, setFaculty] = useState("");
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api("/config/", { code: null }).then((c) => setDepartments(c.departments)).catch((e) => setError(e.message));
+    api("/config/", { code: null }).then((c) => {
+      setDepartments(c.departments);
+      setFaculties(c.faculties || []);
+    }).catch((e) => setError(e.message));
   }, []);
 
   async function submit(e) {
@@ -39,22 +45,44 @@ export default function NewGame() {
         Pick your course. What kind of student life you get is up to fate, like real admission.
       </p>
       <form onSubmit={submit} className="mt-8 space-y-6">
-        <fieldset>
+        <fieldset className="min-w-0">
           <legend className="font-bold">Course of study</legend>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {departments.map((d) => (
-              <label
-                key={d.id}
-                className={`cursor-pointer rounded-lg border-2 px-3 py-3 ${
-                  department === d.id ? "border-ife-600 bg-ife-50" : "border-line bg-slab hover:border-ife-100"
-                }`}
-              >
-                <input type="radio" name="department" value={d.id} className="sr-only" onChange={() => setDepartment(d.id)} />
-                <span className="block font-bold">{d.name}</span>
-                <span className="block text-xs text-muted">{d.code}</span>
-              </label>
+          <p className="text-sm text-muted">{departments.length} OAU courses across {faculties.length} faculties.</p>
+          <input className="input mt-3" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search: Law, Medicine, Mechanical…"
+            aria-label="Search courses" />
+          <div className="chip-row mt-2 flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Faculty">
+            {["", ...faculties].map((f) => (
+              <button key={f || "all"} type="button" role="tab" aria-selected={faculty === f} onClick={() => setFaculty(f)}
+                className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-semibold ${faculty === f ? "bg-ink text-white" : "bg-chip"}`}>
+                {f || "All"}
+              </button>
             ))}
           </div>
+          {(() => {
+            const term = q.trim().toLowerCase();
+            const shown = departments.filter((d) => (!faculty || d.faculty === faculty)
+              && (!term || `${d.name} ${d.code} ${d.faculty}`.toLowerCase().includes(term)));
+            const groups = [...new Set(shown.map((d) => d.faculty))];
+            if (!shown.length) return <p className="mt-4 text-sm text-muted">No course matches “{q}”.</p>;
+            return groups.map((g) => (
+              <div key={g} className="mt-4">
+                <h3 className="text-xs font-bold text-muted">Faculty of {g}</h3>
+                <div className="mt-1.5 grid grid-cols-2 gap-2">
+                  {shown.filter((d) => d.faculty === g).map((d) => (
+                    <label key={d.id}
+                      className={`cursor-pointer rounded-lg border-2 px-3 py-3 ${
+                        department === d.id ? "border-ife-600 bg-ife-50" : "border-line bg-slab hover:border-ife-100"
+                      }`}>
+                      <input type="radio" name="department" value={d.id} className="sr-only" checked={department === d.id}
+                        onChange={() => setDepartment(d.id)} />
+                      <span className="block font-bold leading-tight">{d.name}</span>
+                      <span className="block text-xs text-muted">{d.code}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
         </fieldset>
         <label className="block">
           <span className="font-bold">Your name on the leaderboard</span>

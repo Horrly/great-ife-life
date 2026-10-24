@@ -194,19 +194,62 @@ BET_TEAMS = ["Arsenal", "Chelsea", "Man United", "Man City", "Liverpool", "Spurs
 
 # Each course has a faculty building (classrooms, study groups) and lecture theatres it uses.
 # Tests and exams are written in "exams".
+# OAU faculties (the building their department belongs to) and the courses you can be admitted to.
+FACULTIES = {
+    "tech": "Technology", "science": "Science", "socsci": "Social Sciences", "admin": "Administration",
+    "arts": "Arts", "law": "Law", "education": "Education", "pharm": "Pharmacy", "chs": "Health Sciences",
+    "agric": "Agriculture", "edm": "Environmental Design & Management",
+}
+# group: the faculty a course sits under. building: where its offices and classrooms are.
+# difficulty: lower is harder (medicine and engineering are tough; most arts courses are kinder).
+_VENUES = {
+    "tech": (["tech", "techlt", "thousand"], "thousand"), "science": (["science", "booc", "thousand"], "booc"),
+    "socsci": (["socsci", "odlt", "thousand"], "odlt"), "admin": (["socsci", "ajose", "odlt"], "ajose"),
+    "arts": (["arts", "ajose", "odlt"], "ajose"), "law": (["law", "odlt", "ajose"], "odlt"),
+    "education": (["education", "odlt", "thousand"], "thousand"), "pharm": (["pharm", "booc", "thousand"], "booc"),
+    "chs": (["chs", "booc", "thousand"], "booc"), "agric": (["agric", "ajose", "thousand"], "ajose"),
+    "edm": (["edm", "techlt", "ajose"], "techlt"),
+}
+_BUILDING = {"admin": "socsci"}
+_COURSES = [
+    # id, name, code, faculty group, difficulty
+    ("csc", "Computer Science", "CSC", "tech", -3), ("eee", "Electronic & Electrical Engineering", "EEE", "tech", -3),
+    ("mee", "Mechanical Engineering", "MEE", "tech", -3), ("cve", "Civil Engineering", "CVE", "tech", -3),
+    ("che", "Chemical Engineering", "CHE", "tech", -3), ("age", "Agricultural & Environmental Engineering", "AGE", "tech", -2),
+    ("mse", "Materials Science & Engineering", "MSE", "tech", -2), ("fst", "Food Science & Technology", "FST", "tech", -2),
+    ("mcb", "Microbiology", "MCB", "science", -2), ("bch", "Biochemistry", "BCH", "science", -2),
+    ("chm", "Chemistry", "CHM", "science", -2), ("phy", "Physics", "PHY", "science", -3),
+    ("mth", "Mathematics", "MTH", "science", -3), ("gly", "Geology", "GLY", "science", -2),
+    ("zoo", "Zoology", "ZOO", "science", -1), ("bot", "Botany", "BOT", "science", -1),
+    ("ecn", "Economics", "ECN", "socsci", -1), ("pol", "Political Science", "POL", "socsci", 0),
+    ("psy", "Psychology", "PSY", "socsci", -1), ("soc", "Sociology & Anthropology", "SOA", "socsci", 0),
+    ("geo", "Geography", "GEO", "socsci", 0), ("dss", "Demography & Social Statistics", "DSS", "socsci", -1),
+    ("acc", "Accounting", "ACC", "admin", -2), ("mgt", "Management & Accounting", "MGT", "admin", -1),
+    ("pub", "Public Administration", "PUB", "admin", 0), ("inr", "International Relations", "INR", "admin", 0),
+    ("lgs", "Local Government Studies", "LGS", "admin", 1),
+    ("eng", "English", "ENG", "arts", 1), ("his", "History", "HIS", "arts", 1), ("phl", "Philosophy", "PHL", "arts", 0),
+    ("yor", "Linguistics & African Languages", "LAL", "arts", 1), ("frn", "Foreign Languages (French)", "FRN", "arts", 0),
+    ("rel", "Religious Studies", "REL", "arts", 1), ("dra", "Dramatic Arts", "DRA", "arts", 1),
+    ("mus", "Music", "MUS", "arts", 0), ("faa", "Fine & Applied Arts", "FAA", "arts", 0),
+    ("law", "Law", "LAW", "law", -3),
+    ("edu", "Educational Management", "EDM", "education", 1), ("gac", "Guidance & Counselling", "EFC", "education", 1),
+    ("ste", "Science & Technology Education", "STE", "education", 0), ("phe", "Physical & Health Education", "PHE", "education", 1),
+    ("edt", "Educational Technology", "EDT", "education", 1),
+    ("phm", "Pharmacy", "PHM", "pharm", -3),
+    ("med", "Medicine & Surgery", "MBS", "chs", -4), ("dnt", "Dentistry", "DNT", "chs", -4),
+    ("nsc", "Nursing Science", "NSC", "chs", -2), ("mrh", "Medical Rehabilitation", "MRH", "chs", -2),
+    ("ana", "Anatomy", "ANA", "chs", -2), ("phs", "Physiology", "PHS", "chs", -2),
+    ("aec", "Agricultural Economics", "AEC", "agric", 0), ("ans", "Animal Science", "ANS", "agric", 0),
+    ("cpp", "Crop Production & Protection", "CPP", "agric", 0), ("ssc", "Soil Science", "SSC", "agric", 0),
+    ("fnc", "Family, Nutrition & Consumer Sciences", "FNC", "agric", 1),
+    ("arc", "Architecture", "ARC", "edm", -2), ("esm", "Estate Management", "ESM", "edm", -1),
+    ("urp", "Urban & Regional Planning", "URP", "edm", -1), ("qsv", "Quantity Surveying", "QSV", "edm", -1),
+    ("bld", "Building", "BLD", "edm", -1), ("fad", "Fine Arts & Design (EDM)", "FAD", "edm", 0),
+]
 DEPARTMENTS = {
-    "csc": {"name": "Computer Science", "code": "CSC", "difficulty": -3, "faculty": "tech",
-            "venues": ["tech", "techlt", "thousand"], "exams": "thousand"},
-    "ecn": {"name": "Economics", "code": "ECN", "difficulty": -1, "faculty": "socsci",
-            "venues": ["socsci", "odlt", "thousand"], "exams": "odlt"},
-    "acc": {"name": "Accounting", "code": "ACC", "difficulty": -2, "faculty": "socsci",
-            "venues": ["socsci", "ajose", "odlt"], "exams": "ajose"},
-    "mcb": {"name": "Microbiology", "code": "MCB", "difficulty": -2, "faculty": "science",
-            "venues": ["science", "booc", "thousand"], "exams": "booc"},
-    "pol": {"name": "Political Science", "code": "POL", "difficulty": 0, "faculty": "socsci",
-            "venues": ["socsci", "odlt", "ajose"], "exams": "odlt"},
-    "eng": {"name": "English", "code": "ENG", "difficulty": 1, "faculty": "arts",
-            "venues": ["arts", "ajose", "odlt"], "exams": "ajose"},
+    did: {"name": name, "code": code, "difficulty": diff, "faculty": _BUILDING.get(group, group), "group": group,
+          "venues": list(_VENUES[group][0]), "exams": _VENUES[group][1]}
+    for did, name, code, group, diff in _COURSES
 }
 
 
@@ -861,7 +904,85 @@ CLASS_MOMENTS = [
 ]
 
 # Pop quizzes: real questions for each course (and general studies). index = correct option.
+# "fac:<group>" sets are shared by every course in that faculty.
 QUIZZES = {
+    "fac:tech": [
+        ("Ohm's law says voltage equals…", ["Current × resistance", "Current ÷ resistance", "Power × time", "Resistance ÷ current"], 0),
+        ("The SI unit of force is the…", ["Joule", "Watt", "Newton", "Pascal"], 2),
+        ("Which of these is a vector quantity?", ["Mass", "Speed", "Velocity", "Temperature"], 2),
+        ("1 kilowatt is…", ["10 W", "100 W", "1,000 W", "1,000,000 W"], 2),
+        ("Engineering drawings at OAU are done in…", ["TDB", "The drawing studio", "Oduduwa Hall", "The SUB"], 1),
+    ],
+    "fac:science": [
+        ("The chemical symbol for sodium is…", ["S", "So", "Na", "Sd"], 2),
+        ("Which organelle is called the powerhouse of the cell?", ["Nucleus", "Ribosome", "Mitochondrion", "Golgi body"], 2),
+        ("The derivative of x² is…", ["x", "2x", "x³/3", "2"], 1),
+        ("Acceleration due to gravity is about…", ["1.6 m/s²", "9.8 m/s²", "98 m/s²", "0.98 m/s²"], 1),
+        ("pH 7 is…", ["Acidic", "Neutral", "Basic", "Salty"], 1),
+    ],
+    "fac:socsci": [
+        ("The father of sociology is often said to be…", ["Auguste Comte", "Adam Smith", "Karl Marx", "Plato"], 0),
+        ("Nigeria became a republic in…", ["1960", "1963", "1966", "1979"], 1),
+        ("A census counts…", ["Votes", "The population", "Taxes", "Schools"], 1),
+        ("Which is a primary research method?", ["Reading a textbook", "A questionnaire", "A news summary", "A Wikipedia page"], 1),
+        ("The study of the mind and behaviour is…", ["Psychology", "Geology", "Philology", "Ecology"], 0),
+    ],
+    "fac:admin": [
+        ("The accounting equation is Assets = …", ["Liabilities − Equity", "Liabilities + Equity", "Income − Expenses", "Cash + Bank"], 1),
+        ("The UN headquarters is in…", ["Geneva", "Paris", "New York", "Addis Ababa"], 2),
+        ("Nigeria has how many local government areas?", ["36", "300", "774", "1,000"], 2),
+        ("ECOWAS is a body of…", ["West African states", "Oil producers", "Commonwealth nations", "African banks"], 0),
+        ("POSDCORB is a classic acronym in…", ["Public administration", "Accounting", "Chemistry", "Law"], 0),
+    ],
+    "fac:arts": [
+        ("Who wrote 'Things Fall Apart'?", ["Wole Soyinka", "Chinua Achebe", "Chimamanda Adichie", "Ben Okri"], 1),
+        ("Wole Soyinka won the Nobel Prize in Literature in…", ["1976", "1986", "1996", "2006"], 1),
+        ("'Ẹ káàárọ̀' in Yoruba means…", ["Good night", "Good morning", "Thank you", "Welcome"], 1),
+        ("'Bonjour' is French for…", ["Goodbye", "Hello / good day", "Please", "Thank you"], 1),
+        ("The Ife bronze heads were made by artists of…", ["Benin", "Ancient Ile-Ife", "Nok", "Igbo-Ukwu"], 1),
+    ],
+    "fac:law": [
+        ("The highest court in Nigeria is the…", ["Court of Appeal", "Federal High Court", "Supreme Court", "Magistrate Court"], 2),
+        ("'Ignorantia juris non excusat' means…", ["Ignorance of the law is no excuse", "The law is blind", "Let the buyer beware", "Innocent until proven guilty"], 0),
+        ("After the LL.B, Nigerian lawyers attend…", ["NYSC first", "The Nigerian Law School", "Senate", "Law Society only"], 1),
+        ("A binding agreement between parties is a…", ["Tort", "Contract", "Statute", "Writ"], 1),
+        ("The 1999 Constitution is Nigeria's…", ["Highest law", "Penal code", "Customary law", "Bylaw"], 0),
+    ],
+    "fac:education": [
+        ("Teaching practice is often called…", ["IT", "SIWES", "TP", "NYSC"], 2),
+        ("Bloom's taxonomy classifies…", ["Learning objectives", "School buildings", "Exam halls", "Teachers' pay"], 0),
+        ("Nigeria's 6-3-3-4 system: the '4' is…", ["Primary school", "Junior secondary", "Senior secondary", "University"], 3),
+        ("A lesson plan is written…", ["After teaching", "Before teaching", "Only for exams", "By the students"], 1),
+        ("Guidance and counselling helps students with…", ["Personal, academic and career choices", "Fees only", "Sports only", "Hostel allocation"], 0),
+    ],
+    "fac:pharm": [
+        ("Paracetamol is mainly used to…", ["Fight bacteria", "Relieve pain and fever", "Lower blood sugar", "Treat malaria"], 1),
+        ("Antibiotics work against…", ["Viruses", "Bacteria", "All infections", "Allergies"], 1),
+        ("Nigeria's drug regulator is…", ["NAFDAC", "NCC", "NDLEA", "SON"], 0),
+        ("Artemisinin-based drugs treat…", ["Typhoid", "Malaria", "Diabetes", "Asthma"], 1),
+        ("The pharmacy degree at OAU is the…", ["B.Sc. Pharmacy", "B.Pharm", "MBBS", "B.NSc"], 1),
+    ],
+    "fac:chs": [
+        ("A normal adult resting heart rate is about…", ["20–40 bpm", "60–100 bpm", "120–160 bpm", "200 bpm"], 1),
+        ("The largest organ of the human body is the…", ["Liver", "Brain", "Skin", "Heart"], 2),
+        ("Red blood cells carry oxygen using…", ["Insulin", "Haemoglobin", "Keratin", "Melanin"], 1),
+        ("OAU's teaching hospital is…", ["UCH", "LUTH", "OAUTHC", "UNTH"], 2),
+        ("The femur is found in the…", ["Arm", "Thigh", "Skull", "Chest"], 1),
+    ],
+    "fac:agric": [
+        ("Cassava is a…", ["Cereal", "Root crop", "Legume", "Fruit"], 1),
+        ("Nitrogen is fixed in the soil by bacteria in the roots of…", ["Maize", "Legumes", "Yam", "Cassava"], 1),
+        ("A castrated male cattle raised for work or meat is a…", ["Bull", "Heifer", "Steer", "Ram"], 2),
+        ("Soil pH affects…", ["Nutrient availability", "Rainfall", "Sunlight", "Wind"], 0),
+        ("Nigeria's biggest export crop in the 1950s–60s alongside cocoa was…", ["Rice", "Groundnut", "Wheat", "Tea"], 1),
+    ],
+    "fac:edm": [
+        ("A drawing of a building seen from above is a…", ["Section", "Elevation", "Plan", "Perspective"], 2),
+        ("A Bill of Quantities is prepared by a…", ["Quantity surveyor", "Pharmacist", "Lawyer", "Geologist"], 0),
+        ("Estate surveyors value…", ["Land and buildings", "Crops", "Shares only", "Cars"], 0),
+        ("A 1:100 scale means 1 cm on paper is…", ["1 m in reality", "10 m in reality", "100 m in reality", "1 cm in reality"], 0),
+        ("Zoning laws are part of…", ["Urban planning", "Pharmacy", "Music", "Botany"], 0),
+    ],
     "csc": [
         ("What does CPU stand for?", ["Central Processing Unit", "Computer Personal Unit", "Central Program Utility", "Core Processing Utility"], 0),
         ("Which of these is NOT a programming language?", ["Python", "Java", "HTML", "C"], 2),

@@ -69,7 +69,7 @@ Inspired by the viral Nigerian life simulator *Lagos Life*, but built around the
 - **Today on campus.** Three new missions every morning (easy, around campus, hustle), with a bonus for finishing all three. A daily streak rewards coming back each real day, and day 7 opens the Sunday chest.
 - **Campus Rep.** Lectures, missions, hustles, events and A grades build your name: JJC → Fresher → Stalite → Aluta Soldier → Big Shot → Campus Celeb → Great Ife Legend.
 - **Moodlets.** Short feelings that change your mood and how well you read: Belle Full, Mummy's Alert, Front Seat, Slept Like an Oba, Hall Pride, Straight A's, Carry-Over, Embarrassed, and "Sapa Don Hold Me" when you're broke.
-- **Lectures with moments.** Sometimes the lecturer points at you, roll call tempts you to answer for a friend, your phone rings in class, or there's group work. There are also real pop quizzes for your course (Computer Science, Economics, Accounting, Microbiology, Political Science, English) and general studies about OAU.
+- **Lectures with moments.** Sometimes the lecturer points at you, roll call tempts you to answer for a friend, your phone rings in class, or there's group work. There are real pop quizzes for every faculty (and extra ones for some courses) plus general studies about OAU.
 - **A Map button that's always on screen.** It shows the whole campus, your next class and your exam hall, and the bus stops. Tap any place to see how to get there.
 - **Getting around at student prices.** Every trip gives you a choice, each with the travel time, the fare and the arrival time:
   - **Trek:** free, but tiring.
@@ -386,3 +386,7 @@ Akintola Hall now stands right beside Fajuyi Hall. Coming along the hall road fr
   - **👤 See face** on the dress-up screen zooms in on your student's face.
   - Talking to someone outside turns into a side-on close-up of the two of you; inside, the room camera eases in on the conversation.
   - Zoom in further than before (scroll or pinch), and the camera levels out as you get closer so you see faces, not the tops of heads.
+
+## Every OAU course
+
+New students now choose from **60 real OAU courses across 11 faculties**: Technology, Science, Social Sciences, Administration, Arts, Law, Education, Pharmacy, the College of Health Sciences (Medicine, Dentistry, Nursing, Medical Rehab, Anatomy, Physiology), Agriculture and Environmental Design & Management. The picker has a search box and faculty filters. Six new faculty buildings sit east of Senate (Law, Education, Pharmacy, Health Sciences, Agriculture, EDM; positions estimated) with their own roads, and every faculty has its own pop-quiz questions. Medicine, Dentistry and Engineering are the hardest; most Arts and Education courses are kinder.
