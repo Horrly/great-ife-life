@@ -256,7 +256,13 @@ export default class CampusEngine {
     const to = list.length ? list[Math.floor(rand() * list.length)] : Object.keys(this.map.nodes).find((n) => n !== w.node);
     const path = route(this.graph, w.node, to);
     w.to = to;
-    w.mover = new Mover(pointsFor(this.map, path), { speed: w.speed, offset: w.side * 5.6 });
+    const pts = pointsFor(this.map, path);
+    if (w.startAt) {
+      // carry on from where they're standing (after stopping to talk), not from the junction
+      pts.unshift(w.startAt);
+      w.startAt = null;
+    }
+    w.mover = new Mover(pts, { speed: w.speed, offset: w.side * 5.6 });
   }
 
   _makeTraffic() {
@@ -339,6 +345,18 @@ export default class CampusEngine {
       if (w.pause > 0) {
         // stopped: chatting with a friend, or talking to you
         w.pause -= dt;
+        if (w === this.chatWith) {
+          const me = this.player.position;
+          const d = Math.hypot(me.x - w.person.position.x, me.z - w.person.position.z);
+          if (d > 4) {
+            const step = Math.min(d - 4, 1.4 * dt);
+            w.person.position.x += ((me.x - w.person.position.x) / d) * step;
+            w.person.position.z += ((me.z - w.person.position.z) / d) * step;
+            w.person.walk(dt, 1.4);
+            w.person.rotation.y = Math.atan2(me.x - w.person.position.x, me.z - w.person.position.z);
+            return;
+          }
+        }
         if (w.faceTo) {
           const want = Math.atan2(w.faceTo.x - w.person.position.x, w.faceTo.z - w.person.position.z);
           w.person.rotation.y = lerpAngle(w.person.rotation.y, want, Math.min(1, dt * 5));
@@ -587,7 +605,7 @@ export default class CampusEngine {
     el.addEventListener("pointercancel", this._pu);
     this._wheel = (e) => {
       if (this.mapMode) this.mapZoom = Math.max(0.45, Math.min(3.2, this.mapZoom * (e.deltaY > 0 ? 0.9 : 1.1)));
-      else this.camDist = Math.max(12, Math.min(60, this.camDist + e.deltaY * 0.03));
+      else this.camDist = Math.max(6, Math.min(60, this.camDist + e.deltaY * 0.03));
       e.preventDefault();
     };
     el.addEventListener("wheel", this._wheel, { passive: false });
@@ -693,10 +711,14 @@ export default class CampusEngine {
       }
     }
     if (!best) return false;
+    const far = Math.hypot(best.person.position.x - this.player.position.x, best.person.position.z - this.player.position.z);
+    if (far > 40) return false; // too far to call over: tapping there just walks you that way
     best.pause = 1e9; // until you're done talking
     best.faceTo = this.player.position;
     best.person.act("idle");
     this.talkingTo = best;
+    this.chatWith = best; // you walk over to them (and they come a few steps towards you)
+    this.chatTalking = false;
     // and you face them
     this.cancelAutoWalk();
     this.player.rotation.y = Math.atan2(best.person.position.x - this.player.position.x, best.person.position.z - this.player.position.z);
@@ -706,8 +728,20 @@ export default class CampusEngine {
 
   /** The person you were talking to goes on their way after a moment. */
   releaseWalker() {
-    if (this.talkingTo) this.talkingTo.pause = 1.5;
+    const w = this.talkingTo;
+    if (w) {
+      w.pause = 1.5;
+      const at = w.person.position;
+      w.node = Object.keys(this.map.nodes).filter((n) => n !== "town")
+        .reduce((a, n) => (Math.hypot(this.map.nodes[n][0] - at.x, this.map.nodes[n][1] - at.z)
+          < Math.hypot(this.map.nodes[a][0] - at.x, this.map.nodes[a][1] - at.z) ? n : a), "gate");
+      w.startAt = [at.x, at.z];
+      this._newWalk(w);
+    }
     this.talkingTo = null;
+    this.chatWith = null;
+    this.chatActive = false;
+    this.chatTalking = false;
   }
 
   /** Tap the ground or a building: walk there along the roads, around buildings. */
@@ -762,7 +796,7 @@ export default class CampusEngine {
   }
 
   zoom(delta) {
-    this.camDist = Math.max(12, Math.min(60, this.camDist + delta));
+    this.camDist = Math.max(6, Math.min(60, this.camDist + delta)); // zoom right in to see faces
   }
 
   _moveVector() {
@@ -987,19 +1021,26 @@ export default class CampusEngine {
       const dz = w.person.position.z - p.z;
       const d = Math.hypot(dx, dz);
       this.player.rotation.y = lerpAngle(this.player.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 6));
-      if (d > 2.2) {
+      if (d > 2.35) {
         const step = Math.min(d - 2.2, WALK_SPEED * raw);
         p.x += (dx / d) * step;
         p.z += (dz / d) * step;
         this.player.walk(dt, WALK_SPEED);
         this.chatTalking = false;
-      } else {
+      } else if (this.chatActive) {
         if (!this.chatTalking) {
           this.chatTalking = true;
           this.player.act("talk");
           w.person.act("talk");
         }
         this.player.tick(dt);
+      } else {
+        // face to face, waiting for you to pick what to say
+        if (this.chatTalking) {
+          this.chatTalking = false;
+          w.person.act("idle");
+        }
+        this.player.walk(dt, 0);
       }
     } else if (!this.inside) {
       const mv = this._moveVector();
@@ -1084,11 +1125,29 @@ export default class CampusEngine {
     }
 
     // camera follows the player (or the vehicle you're in)
-    const focus = this.journey?.vehicle?.visible && this.journey.segs[this.journey.i]?.kind === "ride"
+    // talking to someone outside: a face-to-face close-up from the side, like a cutscene
+    const talk = Boolean(this.chatWith && this.chatTalking && !this.journey && !this.inside);
+    this.talkK = lerp(this.talkK || 0, talk ? 1 : 0, Math.min(1, dt * 4));
+    let focus = this.journey?.vehicle?.visible && this.journey.segs[this.journey.i]?.kind === "ride"
       ? this.journey.vehicle.position : p;
+    if (talk) {
+      const o = this.chatWith.person.position;
+      focus = new THREE.Vector3((p.x + o.x) / 2, 0, (p.z + o.z) / 2);
+      const line = Math.atan2(o.x - p.x, o.z - p.z);
+      const a = line + Math.PI / 2;
+      const b = line - Math.PI / 2;
+      const side = Math.abs(lerpAngle(this.camYaw, a, 1) - this.camYaw) < Math.abs(lerpAngle(this.camYaw, b, 1) - this.camYaw) ? a : b;
+      this.camYaw = lerpAngle(this.camYaw, side, Math.min(1, dt * 2));
+    }
     this.target.lerp(focus, Math.min(1, (this.journey ? raw : dt) * 7));
-    const dist = this.inside ? this.camDist * 1.8 : this.journey ? this.camDist * 1.35 : this.camDist;
-    const height = this.inside ? this.camHeight * 2.2 : this.camHeight * (this.journey ? 1.5 : 1);
+    // closer in means a lower, more level camera: zoomed right in you see faces, not the tops of heads
+    const level = Math.max(0.3, Math.min(1, this.camDist / 24));
+    let dist = this.inside ? this.camDist * 1.8 : this.journey ? this.camDist * 1.35 : this.camDist;
+    let height = this.inside ? this.camHeight * 2.2 : this.camHeight * (this.journey ? 1.5 : level);
+    if (this.talkK > 0.01) {
+      dist = lerp(dist, 7.5, this.talkK);
+      height = lerp(height, 3.6, this.talkK);
+    }
     const want = new THREE.Vector3(this.target.x + Math.sin(this.camYaw) * dist, height, this.target.z + Math.cos(this.camYaw) * dist);
     const clear = this._clearFraction(this.target, want);
     this.camFrac = lerp(this.camFrac ?? 1, clear, Math.min(1, dt * (clear < (this.camFrac ?? 1) ? 12 : 2)));
@@ -1097,7 +1156,7 @@ export default class CampusEngine {
       lerp(height + 6, height, this.camFrac),
       this.target.z + (want.z - this.target.z) * this.camFrac,
     );
-    this.camera.lookAt(this.target.x, 2.5, this.target.z);
+    this.camera.lookAt(this.target.x, 2.5 + 0.6 * (this.talkK || 0) + (1 - Math.max(0.3, Math.min(1, this.camDist / 24))) * 0.6, this.target.z);
 
     if (this.shadows) {
       // keep the sun's direction but centre its shadow box on you
@@ -1206,12 +1265,11 @@ export default class CampusEngine {
     this.roomView?.setActivity(station, actionId);
     // outside: a gist with someone you stopped on the road
     if (!this.roomMode) {
-      this.chatWith = station && actionId?.startsWith("social") && this.talkingTo ? this.talkingTo : null;
+      this.chatActive = Boolean(station && actionId?.startsWith("social") && this.talkingTo);
+      if (this.chatActive) this.chatWith = this.talkingTo;
       this.chatTalking = false;
-      if (!this.chatWith) {
-        this.idleAct = null;
-        this.stillFor = 0;
-      }
+      this.idleAct = null;
+      this.stillFor = 0;
     }
     this.roomView?.setBubble(station ? emoji : null);
   }

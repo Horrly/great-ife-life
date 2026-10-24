@@ -2,6 +2,7 @@
 // pills you read, and everything you press in the bottom thumb zone. The middle of the screen stays campus.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { clockText, duration, naira, nairaShort } from "../lib/format";
+import Portrait from "./Portrait";
 import { setSound, sfx, soundOn } from "../lib/sfx";
 import { BottomSheet, Ring } from "./ui";
 
@@ -158,11 +159,11 @@ export function NextClassPill({ game, onClick }) {
 // --- Bottom band: what you press ------------------------------------------------------------------
 
 export function AvatarButton({ game, onClick }) {
-  const female = game.look?.hall === "female";
+  const female = game.look?.hall === 1;
   return (
     <button onClick={onClick} aria-label="You: profile, needs, studies and skills"
-      className="float pointer-events-auto grid h-[50px] w-[50px] shrink-0 place-items-center rounded-full text-2xl ring-[3px] ring-go">
-      <span aria-hidden>{female ? "👩🏾‍🎓" : "🧑🏾‍🎓"}</span>
+      className="float pointer-events-auto grid h-[50px] w-[50px] shrink-0 place-items-center overflow-hidden rounded-full ring-[3px] ring-go">
+      <Portrait look={game.look} size={50} fallback={<span className="text-2xl">{female ? "👩🏾‍🎓" : "🧑🏾‍🎓"}</span>} />
     </button>
   );
 }

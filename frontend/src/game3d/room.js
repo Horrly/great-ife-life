@@ -156,6 +156,20 @@ export default class RoomView {
     this.camera.position.set(tx + Math.sin(sway) * dist * Math.cos(elev), ty + Math.sin(elev) * dist,
       tz + Math.cos(sway) * dist * Math.cos(elev));
     this.camera.lookAt(tx, ty, tz);
+    // a gist with someone in here: ease in to a close-up of the two of you, then back out
+    const talking = Boolean(this.faceTarget && this.you && this.doing && !this.walkGoal);
+    this.closeK = THREE.MathUtils.lerp(this.closeK || 0, talking ? 1 : 0, Math.min(1, dt * 2.2));
+    if (this.closeK > 0.01 && this.faceTarget && this.you) {
+      const a = this.you.position;
+      const b = this.faceTarget.position;
+      const mid = new THREE.Vector3((a.x + b.x) / 2, 3.0, (a.z + b.z) / 2);
+      const line = Math.atan2(b.x - a.x, b.z - a.z);
+      const yaw = Math.cos(line + Math.PI / 2) > 0 ? line + Math.PI / 2 : line - Math.PI / 2; // from the room's open side
+      const close = new THREE.Vector3(mid.x + Math.sin(yaw) * 7, 4.2, mid.z + Math.cos(yaw) * 7);
+      this.camera.position.lerp(close, this.closeK);
+      const look = new THREE.Vector3(tx, ty, tz).lerp(mid, this.closeK);
+      this.camera.lookAt(look);
+    }
     const mine = this.you?.children[0];
     for (const p of this.people) {
       if (p.userData.managed) continue; // players and joggers are animated by their own movement

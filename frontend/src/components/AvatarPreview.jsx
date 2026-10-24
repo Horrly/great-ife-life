@@ -13,6 +13,10 @@ export default function AvatarPreview({ look, className = "" }) {
   const host = useRef(null);
   const state = useRef(null);
   const [loading, setLoading] = useState(true);
+  const [close, setClose] = useState(false);
+  useEffect(() => {
+    if (state.current) state.current.close = close ? 1 : 0;
+  }, [close]);
 
   useEffect(() => {
     let renderer;
@@ -40,7 +44,7 @@ export default function AvatarPreview({ look, className = "" }) {
     scene.add(rim);
     const ground = new THREE.Mesh(new THREE.CircleGeometry(1.9, 40).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: "#c4dfcf", roughness: 1 }));
     scene.add(ground);
-    const s = { renderer, scene, camera, person: null, raf: 0, spin: 0.35, drag: null, vel: 0, t: 0, fidget: 0 };
+    const s = { renderer, scene, camera, person: null, raf: 0, spin: 0.35, drag: null, vel: 0, t: 0, fidget: 0, close: 0, closeK: 0 };
     state.current = s;
     const size = () => {
       const w = host.current?.clientWidth || 200;
@@ -49,8 +53,7 @@ export default function AvatarPreview({ look, className = "" }) {
       camera.aspect = w / h;
       // frame the whole body, head to shoes, whatever the box's shape
       const fit = Math.max(4.3 / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))), 2.4 / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
-      camera.position.set(0, 2.1, fit * 1.04);
-      camera.lookAt(0, 1.75, 0);
+      s.fit = fit;
       camera.updateProjectionMatrix();
     };
     size();
@@ -81,6 +84,11 @@ export default function AvatarPreview({ look, className = "" }) {
         s.spin += s.vel;
         s.vel *= 0.92;
       }
+      // ease between the full body and a close-up of the face
+      s.closeK += (s.close - s.closeK) * Math.min(1, dt * 5);
+      const k = s.closeK;
+      camera.position.set(0, 2.1 + k * 1.15, (s.fit || 9) * 1.04 * (1 - k) + 2.3 * k);
+      camera.lookAt(0, 1.75 + k * 1.45, 0);
       if (s.person) {
         s.person.rotation.y = s.spin;
         s.fidget -= dt;
@@ -125,6 +133,12 @@ export default function AvatarPreview({ look, className = "" }) {
       <div ref={host} className="absolute inset-0 cursor-grab active:cursor-grabbing" role="img" aria-label="Your student. Drag to turn them around." />
       {loading && <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-muted">Getting dressed…</span>}
       {!loading && <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 text-xs font-semibold text-ife-900/50">Drag to turn</span>}
+      {!loading && (
+        <button type="button" onClick={() => setClose((c) => !c)} aria-pressed={close}
+          className="absolute right-2 top-2 rounded-full bg-white/85 px-3 py-1 text-xs font-bold text-ink shadow">
+          {close ? "🧍 Full body" : "👤 See face"}
+        </button>
+      )}
     </div>
   );
 }

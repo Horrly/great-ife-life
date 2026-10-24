@@ -374,3 +374,15 @@ Akintola Hall now stands right beside Fajuyi Hall. Coming along the hall road fr
 - **Gisting looks like gisting.** Outside, your student walks up to the person you stopped and you both talk with your hands. Inside, you walk over to the person you tapped, they turn to you and talk back (people sitting stay seated).
 - **Idle like a real person.** Stand still for a few seconds and your student checks their phone, folds their arms or shifts their weight, changing every so often.
 - **Vehicles stop for you.** Kekes, cabs and buses slow down and stop if you're standing in the road ahead of them.
+
+## Clearer, more lifelike faces
+
+- **Skin keeps its detail.** The skin texture used to be greyed and brightened so a skin tone could be multiplied on top, which washed out the face. It is now a 2048px "ratio map" (made by `tools/pack-people.mjs`: each texel stores how much lighter, darker or redder than the face's base tone it is), so lips, cheeks, the nose, eyelids, creases and stubble keep their colour and shading on every skin tone. Skin normals are 1024px.
+- **Real Nigerian skin tones** in the palette, and skin is lit like skin: a soft sheen at grazing angles and a gentle highlight. Eyes are glossy with a clear coat, so they catch the light.
+- **A proper afro:** rounded, sitting on the hairline (not over the eyes), with a coiled texture instead of a faceted helmet. Men and women get the hairstyles most students actually wear.
+- **No more skin poking through the shirt** at the tops of the shoulders.
+- **Faces you can see:**
+  - 3D head-and-shoulders portraits (`game3d/portrait.js`) in your HUD button, your profile and every person's sheet.
+  - **👤 See face** on the dress-up screen zooms in on your student's face.
+  - Talking to someone outside turns into a side-on close-up of the two of you; inside, the room camera eases in on the conversation.
+  - Zoom in further than before (scroll or pinch), and the camera levels out as you get closer so you see faces, not the tops of heads.

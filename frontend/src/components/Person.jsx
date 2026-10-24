@@ -7,6 +7,7 @@ import { sfx } from "../lib/sfx";
 import { AmountInput } from "./Banking";
 import { Thread } from "./Chat";
 import { FriendBar, LEVEL_COLOR } from "./MeSheet";
+import Portrait from "./Portrait";
 import { BottomSheet } from "./ui";
 
 // what you can do with someone; the later ones open as you get closer (the server checks too)
@@ -39,9 +40,8 @@ export function PersonSheet({ person, game, busy, onSocial, onClose, onChat, onS
     <BottomSheet onClose={onClose} label={person.name} height={sending ? "78%" : "auto"}
       header={
         <div className="flex items-center gap-3">
-          <span aria-hidden className={`grid h-12 w-12 shrink-0 place-items-center rounded-full text-lg font-black text-white ${player ? "bg-[#2f7de1]" : "bg-ink"}`}>
-            {initials}
-          </span>
+          <Portrait look={person.look} name={person.name} size={64} ring={player ? "ring-[3px] ring-[#2f7de1]" : ""}
+            fallback={<span className={`grid h-full w-full place-items-center ${player ? "bg-[#2f7de1]" : "bg-ink"}`}>{initials}</span>} />
           <span className="min-w-0">
             <span className="display block truncate text-[1.4rem] text-ife-900">{player ? `@${person.name}` : person.name}</span>
             <span className="block truncate text-sm text-muted">

@@ -3,7 +3,7 @@
 import * as THREE from "three";
 
 export const LOOK = {
-  skin: ["#8d5524", "#a86b3c", "#6b3e1f", "#c68642", "#4a2a14", "#3b2210", "#e0ac69", "#5c3a21"],
+  skin: ["#6d4128", "#7f5136", "#523020", "#946141", "#3f2519", "#2e1c14", "#a8734b", "#5f3b27"], // real Nigerian skin tones
   hair: ["low_cut", "afro", "braids", "bun", "dreads", "bald", "classic", "long"],
   top: ["#1f6f4a", "#b03a2e", "#f2c230", "#2f5f9e", "#f4f4f2", "#222222", "#7a3e9d", "#e07b39", "#8fb8de"],
   bottom: ["#26324a", "#3b3b3b", "#6b4f2a", "#e8e2d4", "#1f6f4a", "#4a6fa5"],
@@ -41,6 +41,12 @@ export function randomLook(rand = Math.random) {
   if (look.hall === 1) look.beard = 0;
   else if (rand() < 0.6) look.beard = 0;
   if (look.hall === 0 && rand() < 0.85) look.style = 0;
+  // hairstyles most students of each sex actually wear
+  const menHair = ["low_cut", "low_cut", "afro", "dreads", "bald", "classic", "low_cut"];
+  const womenHair = ["braids", "braids", "bun", "long", "afro", "low_cut", "classic"];
+  const pickHair = (list) => LOOK.hair.indexOf(list[Math.floor(rand() * list.length)]);
+  const h = pickHair(look.hall === 1 ? womenHair : menHair);
+  if (h >= 0) look.hair = h;
   return look;
 }
 

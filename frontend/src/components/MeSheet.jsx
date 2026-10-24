@@ -1,5 +1,6 @@
 // "You": one sheet with pill tabs, like a profile in a life game. Profile, needs and feelings, studies,
 // skills, goals (today's missions, streak, dream) and badges.
+import Portrait from "./Portrait";
 import { useState } from "react";
 import { naira } from "../lib/format";
 import AvatarPreview from "./AvatarPreview";
@@ -225,9 +226,8 @@ export default function MeSheet({ game, account, tab: initial = "profile", onClo
     <BottomSheet onClose={onClose} label="You"
       header={
         <div className="flex items-center gap-3">
-          <span aria-hidden className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-chip text-2xl ring-[3px] ring-go">
-            {game.look?.hall === "female" ? "👩🏾‍🎓" : "🧑🏾‍🎓"}
-          </span>
+          <Portrait look={game.look} size={56} ring="ring-[3px] ring-go"
+            fallback={<span className="text-2xl">{game.look?.hall === 1 ? "👩🏾‍🎓" : "🧑🏾‍🎓"}</span>} />
           <span className="min-w-0">
             <span className="display block truncate text-[1.45rem] text-ife-900">{game.name || "You"}</span>
             <span className="block truncate text-sm text-muted">{m.label}{top ? ` · ${top.name}` : ""}</span>

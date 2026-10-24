@@ -134,15 +134,25 @@ const tinted = new Map();
  *   body:  hide the skin that clothes cover, and paint the lower legs in trouser colour
  */
 function tint(base, color, clip = null, extra = {}) {
-  const key = `${base.uuid}|${color}|${clip ? JSON.stringify(clip) : ""}|${extra.map?.uuid || ""}|${isHighQuality()}`;
+  const key = `${base.uuid}|${color}|${clip ? JSON.stringify(clip) : ""}|${extra.map?.uuid || ""}|${extra.skin ? "skin" : ""}|${isHighQuality()}`;
   if (tinted.has(key)) return tinted.get(key);
   let m;
-  if (isHighQuality()) {
+  if (isHighQuality() && extra.skin) {
+    // Skin: a soft sheen at grazing angles and a gentle specular, the way real skin catches light
+    m = new THREE.MeshPhysicalMaterial({
+      color, map: base.map, normalMap: base.normalMap, normalScale: base.normalScale?.clone() || new THREE.Vector2(1, 1),
+      roughness: 0.55, metalness: 0, sheen: 0.2, sheenRoughness: 0.6, sheenColor: new THREE.Color(color).multiplyScalar(0.8),
+      specularIntensity: 0.5, specularColor: new THREE.Color("#ffeee4"),
+    });
+    m.name = base.name;
+  } else if (isHighQuality()) {
     m = base.clone();
     m.color = new THREE.Color(color);
   } else {
     m = new THREE.MeshLambertMaterial({ color, map: base.map, alphaTest: base.alphaTest, side: base.side });
   }
+  // the skin texture stores colour ratios at half scale (lips, cheeks and shading kept), so the tone is doubled here
+  if (extra.skin) m.color.multiplyScalar(2);
   if (extra.map) {
     m.map = extra.map;
   }
@@ -167,6 +177,8 @@ function tint(base, color, clip = null, extra = {}) {
           float ax = abs(vRest.x);
           if (vRest.y > uClipA.x && vRest.y < uClipA.y && ax < uClipA.z) discard;
           if (vRest.y > uClipA.y - 0.16 && vRest.y < uClipA.y + 0.09 && ax < uClipA.w && ax >= uClipA.z) discard;
+          // the tops of the shoulders, between the collar and the sleeves (the neck stays)
+          if (vRest.y >= uClipA.y && vRest.y < uClipA.y + 0.08 && ax > 0.085 && ax < uClipA.z) discard;
           if (vRest.y > uClipB.x && vRest.y < uClipB.y && ax < 0.3) discard;
           if (vRest.y < uClipB.w) discard;`;
         paint = "if (vRest.y < uClipB.z && vRest.y >= uClipB.w) { diffuseColor.rgb = uPaint; }";
@@ -180,6 +192,16 @@ function tint(base, color, clip = null, extra = {}) {
   }
   tinted.set(key, m);
   return m;
+}
+
+/** Wet, glossy eyes with a clear coat: they catch a highlight, which is most of what makes a face look alive. */
+let eyeMat = null;
+function eyeMaterial(base) {
+  if (eyeMat) return eyeMat;
+  eyeMat = isHighQuality()
+    ? new THREE.MeshPhysicalMaterial({ map: base.map, normalMap: base.normalMap, roughness: 0.18, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04 })
+    : new THREE.MeshPhongMaterial({ map: base.map, shininess: 90, specular: new THREE.Color("#ffffff") });
+  return eyeMat;
 }
 
 // --- fabric prints (Ankara, Adire, Aso-oke) --------------------------------------------------------------
@@ -256,17 +278,43 @@ function printTexture(kind, color) {
 const extraGeo = {};
 function afroGeo() {
   if (extraGeo.afro) return extraGeo.afro;
-  const geo = new THREE.IcosahedronGeometry(0.155, 4);
+  // a rounded, slightly squared-off afro that sits on the hairline, not over the eyes
+  const geo = new THREE.SphereGeometry(1, 48, 32);
   const pos = geo.attributes.position;
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
-    const n = 1 + 0.07 * Math.sin(v.x * 90) * Math.sin(v.y * 83) * Math.sin(v.z * 97);
-    pos.setXYZ(i, v.x * n * 1.05, v.y * n * 0.9, v.z * n);
+    const n = 1 + 0.025 * Math.sin(v.x * 23 + v.y * 7) * Math.sin(v.y * 19 - v.z * 5) * Math.sin(v.z * 21 + v.x * 3);
+    pos.setXYZ(i, v.x * 0.122 * n, v.y * 0.104 * n, v.z * 0.12 * n);
   }
   geo.computeVertexNormals();
   extraGeo.afro = geo;
   return geo;
+}
+/** Tight coils: a dark, uneven canvas used as colour and bump so the afro reads as hair, not a helmet. */
+let coilTex = null;
+function coilTexture() {
+  if (coilTex) return coilTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d");
+  g.fillStyle = "#7a7a7a";
+  g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2600; i++) {
+    const x = Math.random() * 256;
+    const y = Math.random() * 256;
+    const r = 1.5 + Math.random() * 3.5;
+    const l = Math.floor(70 + Math.random() * 150);
+    g.strokeStyle = `rgb(${l},${l},${l})`;
+    g.lineWidth = 1 + Math.random();
+    g.beginPath();
+    g.arc(x, y, r, Math.random() * 6, Math.random() * 6 + 3.5);
+    g.stroke();
+  }
+  coilTex = new THREE.CanvasTexture(c);
+  coilTex.wrapS = coilTex.wrapT = THREE.RepeatWrapping;
+  coilTex.repeat.set(5, 4);
+  return coilTex;
 }
 function strandGeo(len, r) {
   const key = `strand${len}${r}`;
@@ -475,7 +523,9 @@ function buildReal(root, look, bag) {
         a: [female ? 1.0 : 0.95, female ? 1.47 : 1.5, female ? 0.17 : 0.21, 0.34],
         b: [skirt ? 9 : trouserBottom + 0.03, skirt ? 9 : 1.0, female ? 0 : trouserBottom + 0.03, shoeTop - 0.03],
         paint: bottomHex,
-      }, { roughness: 0.6 });
+      }, { skin: true });
+    } else if (name.startsWith("MI_Eyes")) {
+      m.material = eyeMaterial(m.material);
     } else if (name.startsWith("MI_Hair")) {
       m.material = tint(m.material, hairHex);
     }
@@ -520,7 +570,10 @@ function buildReal(root, look, bag) {
   const head = bones.Head;
   const hairSolid = mat(hairHex, { roughness: 1 });
   if (hair === "afro" && head) {
-    mount(head, 0, top - 0.06, -0.05).add(new THREE.Mesh(afroGeo(), hairSolid));
+    const afroMat = isHighQuality()
+      ? new THREE.MeshStandardMaterial({ color: hairHex, map: coilTexture(), bumpMap: coilTexture(), bumpScale: 2.5, roughness: 0.95 })
+      : new THREE.MeshLambertMaterial({ color: hairHex, map: coilTexture() });
+    mount(head, 0, top - 0.025, -0.028).add(new THREE.Mesh(afroGeo(), afroMat));
   } else if (hair === "dreads" && head) {
     const g = mount(head, 0, top - 0.06, -0.015);
     for (let i = 0; i < 18; i++) {
