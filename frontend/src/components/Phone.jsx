@@ -1,6 +1,6 @@
 // Your phone, drawn as the phone you actually have: an iPhone, an Android (Tecno, Infinix, Samsung, itel)
 // or a torchlight Nokia. Cracked screens look cracked. Apps open the things you can do from your phone.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clockText, duration, naira } from "../lib/format";
 import { BankApp } from "./Banking";
 import ChatApp from "./Chat";
@@ -136,6 +136,46 @@ function ParentsScreen({ game, busy, onParents }) {
   );
 }
 
+const MATCH_SECONDS = 45; // the server keeps you "watching" this long
+
+/** The match plays out: 90 minutes over 45 real seconds, half-time included, goals as they happen. */
+function LiveMatch({ bet, busyFor }) {
+  const start = useRef(0);
+  const [, setTick] = useState(0);
+  if (start.current === 0 || start.current.at !== bet.at) {
+    start.current = { at: bet.at, t: performance.now() - Math.max(0, MATCH_SECONDS - (busyFor || 0)) * 1000 };
+  }
+  const elapsed = (performance.now() - start.current.t) / 1000;
+  const live = busyFor > 0 && elapsed < MATCH_SECONDS;
+  useEffect(() => {
+    if (!live) return undefined;
+    const id = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(id);
+  }, [live, bet.at]);
+  // first half 0–20 s, half-time 20–25 s, second half 25–45 s
+  const minute = !live ? 90 : elapsed < 20 ? Math.floor((elapsed / 20) * 45) : elapsed < 25 ? 45 : 45 + Math.floor(((elapsed - 25) / 20) * 45);
+  const scored = (bet.goals || []).filter(([m]) => m <= minute);
+  const h = scored.filter(([, side]) => side === "home").length;
+  const a = scored.length - h;
+  const latest = scored[scored.length - 1];
+  const fresh = live && latest && minute - latest[0] < 6;
+  return (
+    <div className={`rounded-xl px-3 py-2.5 ${live ? "bg-[#0b2416]" : bet.won ? "bg-[#1f7a46]" : "bg-[#7a1f1f]"}`} aria-live="polite">
+      <div className="flex items-center justify-between text-[11px] font-bold opacity-85">
+        <span>{live ? (elapsed >= 20 && elapsed < 25 ? "Half-time" : `🔴 LIVE ${minute}'`) : "Full time"}</span>
+        <span>Your pick: {bet.pick === "1" ? bet.home : bet.pick === "2" ? bet.away : "Draw"}</span>
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2 text-sm font-black">
+        <span className="min-w-0 flex-1 truncate">{bet.home}</span>
+        <span className="num rounded-md bg-black/30 px-2 py-0.5 text-lg">{h} – {a}</span>
+        <span className="min-w-0 flex-1 truncate text-right">{bet.away}</span>
+      </div>
+      {fresh && <p className="pop mt-1 text-center text-sm font-black text-bulb">⚽ GOAL! {latest[1] === "home" ? bet.home : bet.away} ({latest[0]}')</p>}
+      {!live && <p className="mt-1 text-center text-sm font-bold">{bet.won ? "Odds landed! 🎉" : "Bet cut."}</p>}
+    </div>
+  );
+}
+
 function BetScreen({ game, busy, onBet }) {
   const b = game.betting;
   const [adult, setAdult] = useState(b.adult);
@@ -145,7 +185,7 @@ function BetScreen({ game, busy, onBet }) {
     return (
       <div className="space-y-3 p-4 text-white">
         <p className="display text-3xl">OgaBet ⚽</p>
-        <p className="text-sm">Virtual football: matches finish in seconds. The bookie keeps about 12% of every naira, so over time the app wins.</p>
+        <p className="text-sm">Virtual football: each match plays out over about 45 seconds. The bookie keeps about 12% of every naira, so over time the app wins.</p>
         <label className="flex items-start gap-2 rounded-xl bg-white/15 p-3 text-sm">
           <input type="checkbox" className="mt-1 h-4 w-4" onChange={(e) => setAdult(e.target.checked)} />
           I'm 18 or older
@@ -161,11 +201,11 @@ function BetScreen({ game, busy, onBet }) {
           {b.staked ? `${net < 0 ? "Down" : "Up"} ${naira(Math.abs(net))} overall` : "No bets yet"}
         </span>
       </div>
-      {b.last && (
+      {b.last && (b.last.goals ? <LiveMatch bet={b.last} busyFor={game.busy_for} /> : (
         <p className={`rounded-xl px-3 py-2 text-sm font-bold ${b.last.won ? "bg-[#1f7a46]" : "bg-[#7a1f1f]"}`}>
           {b.last.score} · {b.last.won ? "Won" : "Lost"}
         </p>
-      )}
+      ))}
       <div className="flex gap-1.5" role="radiogroup" aria-label="Stake">
         {b.stakes.map((n) => (
           <button key={n} role="radio" aria-checked={stake === n} onClick={() => setStake(n)}

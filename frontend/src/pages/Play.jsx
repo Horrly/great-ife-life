@@ -37,11 +37,11 @@ function useLiveClock(game) {
   return game.clock + Math.floor((intoMinute + elapsed) / 60);
 }
 
-function animate(seconds, onFrame) {
+function animate(seconds, onFrame, stop) {
   return new Promise((resolve) => {
     const start = performance.now();
     const step = () => {
-      const p = Math.min(1, (performance.now() - start) / (seconds * 1000));
+      const p = stop?.current ? 1 : Math.min(1, (performance.now() - start) / (seconds * 1000));
       onFrame(p);
       if (p < 1) requestAnimationFrame(step);
       else resolve();
@@ -146,7 +146,7 @@ function useInbox(log) {
 
 export default function Play() {
   const { game, busy, error, setError, messages, setMessages, act, choose, next, travel, enter, leave, sync, plan, account,
-    askParents, bet, moveHome, joinRoom, housing, postNote, social, chat, transferTo, riddleSearch } = useGame();
+    askParents, bet, moveHome, joinRoom, housing, postNote, social, chat, transferTo, riddleSearch, skip } = useGame();
   const navigate = useNavigate();
   const host = useRef(null);
   const engine = useRef(null);
@@ -205,6 +205,7 @@ export default function Play() {
   }, [game?.needs]); // eslint-disable-line react-hooks/exhaustive-deps
   const [jp, setJp] = useState({ p: 0, seg: null });
   const [lapse, setLapse] = useState(null);
+  const stopLapse = useRef(false);
   const [lp, setLp] = useState(0);
   const [hint, setHint] = useState(true);
   const [placeStation, setPlaceStation] = useState(null);
@@ -286,13 +287,26 @@ export default function Play() {
   }, [day]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Actions play out in a few real seconds as a ring chip at the top; you can keep looking around. */
-  async function playback(label, g, icon, station) {
+  async function playback(label, g, icon, station, actionId) {
     if (!g?.playback) return;
+    stopLapse.current = false;
     setLapse({ label, icon });
-    engine.current?.roomActivity(station || null, icon);
-    await animate(g.playback, setLp);
+    engine.current?.roomActivity(station || null, icon, actionId);
+    await animate(g.playback, setLp, stopLapse);
     setLapse(null);
     engine.current?.roomActivity(null);
+  }
+  // "× tap to skip": stop watching; the server lets you move on, and the result stays the same
+  function skipLapse() {
+    if (stopLapse.current) return;
+    stopLapse.current = true;
+    sfx("tap");
+    skip();
+  }
+  function skipJourney() {
+    sfx("tap");
+    skip();
+    engine.current?.endJourney(true);
   }
 
   async function onSocial(who, kind) {
@@ -335,7 +349,7 @@ export default function Play() {
     }
     setPanel((p) => (p === "phone" || p === "laptop" ? null : p));
     if (!g || action.id === "sleep" || action.id === "wake") return;
-    await playback(action.label, g, iconFor(action), action.station);
+    await playback(action.label, g, iconFor(action), action.station, action.id);
   }
 
   async function onParents(amount) {
@@ -538,7 +552,7 @@ export default function Play() {
         {!clean && panel !== "map" && (
           <div className="mx-auto mt-2 flex max-w-5xl items-start justify-between gap-2">
             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-              {lapse && <ActionChip lapse={lapse} progress={lp} />}
+              {lapse && <ActionChip lapse={lapse} progress={lp} onSkip={skipLapse} />}
               {controls && !lapse && (
                 <div className="flex w-full min-w-0 items-center gap-2">
                   <RoundIcon icon="🎯" label="Today's missions" badge={game.missions.filter((m) => !m.done).length || null} onClick={() => openMe("goals")} />
@@ -562,7 +576,7 @@ export default function Play() {
             setPanel("phone");
           }} />
       )}
-      <Toast messages={journey ? [] : messages} error={error} onDismiss={() => setError("")} onDone={() => setMessages([])} top={clean ? "3.6rem" : "6.6rem"} />
+      <Toast messages={journey || lapse ? [] : messages} error={error} onDismiss={() => setError("")} onDone={() => setMessages([])} top={clean ? "3.6rem" : "6.6rem"} />
 
       {/* Bottom band: things you press */}
       {controls && clean && (
@@ -732,7 +746,7 @@ export default function Play() {
       {panel === "riddle" && controls && <RiddleSheet game={game} busy={busy} onClose={close} onSearch={onRiddleSearch} />}
       {!journey && <Spectacle events={game.events} />}
 
-      {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} fromName={journey.fromName} />}
+      {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} fromName={journey.fromName} onSkip={skipJourney} />}
       {game.asleep && game.phase === "play" && !journey && (
         <SleepOverlay game={game} minute={minute} busy={busy} onWake={() => act("wake")} />
       )}

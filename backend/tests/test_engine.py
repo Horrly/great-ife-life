@@ -1158,3 +1158,20 @@ def test_campus_moments_are_real_places():
     for aid in ("rally_sub", "war_cry", "dept_dinner"):
         a = C.ACTIONS_BY_ID[aid]
         assert a["at"] in W.BUILDINGS and a["spectacle"]["text"]
+
+
+def test_akintola_is_right_beside_fajuyi():
+    a, f = W.BUILDINGS["akintola"], W.BUILDINGS["fajuyi"]
+    gap = (f["x"] - f["w"] / 2) - (a["x"] + a["w"] / 2)
+    assert 0 < gap < 20 and abs(a["z"] - f["z"]) < 10  # side by side, a footpath apart
+    assert a["x"] < f["x"]  # coming from ETF you reach Akintola first
+    assert any("Akintola" in p["name"] for p in W.FOOTPATHS)
+
+
+def test_skipping_playback_only_lets_you_move_on():
+    s = at(new(seed="skip"), 12, where="buka")
+    now = t_of(s)
+    s["busy_until"] = now + 20
+    money = s["money"]
+    s2, _ = E.skip_playback(s, now)
+    assert s2["busy_until"] == now and s2["money"] == money

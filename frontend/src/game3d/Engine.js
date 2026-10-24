@@ -8,9 +8,11 @@ import { buildGraph, Mover, pointsFor, route } from "./traffic";
 import { makeBus, makeCab, makeKeke, makeTownBus, makeVehicle } from "./vehicles";
 import { buildWorld, stopPlacement } from "./world";
 
-const WALK_SPEED = 7.5; // world units per real second: the same as trekking on the server
-const RUN_FACTOR = 1.5; // the server allows a little faster than trekking pace
-const ACCEL = 9; // how quickly you speed up and slow down
+// People are drawn at 1.88 world units to the metre, so a real brisk walk (about 1.5 m/s) is ~3 units a
+// second and a jog (about 3 m/s) is ~6. Anything faster looked like everyone was rushing to an exam.
+const WALK_SPEED = 3.0;
+const RUN_FACTOR = 2.0; // the Run button: a steady jog, not a sprint
+const ACCEL = 5; // how quickly you speed up and slow down (people don't start and stop instantly)
 const DOOR_TRIGGER = 7;
 let BOUNDS = { x0: -230, x1: 470, z0: -40, z1: 360 }; // replaced by the map's own bounds
 
@@ -192,7 +194,7 @@ export default class CampusEngine {
       const person = makePerson(randomLook(rand), { bag: rand() < 0.7 });
       person.setDetail(false);
       const from = nodes[Math.floor(rand() * nodes.length)];
-      const w = { person, mover: null, node: from, speed: 3.2 + rand() * 1.8, side: rand() < 0.5 ? 1 : -1 };
+      const w = { person, mover: null, node: from, speed: 2.3 + rand() * 0.9, side: rand() < 0.5 ? 1 : -1 };
       this._newWalk(w, rand);
       w.mover.s = rand() * w.mover.total;
       this.scene.add(person);
@@ -230,7 +232,7 @@ export default class CampusEngine {
     const stops = new Set(this.map.bus_stops);
     for (let i = 0; i < 3; i++) {
       const mesh = makeBus();
-      const mover = new Mover(loop, { speed: 16, offset: 2, loop: true });
+      const mover = new Mover(loop, { speed: 9, offset: 2, loop: true });
       mover.s = (mover.total * i) / 3;
       this.scene.add(mesh);
       this.vehicles.push({ mesh, mover, kind: "bus", stops, lastStop: null });
@@ -238,7 +240,7 @@ export default class CampusEngine {
     const nodes = Object.keys(this.map.nodes).filter((n) => n !== "town");
     for (let i = 0; i < 5; i++) {
       const mesh = makeKeke(["#e9c227", "#7fb03a", "#e9c227", "#7fb03a", "#e9c227"][i]);
-      const v = { mesh, kind: "keke", node: nodes[(i * 5) % nodes.length], speed: 14 };
+      const v = { mesh, kind: "keke", node: nodes[(i * 5) % nodes.length], speed: 8 };
       this._newDrive(v);
       v.mover.s = this.rand() * v.mover.total;
       this.scene.add(mesh);
@@ -247,7 +249,7 @@ export default class CampusEngine {
     // night cabs: only between the Main Gate and the bus stops, only after 9 PM
     for (let i = 0; i < 2; i++) {
       const mesh = makeCab(i ? "#2f6fae" : "#f0b72f");
-      const v = { mesh, kind: "cab", node: "gate", speed: 18 };
+      const v = { mesh, kind: "cab", node: "gate", speed: 10 };
       this._newCabRun(v);
       v.mover.s = this.rand() * v.mover.total;
       this.scene.add(mesh);
@@ -267,7 +269,7 @@ export default class CampusEngine {
     const tb = makeTownBus();
     this.scene.add(tb);
     this.vehicles.push({ mesh: tb, kind: "town_bus",
-      mover: new Mover(pointsFor(this.map, ["town", "gate", "town"]), { speed: 14, offset: 2, loop: true }) });
+      mover: new Mover(pointsFor(this.map, ["town", "gate", "town"]), { speed: 9, offset: 2, loop: true }) });
   }
 
   _newCabRun(v) {
@@ -747,7 +749,8 @@ export default class CampusEngine {
       const p = j.mover.update(dt);
       this.player.position.set(p.x, 0, p.z);
       this.player.rotation.y = p.heading;
-      this.player.walk(dt, Math.min(12, j.mover.speed));
+      // a trek is shown sped up, but the legs keep a normal walking rhythm: nobody sprints to class
+      this.player.walk(dt, WALK_SPEED * 1.05);
     } else if (seg.kind === "wait") {
       this.player.walk(dt, 0);
       this.player.rotation.y = j.waitFacing ?? -Math.PI / 2;
@@ -889,7 +892,7 @@ export default class CampusEngine {
     this.clouds.position.z = this.target.z;
 
     // door rings pulse; vehicle headlights at night
-    const pulse = 0.55 + Math.sin(performance.now() / 300) * 0.3;
+    const pulse = 0.65 + Math.sin(performance.now() / 700) * 0.2; // a slow, calm glow
     for (const d of this.world.doors) d.ring.material.opacity = d === this.nearDoor ? 1 : pulse;
     this._fadeLabels();
     this.renderer.render(this.scene, this.camera);
@@ -981,8 +984,8 @@ export default class CampusEngine {
   }
 
   /** While an action plays, you walk to where it happens (the cooker, the counter, a desk). */
-  roomActivity(station, emoji) {
-    this.roomView?.setActivity(station);
+  roomActivity(station, emoji, actionId) {
+    this.roomView?.setActivity(station, actionId);
     this.roomView?.setBubble(station ? emoji : null);
   }
 

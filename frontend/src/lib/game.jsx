@@ -80,6 +80,20 @@ export function GameProvider({ children }) {
   }, []);
 
   const act = useCallback((action) => move("/game/act/", { action }), [move]);
+  // stop watching an action or journey: the result is already in, so keep the messages waiting to show
+  const skip = useCallback(async () => {
+    const current = gameRef.current;
+    if (!current) return null;
+    try {
+      const g = await api("/game/skip/", { method: "POST", body: { turn: current.turn } });
+      g.receivedAt = performance.now();
+      setGame(g);
+      return g;
+    } catch (err) {
+      if (err.data?.game) setGame({ ...err.data.game, receivedAt: performance.now() });
+      return null;
+    }
+  }, []);
   const choose = useCallback((choice) => move("/game/choose/", { choice }), [move]);
   const next = useCallback(() => move("/game/continue/", {}), [move]);
   const travel = useCallback((to, mode, pos) => move("/game/travel/", { to, mode, pos }), [move]);
@@ -198,7 +212,7 @@ export function GameProvider({ children }) {
 
   return (
     <GameContext.Provider
-      value={{ game, loading, busy, error, setError, messages, setMessages, start, resume, act, choose, next, quit,
+      value={{ game, loading, busy, error, setError, messages, setMessages, start, resume, act, skip, choose, next, quit,
         travel, enter, leave, setLook, sync, plan, askParents, bet, moveHome, joinRoom, housing, postNote,
         openBank, bankCounter, atm, pos, transfer, lookupAccount, chat, social, transferTo, riddle, riddleSearch, sug, vote,
         account, register, login, logout, resumeLife, refreshAccount }}

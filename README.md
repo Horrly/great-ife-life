@@ -347,3 +347,16 @@ stand-in, so the game stays smooth on cheaper phones.
 - **Apps open over the first days.** Day 1 has the essentials (Portal, Gist, Bank, Call Mummy, Houses, Timetable, Maps). Data Plug, Socials and Freelance arrive on day 2; Gigs, Canva and OgaBet on day 3; Business on day 4; Jiji on day 5. New apps wear a red NEW tag until opened.
 - **Student hustles.** A puff-puff and buns stand joins the businesses, and the Business app can promote them: WhatsApp status (+10% tonight), flyers (+20% tonight) or a campus influencer (+50% for two nights).
 - **More shared moments.** Lead an SUG rally at the SUB (weekdays 3–7 PM), lead your hall's war cry at the Sports Complex (4–8 PM), and walk the red carpet at the departmental dinner in Oduduwa Hall (Fri/Sat nights). Everyone there sees the gold banner.
+
+## Real-life pace (October 2026)
+
+- **People walk like people.** Bodies are drawn at 1.88 world units to the metre, so walking is now ~3 units/s (a brisk 1.5 m/s) and the Run button is a steady jog (~3 m/s). Before, everyone moved at a hurried 4 m/s with their legs racing. Campus walkers stroll, indoor walking is unhurried, and buses, kekes and cabs drive at believable speeds.
+- **Work and gestures look steady.** A one-off gesture (eating, reaching, picking up, nodding) plays once, a little slower, then the person rests for a few seconds before the next. Kneeling repairs, pushing, watering and dancing loop a touch slower.
+- **Actions take longer to watch:** an hour's work plays over about 15 seconds and a long shift over 30. Journeys are slower too. Tap the action chip ("× tap to skip") or **Skip ⏭** on a journey to move on; skipping never changes the result. Result messages now appear when the action finishes, not before.
+- **Football you can watch.** The Sports Complex has a kickabout: the ball rolls along the grass and slows down, players jog to it and stroll into space, and **Play football** puts you in the game. **Jog round the track** runs real laps at jogging pace.
+- **OgaBet matches play out** over 45 seconds, with a live minute counter, half-time and goals as they go in, instead of finishing in a blink.
+- Door glows pulse slowly, and celebration emoji fall gently.
+
+## Map fix: Akintola beside Fajuyi
+
+Akintola Hall now stands right beside Fajuyi Hall. Coming along the hall road from ETF you reach Akintola first, and a paved footpath runs between the two halls down to Ojaja market (`FOOTPATHS` in `world.py`). Saved games move players standing at Akintola to its new door.

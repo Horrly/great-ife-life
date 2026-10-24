@@ -119,17 +119,18 @@ export function InboxButton({ count, onClick }) {
 }
 
 /** A running action: icon in a progress ring, top-left. You can keep looking around while it plays. */
-export function ActionChip({ lapse, progress }) {
+export function ActionChip({ lapse, progress, onSkip }) {
   return (
-    <div className="float pointer-events-auto flex h-11 max-w-[60vw] items-center gap-2 rounded-full py-1 pl-1 pr-3.5" role="status" aria-live="polite">
+    <button type="button" onClick={onSkip} title="Tap to skip: the result is the same"
+      className="float pointer-events-auto flex h-11 max-w-[60vw] items-center gap-2 rounded-full py-1 pl-1 pr-3.5 text-left" role="status" aria-live="polite">
       <Ring value={progress} size={36} stroke={3.5}>
         <span className="text-base">{lapse.icon || "⏳"}</span>
       </Ring>
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold">{lapse.label}</span>
-        <span className="block text-[11px] text-muted">{progress < 1 ? "In progress…" : "Done"}</span>
+        <span className="block text-[11px] text-muted">{progress < 1 ? "× tap to skip" : "Done"}</span>
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -465,6 +466,10 @@ export function CampusMap({ world, game, selected, onSelect, playerPos, filter =
           </g>
         );
       })}
+      {(world.footpaths || []).map((f) => (
+        <polyline key={f.name} points={f.points.map((pt) => P(...pt).join(",")).join(" ")} fill="none" stroke="#e6dcc4"
+          strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+      ))}
       {shown.map(([id, b]) => {
         const [cx, cy] = P(b.x, b.z);
         const [w, h] = portrait ? [b.d, b.w] : [b.w, b.d];
@@ -700,7 +705,7 @@ const SEGMENT_TEXT = {
 };
 
 /** The ride: a pill at the top and a progress card at the bottom. */
-export function JourneyBar({ journey, progress, segment, fromName }) {
+export function JourneyBar({ journey, progress, segment, fromName, onSkip }) {
   const text = segment ? (segment.kind === "ride" ? SEGMENT_TEXT.ride[segment.mode] : segment.label || SEGMENT_TEXT[segment.kind]) : "Moving";
   return (
     <>
@@ -718,7 +723,10 @@ export function JourneyBar({ journey, progress, segment, fromName }) {
           </div>
           <div className="mt-2 flex items-center justify-between">
             <p className="text-sm text-muted">{text} · {duration(journey.minutes)} trip</p>
-            <button className="rounded-full bg-chip px-3 py-1 text-xs font-bold" onClick={() => sfx("horn")}>📯 Horn</button>
+            <span className="flex gap-1.5">
+              <button className="rounded-full bg-chip px-3 py-1 text-xs font-bold" onClick={() => sfx("horn")}>📯 Horn</button>
+              {onSkip && <button className="rounded-full bg-chip px-3 py-1 text-xs font-bold" onClick={onSkip}>Skip ⏭</button>}
+            </span>
           </div>
         </div>
       </div>

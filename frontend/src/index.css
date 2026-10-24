@@ -202,7 +202,7 @@ body {
 
 /* emoji rain for big moments */
 .rain { position: absolute; inset: -30vh 0 auto 0; height: 100vh; overflow: hidden; pointer-events: none; }
-.rain span { position: absolute; top: -10%; font-size: 1.7rem; animation: rain-fall 2.6s linear infinite; }
+.rain span { position: absolute; top: -10%; font-size: 1.7rem; animation: rain-fall 5.5s linear infinite; }
 @keyframes rain-fall { from { transform: translateY(0) rotate(0deg); } to { transform: translateY(120vh) rotate(200deg); } }
 @media (prefers-reduced-motion: reduce) { .rain { display: none; } }
 

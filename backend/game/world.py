@@ -40,19 +40,20 @@ NODES = {
     "tech": (295, 15),   # Faculty of Technology, Tech LT
     "staff": (380, -120), # Road 7 / Staff Quarters
     "bank": (165, 135),  # Banking Area
-    "akn": (-235, 95),   # Akintola Hall
+    "akn": (-128, 26),   # Akintola Hall gate, on the hall road just before Fajuyi
+    "bk": (-235, 95),    # the buka by the gate road
     "aj": (250, -65),    # Ajose LT
 }
 
 # Two-way roads. "town" roads are outside campus: no campus bus.
 EDGES = [
     ("town", "gate", "town"), ("gate", "buka", "road"), ("buka", "w", "road"), ("w", "awo", "road"), ("awo", "angm", "road"),
-    ("awo", "hc", "road"), ("hc", "mor", "road"), ("mor", "faj", "road"), ("w", "faj", "road"), ("buka", "mkt", "road"),
-    ("mkt", "faj", "road"), ("mor", "c", "road"), ("c", "sci", "road"), ("sci", "ne", "road"), ("ne", "n", "road"),
+    ("awo", "hc", "road"), ("hc", "mor", "road"), ("mor", "faj", "road"), ("w", "akn", "road"), ("akn", "faj", "road"),
+    ("buka", "mkt", "road"), ("mor", "c", "road"), ("c", "sci", "road"), ("sci", "ne", "road"), ("ne", "n", "road"),
     ("sci", "amp", "road"), ("amp", "n", "road"), ("c", "hol", "road"), ("odu", "hol", "road"), ("hol", "amp", "road"),
     ("hol", "sen", "road"), ("sen", "e", "road"), ("e", "tech", "road"), ("e", "staff", "road"), ("mkt", "subn", "road"),
     ("subn", "odu", "road"), ("subn", "sport", "road"), ("sport", "bank", "road"), ("bank", "sen", "road"), ("c", "subn", "road"),
-    ("akn", "buka", "road"), ("e", "aj", "road"),
+    ("bk", "buka", "road"), ("e", "aj", "road"),
 ]
 
 H = 60  # minutes in an hour, for opening hours below
@@ -69,7 +70,8 @@ BUILDINGS = {
             "kind": "hall", "wall": "#e9e0cc", "roof": "#5a4a8f", "hours": None, "sign": "ETF HALL"},
     "moremi": {"name": "Moremi Hall", "node": "sci", "x": -60, "z": -30, "w": 30, "d": 40, "h": 16, "style": "hall",
                "kind": "hall", "wall": "#e9dcc3", "roof": "#3b6e8f", "hours": None, "sign": "MOREMI HALL"},
-    "akintola": {"name": "Akintola Hall", "node": "akn", "x": -262, "z": 62, "w": 26, "d": 30, "h": 14, "style": "hall",
+    # Akintola sits right beside Fajuyi (you reach it first coming from ETF), with a footpath between the two
+    "akintola": {"name": "Akintola Hall", "node": "akn", "x": -118, "z": 60, "w": 24, "d": 28, "h": 14, "style": "hall",
                  "kind": "hall", "wall": "#f0dccf", "roof": "#8f5a3b", "hours": None, "sign": "LADOKE AKINTOLA HALL"},
     "mozambique": {"name": "Mozambique Hall", "node": "angm", "x": -225, "z": -150, "w": 28, "d": 28, "h": 13,
                    "style": "hall", "kind": "hall", "wall": "#e8d8e0", "roof": "#7a3e6a", "hours": None,
@@ -124,7 +126,7 @@ BUILDINGS = {
     "sub": {"name": "SUB", "node": "c", "x": 15, "z": 50, "w": 30, "d": 22, "h": 9, "style": "sub",
             "kind": "food", "wall": "#e3d3b0", "roof": "#b5482a", "hours": (7 * H, 21 * H),
             "sign": "STUDENTS' UNION BUILDING"},
-    "buka": {"name": "Mama Put (Buka)", "node": "akn", "x": -205, "z": 82, "w": 14, "d": 12, "h": 5, "style": "buka",
+    "buka": {"name": "Mama Put (Buka)", "node": "bk", "x": -205, "z": 82, "w": 14, "d": 12, "h": 5, "style": "buka",
              "kind": "food", "wall": "#b98a52", "roof": "#9aa3a8", "hours": (7 * H, 21 * H), "sign": "MAMA PUT"},
     "hol": {"name": "HOL (Library)", "node": "amp", "x": 130, "z": -40, "w": 38, "d": 24, "h": 15, "style": "library",
             "kind": "campus", "wall": "#c9c2b4", "roof": "#6d6d6d", "hours": (8 * H, 29 * H),  # night reading till 5am
@@ -146,8 +148,12 @@ MAP_KINDS = {"lecture": "Lecture theatres", "faculty": "Faculties", "hall": "Hal
 
 # The CNG campus bus links the Main Gate, the halls, New Market, SUB and Oduduwa Hall. It doesn't go round the
 # faculties: kekes carry people to their faculties.
-BUS_ROUTE = ["gate", "buka", "w", "awo", "angm", "awo", "hc", "mor", "faj", "mkt", "subn", "odu", "subn", "mkt", "buka",
-             "gate"]
+BUS_ROUTE = ["gate", "buka", "w", "awo", "angm", "awo", "hc", "mor", "faj", "akn", "w", "buka", "mkt", "subn", "odu",
+             "subn", "mkt", "buka", "gate"]
+# Footpaths people walk but cars can't use (drawn by the 3D client; you can walk them freely)
+FOOTPATHS = [
+    {"name": "Fajuyi–Akintola path", "points": [(-98, 32), (-98, 74), (-100, 126)]},
+]
 BUS_STOPS = ["gate", "awo", "faj", "mor", "angm", "odu", "mkt", "subn"]
 STOP_NAMES = {"gate": "Main Gate", "awo": "Awo", "faj": "Fajuyi", "mor": "Moremi", "angm": "AngloMoz",
               "odu": "ODLT", "mkt": "New Market", "subn": "SUB"}
@@ -334,6 +340,7 @@ def public_map() -> dict:
         "metres_per_unit": METRES_PER_UNIT,
         "nodes": {k: list(v) for k, v in NODES.items()},
         "edges": [[a, b, kind] for a, b, kind in EDGES],
+        "footpaths": [{"name": f["name"], "points": [list(p) for p in f["points"]]} for f in FOOTPATHS],
         "buildings": buildings,
         "kinds": MAP_KINDS,
         "bus_route": BUS_ROUTE,

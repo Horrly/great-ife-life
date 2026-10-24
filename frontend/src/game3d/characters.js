@@ -331,6 +331,16 @@ export const ACTIONS = {
   no: "Idle_No_Loop",
   lie: "LayToIdle",
 };
+// One-shot gestures and what the person does between them. Looping them back to back looked frantic,
+// so after each one they settle into the rest pose for a few seconds, then go again, a little slower than the clip.
+const ONE_SHOT = {
+  eat: { rest: "idle", gap: [2.5, 4.5], speed: 0.85 },
+  interact: { rest: "idle", gap: [2.0, 4.0], speed: 0.8 },
+  pickup: { rest: "idle", gap: [3.0, 5.0], speed: 0.8 },
+  yes: { rest: "idle", gap: [3.0, 6.0], speed: 0.9 },
+};
+// Loops that are played a touch slower than authored, so work looks steady rather than rushed
+const CALM = { kneel: 0.8, push: 0.8, water: 0.85, dance: 0.9, phone: 0.9, talk: 0.9, sit_talk: 0.9, fold: 0.9 };
 // How fast each gait moves at normal playback, in game units per second (scale 1)
 const GAIT = { walk: 1.35 * UNIT, jog: 3.2 * UNIT, sprint: 5.6 * UNIT };
 
@@ -558,8 +568,9 @@ function buildReal(root, look, bag) {
     if (!clipName || !assets.clips[female ? "f" : "m"][clipName]) return null;
     if (!actions[name]) {
       const a = mixer.clipAction(assets.clips[female ? "f" : "m"][clipName]);
-      if (name === "lie" || name === "pickup" || name === "eat" || name === "interact" || name === "yes") {
-        a.setLoop(name === "lie" ? THREE.LoopOnce : THREE.LoopRepeat);
+      if (name === "lie" || ONE_SHOT[name]) {
+        // gestures (a bite, a reach, a nod) play once; tick() rests between them like a real person would
+        a.setLoop(THREE.LoopOnce);
         a.clampWhenFinished = true;
       }
       actions[name] = a;
@@ -568,6 +579,7 @@ function buildReal(root, look, bag) {
   };
   let current = null;
   let currentName = "";
+  let gesture = null;
   const play = (name, fade = 0.25) => {
     if (name === currentName) return current;
     const next = get(name);
@@ -587,27 +599,54 @@ function buildReal(root, look, bag) {
   return {
     kind: "real",
     walk(dt, speed) {
+      gesture = null;
       const s = speed / (root.scale.x || 1);
       if (s < 0.3) {
         play("idle");
         if (current) current.timeScale = 1;
       } else {
-        // The game moves people faster than real life (campus is big); legs keep a natural rhythm and
-        // let the ground slide a little rather than spinning like a cartoon.
-        const gait = s < 9 ? "walk" : s < 14 ? "jog" : "sprint";
-        play(gait, 0.2);
-        const lim = { walk: [0.6, 1.6], jog: [0.75, 1.4], sprint: [0.8, 1.3] }[gait];
+        // pick the gait that matches the ground speed, and keep the legs close to their natural rhythm
+        const gait = s < GAIT.walk * 1.45 ? "walk" : s < GAIT.jog * 1.35 ? "jog" : "sprint";
+        play(gait, 0.3);
+        const lim = { walk: [0.75, 1.2], jog: [0.85, 1.15], sprint: [0.9, 1.1] }[gait];
         current.timeScale = THREE.MathUtils.clamp(s / GAIT[gait], lim[0], lim[1]);
       }
       mixer.update(dt);
     },
     act(name) {
-      play(name, 0.35);
-      if (current) current.timeScale = 1;
+      const shot = ONE_SHOT[name];
+      gesture = shot ? { name, shot, wait: 0, playing: true } : null;
+      play(name, 0.45);
+      if (current) {
+        current.timeScale = shot ? shot.speed : CALM[name] || 1;
+        if (shot) current.reset().play();
+      }
       if (name === "lie" || name.startsWith("sit") || name === "drive") shadow.visible = false;
       else shadow.visible = true;
     },
     tick(dt) {
+      if (gesture) {
+        const g = gesture;
+        if (g.playing) {
+          const a = actions[g.name];
+          if (!a || !a.isRunning() || a.time >= a.getClip().duration - 0.02) {
+            // done: settle into the rest pose for a few seconds
+            g.playing = false;
+            g.wait = g.shot.gap[0] + Math.random() * (g.shot.gap[1] - g.shot.gap[0]);
+            play(g.shot.rest, 0.6);
+            if (current) current.timeScale = CALM[g.shot.rest] || 1;
+          }
+        } else if ((g.wait -= dt) <= 0) {
+          g.playing = true;
+          const a = get(g.name);
+          if (a) {
+            currentName = "";
+            play(g.name, 0.5);
+            a.reset().play();
+            a.timeScale = g.shot.speed;
+          }
+        }
+      }
       mixer.update(dt);
     },
     show(on) {

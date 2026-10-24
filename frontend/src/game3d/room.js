@@ -6,6 +6,15 @@ import * as THREE from "three";
 import { makePerson, mat, seat as seatPerson, surface } from "./characters";
 import { labelTexture } from "./textures";
 
+// Some actions have their own body language (otherwise the station decides)
+const ACT_FOR_ACTION = { war_cry: "dance", rally_sub: "talk", dept_dinner: "dance", party: "dance", scroll: "phone", gist: "talk" };
+
+function lerpAngle(a, b, t) {
+  let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+
 const SHEETS = ["#2f5f9e", "#b03a2e", "#f2c230", "#1f6f4a", "#7a3e9d", "#e07a5f", "#3d405b", "#81b29a"];
 
 function canvasTex(w, h, draw, repeat = [1, 1]) {
@@ -148,7 +157,10 @@ export default class RoomView {
       tz + Math.cos(sway) * dist * Math.cos(elev));
     this.camera.lookAt(tx, ty, tz);
     const mine = this.you?.children[0];
-    for (const p of this.people) if (p !== mine || !this.walkGoal) p.tick?.(dt);
+    for (const p of this.people) {
+      if (p.userData.managed) continue; // players and joggers are animated by their own movement
+      if (p !== mine || !this.walkGoal) p.tick?.(dt);
+    }
     renderer.render(this.scene, this.camera);
   }
 
@@ -680,6 +692,7 @@ export default class RoomView {
       pivot.position.set(spot.x, spot.y || 0, spot.z);
     }
     pivot.rotation.y = spot.rot ?? 0;
+    pivot.userData.spot = spot;
     this.people.push(person);
     const tag = p.kind === "you" ? "You" : p.kind === "player" ? `@${p.name}` : p.name;
     const lbl = this.label(tag, 0, 4.0, 0, 0.62, p.kind === "npc" ? "npc" : p.kind);
@@ -795,6 +808,8 @@ export default class RoomView {
     this.tappables = [];
     this.anchors = {};
     this.you = null;
+    this.kick = null;
+    this.jog = null;
     this.group = new THREE.Group();
     this.scene.add(this.group);
     this.glass = this.tube = this.fanBlades = null;
@@ -1016,7 +1031,9 @@ export default class RoomView {
           this.box(4, 2.4, 0.15, "#f4f4f2", 0, 0, z);
         }
       });
-      for (let i = 0; i < 10; i++) spots.push(S(-8 + (i % 5) * 4, i < 5 ? -3 : 3, { rot: i < 5 ? 0 : Math.PI, station: "fun" }));
+      // a kickabout: six on the pitch, a few watching from the touchline
+      for (let i = 0; i < 6; i++) spots.push(S(-6 + (i % 3) * 6, i < 3 ? -3 : 3, { rot: i < 3 ? 0 : Math.PI, play: true, station: "fun" }));
+      for (let i = 0; i < 4; i++) spots.push(S(-9 + i * 6, 8, { rot: Math.PI, pose: i % 2 ? "talk" : "phone", station: "fun" }));
       this.anchors = { fun: [0, 1], idle: [10, 7] };
       youSpot = S(10, 7, { rot: Math.PI * 1.2 });
     } else {
@@ -1033,6 +1050,7 @@ export default class RoomView {
     }
     this.thing("leave", () => this._door(-(this.size.w / 2) + 0.15, this.size.d / 2 - 2.4));
     this._crowd(staff, spots, people, youSpot);
+    if (t === "sports") this._kickabout();
     this.group.traverse((o) => {
       if (o.isMesh && !this.lowPower) {
         o.castShadow = o.castShadow ?? true;
@@ -1041,17 +1059,206 @@ export default class RoomView {
     });
   }
 
-  /** Walk "you" to the spot for a station while an action plays, then back. */
-  setActivity(station) {
+  /** Walk "you" to the spot for a station while an action plays, then back. Football and jogging are acted out. */
+  setActivity(station, actionId) {
     if (!this.you || !this.anchors) return;
+    const me = this.you.children[0];
+    // finishing: leave the game or the track and walk back
+    if (!station) {
+      if (this.kick) this._leaveKickabout();
+      this.jog = null;
+      me.userData.managed = false;
+    }
+    if (station && actionId === "football" && this.kick) {
+      this.walkGoal = null;
+      this.doing = station;
+      me.userData.managed = true;
+      if (!this.kick.players.includes(this.you)) this.kick.players.push(this.you);
+      return;
+    }
+    if (station && actionId === "jog") {
+      this.walkGoal = null;
+      this.doing = station;
+      me.userData.managed = true;
+      this.jog = { s: 0 };
+      return;
+    }
     const to = station ? this.anchors[station] || this.anchors.idle : this.youHome || this.anchors.idle;
     if (!to) return;
     this.walkGoal = to;
     this.doing = station;
+    this.doingAction = actionId;
     if (!station) this.setBubble(null);
   }
 
+  /** A relaxed kickabout: short passes along the grass, players jogging to the ball and strolling into space. */
+  _kickabout() {
+    const players = this.group.children.filter((c) => c.userData.spot?.play);
+    if (players.length < 2) return;
+    const ball = new THREE.Group();
+    ball.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 1), mat("#f4f4f2", { flatShading: true, roughness: 0.6 })));
+    for (const [x, y, z] of [[0.2, 0, 0], [-0.2, 0, 0], [0, 0.2, 0], [0, -0.2, 0], [0, 0, 0.2], [0, 0, -0.2]]) {
+      const patch = new THREE.Mesh(new THREE.CircleGeometry(0.075, 5), mat("#1c1c1c", { side: THREE.DoubleSide }));
+      patch.position.set(x * 1.01, y * 1.01, z * 1.01);
+      patch.lookAt(x * 3, y * 3, z * 3);
+      ball.add(patch);
+    }
+    ball.position.set(players[0].position.x, 0.22, players[0].position.z + 0.7);
+    this.group.add(ball);
+    for (const p of players) p.children[0].userData.managed = true;
+    this.kick = { ball, players, holder: players[0], target: null, hold: 2.5, vel: new THREE.Vector2() };
+  }
+
+  _leaveKickabout() {
+    const k = this.kick;
+    const i = k.players.indexOf(this.you);
+    if (i < 0) return;
+    k.players.splice(i, 1);
+    if (k.holder === this.you || k.target === this.you) {
+      k.holder = k.players[0];
+      k.target = null;
+      k.vel.set(0, 0);
+      k.hold = 1.5;
+    }
+  }
+
+  _tickKickabout(dt) {
+    const k = this.kick;
+    const b = k.ball;
+    const R = 0.22;
+    const PITCH = { x: 8.6, z: 6.2 };
+    if (!k.target) {
+      // at someone's feet: a touch or two, then a pass
+      const h = k.holder;
+      const f = h.rotation.y;
+      b.position.x += (h.position.x + Math.sin(f) * 0.75 - b.position.x) * Math.min(1, dt * 6);
+      b.position.z += (h.position.z + Math.cos(f) * 0.75 - b.position.z) * Math.min(1, dt * 6);
+      k.hold -= dt;
+      if (k.hold <= 0) {
+        const others = k.players.filter((p) => p !== h);
+        const to = others[Math.floor(Math.random() * others.length)];
+        const dx = to.position.x - b.position.x;
+        const dz = to.position.z - b.position.z;
+        const d = Math.hypot(dx, dz) || 1;
+        // a firm side-foot pass: about 4–6 m/s (people here are 1.88 units to the metre)
+        const speed = Math.min(11, Math.sqrt(2 * 2.4 * d) + 1.2);
+        k.vel.set((dx / d) * speed, (dz / d) * speed);
+        h.rotation.y = Math.atan2(dx, dz);
+        k.target = to;
+      }
+    } else {
+      const sp = k.vel.length();
+      const next = Math.max(0, sp - 2.4 * dt); // grass slows the ball down
+      if (sp > 0) k.vel.multiplyScalar(next / sp);
+      b.position.x += k.vel.x * dt;
+      b.position.z += k.vel.y * dt;
+      if (Math.abs(b.position.x) > PITCH.x) {
+        b.position.x = Math.sign(b.position.x) * PITCH.x;
+        k.vel.x *= -0.4;
+      }
+      if (Math.abs(b.position.z) > PITCH.z) {
+        b.position.z = Math.sign(b.position.z) * PITCH.z;
+        k.vel.y *= -0.4;
+      }
+      // roll, don't slide
+      if (next > 0.01) b.rotateOnWorldAxis(new THREE.Vector3(k.vel.y, 0, -k.vel.x).normalize(), (next * dt) / R);
+      // whoever reaches it first takes it
+      for (const p of k.players) {
+        if (Math.hypot(p.position.x - b.position.x, p.position.z - b.position.z) < 0.95 && (p === k.target || next < 1.5)) {
+          k.holder = p;
+          k.target = null;
+          k.vel.set(0, 0);
+          k.hold = 1.2 + Math.random() * 2.3;
+          break;
+        }
+      }
+    }
+    for (const p of k.players) {
+      const person = p.children[0];
+      let goal = null;
+      let speed = 0;
+      if (p === k.target || (k.target && k.vel.length() < 1.2 && p === this._nearest(k.players, b))) {
+        goal = [b.position.x, b.position.z];
+        speed = Math.hypot(goal[0] - p.position.x, goal[1] - p.position.z) > 5 ? 5.4 : 2.7; // jog if it's far, else walk
+      } else if (p !== k.holder) {
+        // stroll into space now and then (about every few seconds), otherwise stand and watch
+        const r = p.userData.roam;
+        if (r && Math.hypot(r[0] - p.position.x, r[1] - p.position.z) < 0.5) p.userData.roam = null;
+        if (!p.userData.roam && Math.random() < dt * 0.25) {
+          p.userData.roam = [(Math.random() * 2 - 1) * PITCH.x * 0.85, (Math.random() * 2 - 1) * PITCH.z * 0.85];
+        }
+        if (p.userData.roam) {
+          goal = p.userData.roam;
+          speed = 1.6;
+        }
+      }
+      if (goal) {
+        const dx = goal[0] - p.position.x;
+        const dz = goal[1] - p.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.5) {
+          const step = Math.min(d, speed * dt);
+          p.position.x += (dx / d) * step;
+          p.position.z += (dz / d) * step;
+          p.rotation.y = lerpAngle(p.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 6));
+          person.walk?.(dt, speed);
+          continue;
+        }
+      }
+      // standing: keep an eye on the ball
+      p.rotation.y = lerpAngle(p.rotation.y, Math.atan2(b.position.x - p.position.x, b.position.z - p.position.z), Math.min(1, dt * 3));
+      person.walk?.(dt, 0);
+    }
+  }
+
+  _nearest(list, b) {
+    let best = null;
+    let bd = Infinity;
+    for (const p of list) {
+      const d = Math.hypot(p.position.x - b.position.x, p.position.z - b.position.z);
+      if (d < bd) {
+        bd = d;
+        best = p;
+      }
+    }
+    return best;
+  }
+
+  /** Laps of the pitch at an easy jogging pace (about 2.8 m/s). */
+  _tickJog(dt) {
+    const p = this.you;
+    const person = p.children[0];
+    const W = 10;
+    const D = 7.2;
+    const lap = 4 * W + 4 * D;
+    this.jog.s = (this.jog.s + dt * 5.2) % lap;
+    let s = this.jog.s;
+    let x;
+    let z;
+    if (s < 2 * W) [x, z] = [-W + s, -D];
+    else if ((s -= 2 * W) < 2 * D) [x, z] = [W, -D + s];
+    else if ((s -= 2 * D) < 2 * W) [x, z] = [W - s, D];
+    else [x, z] = [-W, D - (s - 2 * W)];
+    const dx = x - p.position.x;
+    const dz = z - p.position.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 3) {
+      // first get to the track
+      p.position.x += (dx / d) * Math.min(d, 4 * dt);
+      p.position.z += (dz / d) * Math.min(d, 4 * dt);
+      p.rotation.y = Math.atan2(dx, dz);
+      person.walk?.(dt, 4);
+      this.jog.s = Math.max(0, this.jog.s - dt * 5.2);
+      return;
+    }
+    if (d > 0.001) p.rotation.y = lerpAngle(p.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 8));
+    p.position.set(x, p.position.y, z);
+    person.walk?.(dt, 5.2);
+  }
+
   tick(dt) {
+    if (this.kick) this._tickKickabout(dt);
+    if (this.jog && this.you) this._tickJog(dt);
     if (this.you && this.walkGoal) {
       const p = this.you.position;
       const dx = this.walkGoal[0] - p.x;
@@ -1059,20 +1266,20 @@ export default class RoomView {
       const d = Math.hypot(dx, dz);
       const person = this.you.children[0];
       if (d > 0.15) {
-        const step = Math.min(d, dt * 3.6);
+        const step = Math.min(d, dt * 2.4); // an unhurried indoor walk
         p.x += (dx / d) * step;
         p.z += (dz / d) * step;
         this.you.rotation.y = Math.atan2(dx, dz);
-        person.walk?.(dt, 3.6);
+        person.walk?.(dt, 2.4);
       } else {
         this.walkGoal = null;
         // once there, do the thing: eat at the pot, read standing at the shelf, wash at the bucket…
-        const act = { food: "eat", study: "interact", class: "fold", care: "kneel", rest: "fold", fun: "phone", hustle: "interact",
-          shop: "pickup", money: "interact" }[this.doing];
+        const act = ACT_FOR_ACTION[this.doingAction] || { food: "eat", study: "interact", class: "fold", care: "kneel", rest: "fold", fun: "phone",
+          hustle: "interact", shop: "pickup", money: "interact" }[this.doing];
         if (act) person.act?.(act);
         else person.walk?.(dt, 0);
       }
     }
-    if (this.fanBlades) this.fanBlades.rotation.y += dt * 12;
+    if (this.fanBlades) this.fanBlades.rotation.y += dt * 7;
   }
 }

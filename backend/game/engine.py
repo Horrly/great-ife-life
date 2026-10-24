@@ -28,12 +28,13 @@ WAT = 3600          # Lagos is UTC+1 all year
 OFFLINE_AFTER = 45  # no request for this many minutes: you were away, and life went on gently
 AWAY_FLOOR = 20     # while you're away, needs don't fall below this
 FATIGUE = 0.5       # an action costs this share of the needs its nominal time would have taken
-ACTION_SECONDS = (3.0, 16.0)  # actions play out in a few real seconds
-JOURNEY_SPEEDUP = 2.0     # journeys play back at 2 nominal minutes per real second
-JOURNEY_MIN_SECONDS = 4
-JOURNEY_MAX_SECONDS = 25
+ACTION_SECONDS = (5.0, 30.0)  # actions play out over real seconds: long enough to watch, never rushed
+JOURNEY_SPEEDUP = 1.5     # journeys play back at 1.5 nominal minutes per real second
+JOURNEY_MIN_SECONDS = 5
+JOURNEY_MAX_SECONDS = 35
+BET_MATCH_SECONDS = 45     # a virtual match plays out over 45 real seconds (two halves), not in a blink
 RECOVER_MINUTES = 45      # a collapse keeps you at the Health Centre this long (real minutes)
-WALK_UNITS_PER_SECOND = 7.5  # how fast the 3D student walks (world units per real second)
+WALK_UNITS_PER_SECOND = 7.5  # the fastest the 3D student may move (a jog is ~6); used to reject teleports
 DOOR_RADIUS = 34          # how close (world units) you must be to a door to go in
 TEST_OPENS = C.H(7, 30)
 
@@ -214,9 +215,10 @@ def upgrade(state: dict) -> dict:
     for key in ("tdb", "collapses", "business_income", "loans", "skits", "trekked", "early", "trips"):
         state["stats"].setdefault(key, 0)
     state["stats"].setdefault("modes", {})
-    if state.get("map", 1) < 2:
-        # the campus was rearranged to match the real OAU map: stand at the door of wherever you are
-        state["map"] = 2
+    if state.get("map", 1) < 3:
+        # the campus was rearranged to match the real OAU map (v3: Akintola moved beside Fajuyi):
+        # stand at the door of wherever you are
+        state["map"] = 3
         where = state.get("at") if state.get("at") in W.BUILDINGS else state.get("housing", {}).get("building")
         if where in W.BUILDINGS:
             state["pos"] = list(W.NODES[W.BUILDINGS[where]["node"]])
@@ -1130,7 +1132,7 @@ def _begin(state, now, *, waking=False) -> list[str]:
 def action_seconds(minutes: float) -> float:
     """How long an action plays out on screen (it 'takes' its minutes, but you don't wait them)."""
     lo, hi = ACTION_SECONDS
-    return round(max(lo, min(hi, minutes / 7)), 1)
+    return round(max(lo, min(hi, minutes / 4)), 1)  # an hour's work takes 15 s; a long shift 30 s
 
 
 def journey_seconds(minutes: float) -> float:
@@ -1151,6 +1153,16 @@ def _finish(state, messages, now, playback_seconds: float = 0.0):
         state["busy_until"] = now + playback_seconds
     state["playback"] = playback_seconds
     return state, messages
+
+
+def skip_playback(state: dict, now: float) -> tuple[dict, list[str]]:
+    """Stop watching what you're doing (Lagos Life's "tap to cancel"). The result is already in, so this only
+    lets you move on straight away; nothing is gained or lost by skipping."""
+    state = copy.deepcopy(state)
+    if state.get("busy_until", 0) > now:
+        state["busy_until"] = now
+        state["playback"] = 0
+    return state, []
 
 
 def act(state: dict, action_id: str, now: float | None = None) -> tuple[dict, list[str]]:
@@ -2505,8 +2517,14 @@ def place_bet(state: dict, match: int, pick: str, stake: int, adult: bool = Fals
     else:
         _add_moodlet(state, "bet_cut")
         messages.insert(0, f"{score}. Bet cut. You lost ₦{stake:,}.")
-    state["last_bet"] = {"score": score, "won": pick == result, "pick": pick, "result": result}
-    return _finish(state, messages, now, 4)
+    # when the goals went in, so the phone can play the match out minute by minute instead of in a blink
+    minutes = sorted(rng.sample(range(2, 90), goals[0] + goals[1]))
+    sides = ["home"] * goals[0] + ["away"] * goals[1]
+    rng.shuffle(sides)
+    state["last_bet"] = {"score": score, "won": pick == result, "pick": pick, "result": result,
+                         "home": g["home"], "away": g["away"], "stake": stake,
+                         "goals": [[m, side] for m, side in zip(minutes, sides)], "at": now}
+    return _finish(state, messages, now, BET_MATCH_SECONDS)
 
 
 # --- Banking: accounts, the counter, ATMs, POS agents and transfers -----------------------------

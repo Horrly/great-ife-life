@@ -472,9 +472,43 @@ function distToSegment(px, pz, a, b) {
   return Math.hypot(px - (a[0] + t * dx), pz - (a[1] + t * dz));
 }
 
+/** Footpaths as segments, so trees and bushes keep off them too. */
+function pathSegments(map) {
+  const out = [];
+  for (const f of map.footpaths || []) for (let i = 1; i < f.points.length; i++) out.push([f.points[i - 1], f.points[i]]);
+  return out;
+}
+
+/** A paved footpath with low kerbs and a lamp now and then: walkers only, no cars. */
+function footpath(points) {
+  const g = new THREE.Group();
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const tex = paveTexture().clone();
+    tex.repeat.set(1, len / 5);
+    tex.needsUpdate = true;
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(4, len + 2).rotateX(-Math.PI / 2), surface({ map: tex, roughness: 0.95 }));
+    strip.position.set((a[0] + b[0]) / 2, 0.07, (a[1] + b[1]) / 2);
+    strip.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]);
+    strip.userData.ground = true;
+    g.add(strip);
+    const side = new THREE.Group();
+    side.position.copy(strip.position);
+    side.rotation.y = strip.rotation.y;
+    for (const sgn of [-1, 1]) {
+      const kerb = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, len + 2), mat("#e8e4da"));
+      kerb.position.set(sgn * 2.15, 0.1, 0);
+      side.add(kerb);
+    }
+    g.add(side);
+  }
+  return g;
+}
+
 function trees(map, colliders) {
   const rand = seeded(42);
-  const edges = map.edges.map(([a, b]) => [map.nodes[a], map.nodes[b]]);
+  const edges = [...map.edges.map(([a, b]) => [map.nodes[a], map.nodes[b]]), ...pathSegments(map)];
   const bx = map.bounds || { x0: -230, x1: 470, z0: -20, z1: 340 };
   const spots = [];
   for (let i = 0; spots.length < 560 && i < 8000; i++) {
@@ -822,6 +856,7 @@ export function buildWorld(map) {
   group.add(hills());
 
   for (const [a, b, kind] of map.edges) group.add(...road(map.nodes[a], map.nodes[b], kind));
+  for (const f of map.footpaths || []) group.add(footpath(f.points));
   for (const [x, z] of Object.values(map.nodes)) {
     const disc = new THREE.Mesh(new THREE.CircleGeometry(ROAD_W / 2 + 0.2, 16).rotateX(-Math.PI / 2), mat("#4a4d50"));
     disc.position.set(x, 0.09, z);

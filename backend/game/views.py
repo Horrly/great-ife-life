@@ -315,6 +315,13 @@ class _MoveView(APIView):
         return Response(payload(game, messages, t))
 
 
+class SkipView(_MoveView):
+    """Skip the rest of an action or journey you're watching; the outcome doesn't change."""
+
+    def move(self, state, data, t):
+        return E.skip_playback(state, t)
+
+
 class ActView(_MoveView):
     def move_game(self, game, data, t):
         action_id = str(data.get("action", ""))
