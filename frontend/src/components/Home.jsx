@@ -209,6 +209,36 @@ export function RoomCard({ room, onNote }) {
 }
 
 /** Asleep (real hours pass) or resting at the Health Centre. */
+/** Sleeping: the night plays out in about 15 seconds while your energy bar fills up. Tap anywhere to wake. */
+export function SleepingOverlay({ from, progress, minute, onWake }) {
+  const energy = Math.round(from + (100 - from) * progress);
+  return (
+    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-[#05100b]/85 p-6 text-center text-white backdrop-blur-sm"
+      role="dialog" aria-label="Sleeping" onClick={onWake}>
+      <button type="button" className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full bg-white/15 text-xl"
+        aria-label="Wake up now" onClick={(e) => { e.stopPropagation(); onWake(); }}>×</button>
+      <div className="w-full max-w-sm">
+        <p className="text-6xl" aria-hidden>😴</p>
+        <p className="num mt-3 text-6xl">{clockText(minute)}</p>
+        <h2 className="display mt-2 text-3xl">{progress < 1 ? "Sleeping…" : "Fully rested"}</h2>
+        <p className="mt-2 text-white/80">A full night's rest in a few seconds. Tap anywhere to wake up.</p>
+        <div className="mx-auto mt-5 max-w-xs text-left">
+          <div className="flex justify-between text-sm font-bold">
+            <span>⚡ Energy</span>
+            <span className="num">{energy}</span>
+          </div>
+          <div className="mt-1 h-3 overflow-hidden rounded-full bg-white/15">
+            <div className="h-full rounded-full bg-bulb" style={{ width: `${energy}%` }} />
+          </div>
+        </div>
+        <button type="button" className="btn-bulb mt-6 w-full py-3 text-lg" onClick={(e) => { e.stopPropagation(); onWake(); }}>
+          Wake up now
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SleepOverlay({ game, minute, onWake, busy }) {
   const a = game.asleep;
   const energy = game.needs.energy;

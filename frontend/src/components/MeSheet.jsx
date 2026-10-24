@@ -150,7 +150,7 @@ function ProfileTab({ game, account, onSave, onTitle }) {
         <ul className="mt-2 space-y-1 text-sm">
           <li>📱 {game.phone_info ? `${game.phone_info.name}${game.phone_info.cracked ? " (cracked screen)" : ""}` : "No phone (buy one at Ojaja)"}</li>
           <li>🏦 {game.bank ? `${game.bank.name} · ${game.bank.number}` : "No bank account yet"}</li>
-          <li>🍚 Foodstuff for {game.pantry} meal{game.pantry === 1 ? "" : "s"}</li>
+          <li>🧺 Foodstuff: {game.food?.length ? game.food.map((f) => `${f.name} ×${f.count}`).join(", ") : "none"}</li>
           {game.items.map((i) => <li key={i.id}>{{ bike: "🚲", car: "🚗", clippers: "💈", cobbler_kit: "👞", laptop: "💻" }[i.id] || "🎒"} {i.name}</li>)}
         </ul>
         <p className="mt-2 text-xs text-muted">You've trekked {game.trekked_km} km around campus.</p>

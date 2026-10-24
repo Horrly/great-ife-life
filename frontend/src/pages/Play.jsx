@@ -13,7 +13,7 @@ import { Receipt, RiddleSheet, Spectacle } from "../components/Extras";
 import { nameFor, randomLook } from "../game3d/look";
 import PlacePanel from "../components/Place";
 import MeSheet, { InboxSheet } from "../components/MeSheet";
-import { HousingChooser, SleepOverlay } from "../components/Home";
+import { HousingChooser, SleepingOverlay, SleepOverlay } from "../components/Home";
 import { BottomSheet, DecisionCard, Toast } from "../components/ui";
 import { setRain, sfx } from "../lib/sfx";
 import CampusEngine from "../game3d/Engine";
@@ -293,10 +293,10 @@ export default function Play() {
   }, [day]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Actions play out in a few real seconds as a ring chip at the top; you can keep looking around. */
-  async function playback(label, g, icon, station, actionId) {
+  async function playback(label, g, icon, station, actionId, extra = {}) {
     if (!g?.playback) return;
     stopLapse.current = false;
-    setLapse({ label, icon });
+    setLapse({ label, icon, ...extra });
     engine.current?.roomActivity(station || null, icon, actionId);
     await animate(g.playback, setLp, stopLapse);
     setLapse(null);
@@ -350,12 +350,18 @@ export default function Play() {
   }
 
   async function onAct(action) {
+    const energyBefore = game.needs.energy;
     const g = await act(action.id);
     if (g && action.cost > 0 && action.at !== "phone" && action.at !== "laptop") {
       setTab((t) => ({ at: g.at, items: [...(t.at === g.at ? t.items : []), { label: action.label.split(" (")[0], cost: action.cost }] }));
     }
     setPanel((p) => (p === "phone" || p === "laptop" ? null : p));
-    if (!g || action.id === "sleep" || action.id === "wake") return;
+    if (!g || action.id === "wake") return;
+    if (action.id === "sleep") {
+      setPanel(null);
+      await playback("Sleeping", g, "😴", "rest", "sleep", { sleep: { from: energyBefore } });
+      return;
+    }
     await playback(action.label, g, iconFor(action), action.station, action.id);
   }
 
@@ -602,7 +608,7 @@ export default function Play() {
       {/* Bottom band: things you press */}
       {controls && clean && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between p-3">
-          <button className="float pointer-events-auto rounded-full px-4 py-2.5 text-sm font-semibold" onClick={() => setClean(false)}>☰ Show buttons</button>
+          <button className="float pointer-events-auto rounded-full px-4 py-2.5 text-sm font-semibold" onClick={() => setClean(false)}>👁 Show buttons</button>
           <div className="flex gap-2">
             <RoundIcon icon="🗺" label="Map" onClick={() => setPanel("map")} />
             <PhoneButton game={game} onClick={() => setPanel("phone")} />
@@ -632,6 +638,8 @@ export default function Play() {
                 <button className="float pointer-events-auto rounded-full px-5 py-3 text-base font-semibold" onClick={() => setPanel("map")}>📍 Where to?</button>
               )}
               <div className="flex items-end gap-2">
+                <button className="float pointer-events-auto grid h-11 w-11 place-items-center rounded-full text-lg" onClick={() => setClean(true)}
+                  aria-label="Hide buttons" title="Hide buttons">🙈</button>
                 <MoreMenu items={more} />
                 <PhoneButton game={game} onClick={() => setPanel("phone")} />
               </div>
@@ -662,6 +670,8 @@ export default function Play() {
               </div>
               <div className="flex items-center gap-2">
                 <button className="float pointer-events-auto rounded-full px-4 py-2.5 text-sm font-semibold" onClick={onLeave} disabled={busy}>🚪 Go outside</button>
+                <button className="float pointer-events-auto grid h-11 w-11 place-items-center rounded-full text-lg" onClick={() => setClean(true)}
+                  aria-label="Hide buttons to see the room" title="Hide buttons">🙈</button>
                 <MoreMenu items={more} />
               </div>
             </div>
@@ -765,6 +775,7 @@ export default function Play() {
       )}
       {panel === "dm" && dm && <DmSheet thread={dm.thread} name={dm.name} onClose={close} />}
       {panel === "riddle" && controls && <RiddleSheet game={game} busy={busy} onClose={close} onSearch={onRiddleSearch} />}
+      {lapse?.sleep && <SleepingOverlay from={lapse.sleep.from} progress={lp} minute={minute} onWake={skipLapse} />}
       {!journey && <Spectacle events={game.events} />}
 
       {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} fromName={journey.fromName} onSkip={skipJourney} />}

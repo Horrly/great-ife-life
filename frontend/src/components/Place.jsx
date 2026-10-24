@@ -106,7 +106,24 @@ export default function PlacePanel({ game, building, atHome, title, sub, onAct, 
         ))}
       </div>
       {station === "room" ? <RoomCard room={game.room} onNote={postNote} /> : station === "money" ? <MoneyHere game={game} run={run} hall={hall} setHall={setHall} /> : (
-        <ActionCards actions={list} onAct={onAct} busy={busy} />
+        <>
+          {/* sort what you can cook first, so the meals your foodstuff allows are on top */}
+          <ActionCards actions={station === "food" ? [...list].sort((a, b) => (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0)) : list} onAct={onAct} busy={busy} />
+          {station === "food" && atHome && (
+            <div className="mt-3 rounded-2xl bg-slab p-3">
+              <p className="text-sm font-bold">🧺 In your room</p>
+              {game.food?.length ? (
+                <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                  {game.food.map((f) => (
+                    <li key={f.id} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm">{f.name} ×{f.count}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-xs text-muted">No foodstuff yet. Buy rice, beans, garri, yam, eggs and more at Ojaja market, then cook anything you have the ingredients for.</p>
+              )}
+            </div>
+          )}
+        </>
       )}
     </BottomSheet>
   );

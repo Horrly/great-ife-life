@@ -29,6 +29,7 @@ OFFLINE_AFTER = 45  # no request for this many minutes: you were away, and life 
 AWAY_FLOOR = 20     # while you're away, needs don't fall below this
 FATIGUE = 0.5       # an action costs this share of the needs its nominal time would have taken
 ACTION_SECONDS = (4.0, 13.0)  # every action plays out in at most 13 real seconds
+SLEEP_SECONDS = 15.0          # a full sleep plays out in 15 seconds while the energy bar fills
 JOURNEY_SPEEDUP = 1.5     # journeys play back at 1.5 nominal minutes per real second
 JOURNEY_MIN_SECONDS = 4
 JOURNEY_MAX_SECONDS = 13  # nothing in the game takes more than 13 seconds to watch
@@ -268,6 +269,14 @@ def upgrade(state: dict) -> dict:
         _upgrade_v5(state)
     state.setdefault("bank", None)   # v6: cash in hand and a bank account are separate
     state["stats"].setdefault("thefts", 0)
+    state.setdefault("pantry", 0)
+    if "food" not in state:
+        # old saves counted "meals of foodstuff": turn them into a mixed basket
+        n = state.get("pantry", 0)
+        state["food"] = {k: v for k, v in {"noodles": n, "egg": n, "garri": n // 2, "rice": n // 2, "stew": n // 2}.items() if v}
+        state["pantry"] = sum(state["food"].values())
+    if (state.get("asleep") or {}).get("kind") == "sleep":
+        state["asleep"] = None  # sleep is now a quick action, not real hours
     state["version"] = VERSION
     return state
 
@@ -977,6 +986,11 @@ def _check(state, action) -> str | None:
         return f"You need {C.ITEMS[req['item']]['name'].lower()} (Ojaja market)"
     if req.get("pantry") and state["pantry"] < req["pantry"]:
         return "No foodstuff. Buy some at Ojaja"
+    if req.get("food"):
+        food = state.get("food", {})
+        missing = [k for k, n in req["food"].items() if food.get(k, 0) < n]
+        if missing:
+            return f"You need {C.food_text({k: 1 for k in missing})}: buy at Ojaja market"
     if special == "fix_screen" and not (state.get("phone") and state["phone"]["cracked"]):
         return "Your screen isn't cracked"
     if special == "buy_item" and action["item"] in state["items"]:
@@ -1000,13 +1014,21 @@ def action_cost(state, action) -> int:
         cost = C.SCHOOL_CHARGES
     if action["id"] == "pay_fees_bc":
         cost = C.SCHOOL_CHARGES + 200
-    if action["id"] == "cook" and state.get("pantry", 0) > 0:
+    if action["id"] == "cook" and state.get("food", {}).get("noodles", 0) > 0 and state["food"].get("egg", 0) > 0:
         cost = 0
     if action.get("special") == "fix_screen" and state.get("phone"):
         cost = C.PHONES[state["phone"]["model"]]["screen_fix"]
     if action["id"] == "bath" and state["flags"].get("no_water"):
         cost += 300
     return cost
+
+
+def _sync_pantry(state):
+    """Keep the simple 'meals of foodstuff' count in step with what's in your room."""
+    food = state.setdefault("food", {})
+    for k in [k for k, v in food.items() if v <= 0]:
+        food.pop(k)
+    state["pantry"] = sum(food.values())
 
 
 def duration(state, action) -> int:
@@ -1126,11 +1148,11 @@ def station(action) -> str:
         return "study"
     if action.get("hustle") or action.get("earn") or action.get("freelance") or special in ("buy_business", "sell_business"):
         return "hustle"
-    if special in ("buy_item", "buy_phone", "fix_screen", "foodstuff") or aid.startswith("buy_") or special == "pay_fees":
+    if special in ("buy_item", "buy_phone", "fix_screen", "foodstuff", "grocery") or aid.startswith("buy_") or special == "pay_fees":
         return "shop"
     if special in ("sleep",) or aid in ("nap", "wake") or eff.get("energy", 0) >= 15:
         return "rest"
-    if eff.get("hunger", 0) >= 10 or special in ("cook", "use_pantry"):
+    if eff.get("hunger", 0) >= 10 or special in ("cook", "use_pantry", "recipe"):
         return "food"
     if eff.get("hygiene", 0) >= 10:
         return "care"
@@ -1229,7 +1251,7 @@ def act(state: dict, action_id: str, now: float | None = None) -> tuple[dict, li
         if reason:
             raise GameError(reason)
         _do_action(state, action, messages)
-        seconds = action_seconds(duration(state, action)) if action.get("special") != "sleep" else ACTION_SECONDS[0]
+        seconds = action_seconds(duration(state, action)) if action.get("special") != "sleep" else SLEEP_SECONDS
     return _finish(state, messages, now, seconds)
 
 
@@ -1272,16 +1294,31 @@ def _do_action(state, action, messages):
         else:
             state["class_moment"] = line
     elif special == "cook":
-        if state["pantry"] > 0:
-            state["pantry"] -= 1
-            line = f"Cooked with your own foodstuff ({state['pantry']} meal{'s' if state['pantry'] != 1 else ''} left)."
-        if W.BUILDINGS[home_building(state)]["style"] == "hall" and rng.random() < 0.12:
-            state["queued_event"] = "stove"
-    elif special == "use_pantry":
-        state["pantry"] -= 1
+        food = state.setdefault("food", {})
+        if food.get("noodles", 0) > 0 and food.get("egg", 0) > 0:
+            food["noodles"] -= 1
+            food["egg"] -= 1
+            line = "Cooked noodles and egg with your own foodstuff."
+        _sync_pantry(state)
+    elif special == "recipe":
+        food = state.setdefault("food", {})
+        for k, n in action["requires"]["food"].items():
+            food[k] = food.get(k, 0) - n
+        _sync_pantry(state)
+    elif special in ("use_pantry",):
+        state["pantry"] = max(0, state["pantry"] - 1)
     elif special == "foodstuff":
-        state["pantry"] += 6
-        line = f"Bought foodstuff: {state['pantry']} meals in your room. Cooking at home is free now."
+        food = state.setdefault("food", {})
+        for k, n in C.BASKET.items():
+            food[k] = food.get(k, 0) + n
+        _sync_pantry(state)
+        line = "Bought a foodstuff basket. Your room has enough for jollof, beans and dodo, garri and more."
+    elif special == "grocery":
+        f = C.FOODSTUFF[action["food"]]
+        food = state.setdefault("food", {})
+        food[action["food"]] = food.get(action["food"], 0) + f["units"]
+        _sync_pantry(state)
+        line = f"Bought {f['pack'].lower()}. You now have {food[action['food']]} {f['unit']}s of {f['name'].lower()} at home."
     elif special == "fix_screen":
         state["phone"]["cracked"] = False
         line = f"New screen on your {C.PHONES[state['phone']['model']]['name']}. Like new."
@@ -1333,11 +1370,12 @@ def _do_action(state, action, messages):
         _add_money(state, back)
         line = f"Sold your {b['name'].lower()} for ₦{back:,}."
     elif special == "sleep":
-        state["asleep"] = {"kind": "sleep", "since": state["clock"], "night": not C.WAKE_UP <= t0 < C.H(20)}
-        line = (f"Lights off. Your alarm is set for {clock_text(C.WAKE_UP)}. "
-                "Sleep takes real hours: come back in the morning, or wake up any time."
-                if state["asleep"]["night"] else
-                "Afternoon sleep. You'll wake up when you're rested (about three hours at most), or wake up any time.")
+        # a full sleep, played out in about 15 seconds: energy right back up, a little hungry when you wake
+        state["needs"]["energy"] = 100.0
+        state["needs"]["hunger"] = round(_clamp(state["needs"]["hunger"] - 8), 2)
+        _add_moodlet(state, "slept_well")
+        night = not C.WAKE_UP <= t0 < C.H(20)
+        line = "You slept like a baby and woke up fully rested." if night else "Good afternoon sleep. Fully rested."
     if action.get("tdb"):
         state["stats"]["tdb"] += 1
 
@@ -3128,6 +3166,8 @@ def view(state: dict, now: float | None = None) -> dict:
         "phone_info": phone_info(state),
         "items": [{"id": i, "name": C.ITEMS[i]["name"]} for i in state["items"]],
         "pantry": state["pantry"],
+        "food": [{"id": k, "name": C.FOODSTUFF[k]["name"], "unit": C.FOODSTUFF[k]["unit"], "count": v}
+                 for k, v in state.get("food", {}).items() if k in C.FOODSTUFF and v > 0],
         "next_venue": (next_lecture(state) or {}).get("venue"),
         "exam_venue": dept(state)["exams"],
         "faculty": dept(state)["faculty"],

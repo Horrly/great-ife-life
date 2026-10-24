@@ -397,3 +397,10 @@ New students now choose from **60 real OAU courses across 11 faculties**: Techno
 - **Bath, sleep and eat any time.** Bathing, cooking and napping work at any hour at home. Sleeping at night runs till your alarm; sleeping in the day lasts until you're rested (about three hours at most). **Order food delivery** from your phone at any hour, wherever you are (it costs more than the buka).
 - **No electric poles or overhead wires** cluttering the campus roads (street lamps stay).
 - **Night reading in lecture theatres.** The 1000 Seater LT and ODLT stay open all night: read for two hours in the evening or read till dawn (TDB), as well as at HOL.
+
+## Sleep in seconds, real cooking, legal stoves
+
+- **Sleep takes about 15 seconds.** Tap Sleep any time at home: a sleep screen shows the clock and your energy bar filling to full. Tap anywhere (or ×, or "Wake up now") to close it early; you still wake fully rested. No more waiting real hours.
+- **Hide the buttons.** A 🙈 button next to "Go outside" (and outside next to ⋯) hides the place card and bottom buttons so you can see your whole room, the bucket and the gas cooker; **👁 Show buttons** brings them back.
+- **Cook real meals.** Ojaja sells rice, beans, garri, yam, spaghetti, noodles, eggs, plantain, stew ingredients, egusi and ugwu, and chicken or fish (or a mixed basket). At home you can cook jollof rice, rice and stew with chicken, beans and dodo, yam and egg sauce, jollof spaghetti, eba and egusi, dodo and egg, noodles and egg, or soak garri, whatever your ingredients allow. The Food tab shows what's in your room, and meals you can make come first.
+- **Cooking in the hostel is legal.** No porter seizing your stove or pot, no fines.

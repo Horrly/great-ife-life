@@ -164,6 +164,8 @@ class Bot:
             if n["hygiene"] < 40 and self.do("bath"):
                 return
             if self.do("sleep"):
+                # sleep is a quick action now; then the player puts the phone down till morning
+                self.idle(((C.WAKE_UP - E.tod(self.s)) % 1440) or 30)
                 return
             self.idle(30)
             return

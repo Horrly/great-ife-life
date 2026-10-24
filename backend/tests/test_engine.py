@@ -171,22 +171,10 @@ def test_actions_play_in_seconds_and_sleep_takes_real_hours():
         E.act(s, "bath", now=t_of(s) + 1)
     s = at(s, 22, where="staff")
     s["needs"]["energy"] = 20
-    day = s["total_days"]
+    clock = s["clock"]
     s, msgs = E.act(s, "sleep", now=t_of(s))
-    assert s["asleep"] and [a["id"] for a in E.available_actions(s)] == ["wake"]
-    with pytest.raises(E.GameError, match="asleep"):
-        E.act(s, "bath", now=t_of(s) + 60)
-    s, msgs = later(s, 9 * 60)       # 7 AM
-    assert not s["asleep"] and s["total_days"] == day + 1
-    assert s["needs"]["energy"] >= 80 and any("alarm" in m or "rested" in m for m in msgs)
-
-
-def test_you_can_wake_up_early():
-    s = at(new(), 23, where="staff")
-    s, _ = E.act(s, "sleep", now=t_of(s))
-    s, _ = later(s, 60)
-    s, msgs = E.act(s, "wake", now=t_of(s) + 30)
-    assert not s["asleep"] and "got up" in msgs[0]
+    # sleep is a quick action now: about 15 seconds on screen, energy full, no waiting real hours
+    assert not s.get("asleep") and s["needs"]["energy"] == 100 and s["playback"] <= 20 and s["clock"] == clock
 
 
 def test_you_can_sleep_any_time_at_home():
@@ -733,17 +721,28 @@ def test_cracked_screens_get_fixed_at_the_market():
     assert not s["phone"]["cracked"] and s["money"] == 50_000 - C.PHONES["itel"]["screen_fix"]
 
 
-def test_foodstuff_makes_cooking_free():
+def test_cook_real_meals_from_market_foodstuff():
     s = at(new(seed="pantry"), 12, where="market")
-    s, _ = E.act(s, "foodstuff")
-    assert s["pantry"] == 6
+    s["money"] = 50_000
+    with pytest.raises(E.GameError):
+        E.act(at(s, 13, where=E.home_building(s)), "jollof")  # no rice yet
+    s, _ = E.act(s, "shop_rice")
+    s, _ = E.act(s, "shop_stew")
+    assert s["food"]["rice"] == 6 and s["food"]["stew"] == 4
     s = at(s, 19, where=E.home_building(s))
+    hunger = s["needs"]["hunger"] = 20
+    s, _ = E.act(s, "jollof")
+    assert s["food"]["rice"] == 5 and s["food"]["stew"] == 3 and s["needs"]["hunger"] > hunger
+    assert not s.get("queued_event") and s["phase"] == "play"  # cooking in the hostel is allowed: no seized stove
+    s = at(s, 12, where="market")
+    s, _ = E.act(s, "foodstuff")
+    s = at(s, 20, where=E.home_building(s))
     money = s["money"]
     s, _ = E.act(s, "cook")
-    s = clear_event(s)
-    assert s["money"] == money and s["pantry"] == 5
-    s, _ = E.act(at(s, 20), "garri")
-    assert s["pantry"] == 4
+    assert s["money"] == money  # noodles and egg from your own stock are free
+    s, _ = E.act(at(s, 21), "garri")
+    view = E.view(s, t_of(s))
+    assert any(f["id"] == "garri" for f in view["food"]) and view["pantry"] == sum(f["count"] for f in view["food"])
 
 
 def test_your_own_ride_goes_door_to_door():
@@ -1218,12 +1217,6 @@ def test_bath_sleep_and_food_any_time_of_day():
         s["money"] = 50_000
         enabled = ids(s)
         assert {"bath", "sleep", "cook"} <= enabled, (hour, enabled)
-    s = at(new(seed="day-sleep"), 14, where="staff")
-    s["needs"]["energy"] = 40
-    s, _ = E.act(s, "sleep", t_of(s))
-    assert s["asleep"] and not s["asleep"]["night"]
-    s2, msgs = later(s, 200)
-    assert not s2.get("asleep")  # a daytime sleep ends after about three hours
 
 
 def test_lecture_theatres_open_for_night_reading():

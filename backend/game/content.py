@@ -265,7 +265,7 @@ DAY = [(H(6), H(23, 59))]
 ACTIONS = [
     # --- Home
     {"id": "sleep", "at": "home", "label": "Sleep", "hours": [(0, H(24))], "minutes": "sleep",
-     "effects": {}, "special": "sleep", "blurb": "Lights off. At night you sleep till your alarm; in the day until you're rested.",
+     "effects": {}, "special": "sleep", "blurb": "Lights off. A full night's sleep in about 15 seconds: energy right back up.",
      "done": "You slept like a baby."},
     {"id": "nap", "at": "home", "label": "Nap (1 hour)", "hours": [(0, H(24))], "minutes": 60,
      "effects": {"energy": 14, "fun": 2}, "blurb": "Just one hour. (It's never one hour.)", "done": "Short nap. You feel better."},
@@ -274,10 +274,10 @@ ACTIONS = [
      "done": "Fresh. You feel like a person again."},
     {"id": "cook", "at": "home", "label": "Cook noodles and egg", "hours": [(0, H(24))], "minutes": 40, "cost": 600,
      "effects": {"hunger": 40}, "special": "cook",
-     "blurb": "Two packs, one egg, zero shame. Free if you have foodstuff from the market.",
+     "blurb": "Two packs, one egg, zero shame. Free if you have noodles and eggs from the market.",
      "done": "Noodles and egg: chef of the year."},
     {"id": "garri", "at": "home", "label": "Soak garri", "hours": [(0, H(24))], "minutes": 10,
-     "effects": {"hunger": 28, "fun": 2}, "requires": {"pantry": 1}, "special": "use_pantry",
+     "effects": {"hunger": 28, "fun": 2}, "requires": {"food": {"garri": 1}}, "special": "recipe",
      "blurb": "Garri, sugar, groundnut and cold water. The national student meal.",
      "done": "Soaked garri. Filling, cheap, legendary."},
     {"id": "chinchin", "once_per_day": True, "at": "home", "label": "Fry and sell chin-chin (3 hrs)",
@@ -469,9 +469,9 @@ ACTIONS += [
 
 # --- New Market (Ojaja): phones, foodstuff, tools, a bicycle, and hustles of its own
 ACTIONS += [
-    {"id": "foodstuff", "at": "market", "label": "Buy foodstuff", "hours": [(H(7), H(20, 30))], "minutes": 30,
-     "cost": 4_500, "effects": {"energy": -3}, "special": "foodstuff",
-     "blurb": "Garri, rice, noodles, eggs and pepper: six meals' worth. Cheaper than buying food every time."},
+    {"id": "foodstuff", "at": "market", "label": "Buy a foodstuff basket (mixed)", "hours": [(H(7), H(20, 30))], "minutes": 30,
+     "cost": 6_000, "effects": {"energy": -3}, "special": "foodstuff",
+     "blurb": "A bit of everything: rice, beans, garri, noodles, eggs, plantain and stew ingredients."},
     {"id": "puff", "at": "market", "label": "Puff-puff and zobo", "hours": [(H(7), H(20, 30))], "minutes": 15, "cost": 500,
      "effects": {"hunger": 20, "fun": 4}, "blurb": "Hot puff-puff from the woman by the gate.",
      "done": "Puff-puff and cold zobo. Small chops of champions."},
@@ -600,6 +600,55 @@ for _pid, _p in PROMOS.items():
 
 ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
 
+# --- Foodstuff from Ojaja and what you can cook with it (cooking in your room is allowed) -----------------
+FOODSTUFF = {
+    "rice": {"name": "Rice", "unit": "cup", "pack": "Half paint-bucket of rice", "price": 3_000, "units": 6},
+    "beans": {"name": "Beans", "unit": "cup", "pack": "Half paint-bucket of beans", "price": 2_400, "units": 6},
+    "garri": {"name": "Garri", "unit": "cup", "pack": "Paint-bucket of garri", "price": 1_500, "units": 8},
+    "yam": {"name": "Yam", "unit": "portion", "pack": "A big yam tuber", "price": 2_000, "units": 4},
+    "spaghetti": {"name": "Spaghetti", "unit": "pack", "pack": "Three packs of spaghetti", "price": 1_800, "units": 3},
+    "noodles": {"name": "Noodles", "unit": "pack", "pack": "Five packs of noodles", "price": 1_500, "units": 5},
+    "egg": {"name": "Eggs", "unit": "egg", "pack": "Six eggs", "price": 1_200, "units": 6},
+    "plantain": {"name": "Plantain", "unit": "finger", "pack": "A bunch of four plantains", "price": 1_600, "units": 4},
+    "stew": {"name": "Stew ingredients", "unit": "pot", "pack": "Tomatoes, pepper, onions and oil", "price": 1_500, "units": 4},
+    "soup": {"name": "Egusi and ugwu", "unit": "pot", "pack": "Egusi, ugwu, crayfish and palm oil", "price": 2_000, "units": 3},
+    "protein": {"name": "Chicken or fish", "unit": "piece", "pack": "Frozen chicken or fish", "price": 3_500, "units": 4},
+}
+BASKET = {"rice": 2, "beans": 2, "garri": 2, "noodles": 2, "egg": 3, "plantain": 2, "stew": 2}
+RECIPES = [
+    # id, label, ingredients, minutes, effects, blurb
+    ("jollof", "Cook jollof rice", {"rice": 1, "stew": 1}, 50, {"hunger": 55, "fun": 6},
+     "Party jollof in a student pot. The bottom-pot is the best part."),
+    ("rice_stew", "Cook rice and stew with chicken", {"rice": 1, "stew": 1, "protein": 1}, 60, {"hunger": 65, "fun": 8},
+     "White rice, red stew and a proper piece of chicken. Sunday in the hostel."),
+    ("beans_dodo", "Cook beans and fried plantain", {"beans": 1, "plantain": 1}, 60, {"hunger": 60, "fun": 4},
+     "Ewa and dodo. Heavy, sweet, and it keeps you till evening."),
+    ("yam_egg", "Cook boiled yam and egg sauce", {"yam": 1, "egg": 1, "stew": 1}, 40, {"hunger": 55, "fun": 4},
+     "Yam and egg sauce: the breakfast of champions."),
+    ("spag", "Cook jollof spaghetti", {"spaghetti": 1, "stew": 1}, 35, {"hunger": 50, "fun": 4},
+     "Spaghetti cooked like jollof. Don't let anyone from Italy see."),
+    ("eba_egusi", "Make eba and egusi soup", {"garri": 1, "soup": 1}, 55, {"hunger": 62, "fun": 5},
+     "Egusi with ugwu, eba to swallow. Mama would be proud."),
+    ("dodo_egg", "Fry plantain and egg", {"plantain": 1, "egg": 1}, 25, {"hunger": 38, "fun": 4},
+     "Dodo and fried egg. Quick, cheap, sweet."),
+]
+
+
+def food_text(need: dict) -> str:
+    names = [FOODSTUFF[k]["name"].lower() for k in need]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+for _id, _label, _need, _mins, _eff, _blurb in RECIPES:
+    ACTIONS.append({"id": _id, "at": "home", "label": _label, "hours": [(0, H(24))], "minutes": _mins, "effects": dict(_eff),
+                    "requires": {"food": dict(_need)}, "special": "recipe", "station": "food",
+                    "blurb": f"{_blurb} Uses {food_text(_need)} from your foodstuff.", "done": f"{_label.replace('Cook ', '').replace('Make ', '').replace('Fry ', '').capitalize()}: done. Chop!"})
+for _fid, _f in FOODSTUFF.items():
+    ACTIONS.append({"id": f"shop_{_fid}", "at": "market", "label": f"Buy {_f['pack'].lower()}", "hours": [(H(7), H(20, 30))],
+                    "minutes": 10, "cost": _f["price"], "effects": {}, "special": "grocery", "food": _fid,
+                    "blurb": f"{_f['units']} {_f['unit']}{'s' if _f['units'] > 1 else ''} of {_f['name'].lower()} for cooking at home."})
+ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
+
 # --- Badges: little goals that make people play "one more day".
 BADGES = {
     "first_a": ("First A", "Score an A in any course"),
@@ -698,12 +747,6 @@ EVENTS = [
         "choices": [{"label": "RIP", "phone": "lose", "effects": {"fun": -12},
                      "result": "Your phone is dead. Ojaja sells new and fairly-used ones."}],
         "requires": {"phone": True},
-    },
-    {
-        "id": "stove", "title": "The porter seized your stove", "weight": 0, "when": "cook",
-        "text": "Cooking in the hall is not allowed. The porter has taken your burner to the hall office.",
-        "choices": [{"label": "Pay the fine and collect it (₦1,000)", "cost": 1_000, "effects": {"fun": -6},
-                     "result": "Lesson learned. Cook quietly."}],
     },
     {
         "id": "free_food", "title": "Free food at a departmental event", "weight": 5, "when": "day",
@@ -819,7 +862,8 @@ MISSIONS = {
         {"id": "freshen", "label": "Freshen up", "kind": "action", "ids": ["bath"]},
         {"id": "eat_well", "label": "Eat a proper meal", "kind": "cat", "cat": "meal"},
         {"id": "call_home", "label": "Call home", "kind": "action", "ids": ["call_home"]},
-        {"id": "garri", "label": "Soak garri or cook", "kind": "action", "ids": ["garri", "cook"]},
+        {"id": "garri", "label": "Cook something at home", "kind": "action",
+         "ids": ["garri", "cook", "jollof", "rice_stew", "beans_dodo", "yam_egg", "spag", "eba_egusi", "dodo_egg"]},
     ],
     "campus": [
         {"id": "lecture", "label": "Attend a lecture", "kind": "action", "ids": ["lecture"]},
