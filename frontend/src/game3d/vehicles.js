@@ -52,8 +52,8 @@ export function makeBus() {
   return g;
 }
 
-/** Keke (tricycle): yellow-green, with a canopy. */
-export function makeKeke(color = "#e9c227") {
+/** Keke (tricycle): OAU campus kekes are green, with a black canopy. */
+export function makeKeke(color = "#1e8f4e") {
   const g = new THREE.Group();
   const body = mat(color);
   g.add(box(1.7, 0.8, 3.0, body, 0, 0.9, -0.2));

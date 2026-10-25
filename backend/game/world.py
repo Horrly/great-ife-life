@@ -44,6 +44,7 @@ NODES = {
     "bk": (-235, 95),    # the buka by the gate road
     "aj": (250, -65),    # Ajose LT
     # the other faculties (positions estimated; the real OAU layout spreads them east of Senate)
+    "alm": (-160, -125), # Alumni Hall
     "fac": (230, 4),     # Law and Education junction
     "med": (245, 115),   # Pharmacy and the College of Health Sciences
     "agr": (275, -62),   # Faculty of Agriculture
@@ -57,7 +58,7 @@ EDGES = [
     ("buka", "mkt", "road"), ("mor", "c", "road"), ("c", "sci", "road"), ("sci", "ne", "road"), ("ne", "n", "road"),
     ("sci", "amp", "road"), ("amp", "n", "road"), ("c", "hol", "road"), ("odu", "hol", "road"), ("hol", "amp", "road"),
     ("hol", "sen", "road"), ("sen", "fac", "road"), ("fac", "e", "road"), ("fac", "med", "road"),
-    ("aj", "agr", "road"), ("tech", "edm", "road"), ("e", "tech", "road"), ("e", "staff", "road"), ("mkt", "subn", "road"),
+    ("aj", "agr", "road"), ("tech", "edm", "road"), ("awo", "alm", "road"), ("e", "tech", "road"), ("e", "staff", "road"), ("mkt", "subn", "road"),
     ("subn", "odu", "road"), ("subn", "sport", "road"), ("sport", "bank", "road"), ("bank", "sen", "road"), ("c", "subn", "road"),
     ("bk", "buka", "road"), ("e", "aj", "road"),
 ]
@@ -79,6 +80,8 @@ BUILDINGS = {
     # Akintola sits right beside Fajuyi (you reach it first coming from ETF), with a footpath between the two
     "akintola": {"name": "Akintola Hall", "node": "akn", "x": -118, "z": 60, "w": 24, "d": 28, "h": 14, "style": "hall",
                  "kind": "hall", "wall": "#f0dccf", "roof": "#8f5a3b", "hours": None, "sign": "LADOKE AKINTOLA HALL"},
+    "alumni": {"name": "Alumni Hall", "node": "alm", "x": -150, "z": -150, "w": 26, "d": 24, "h": 13, "style": "hall",
+               "kind": "hall", "wall": "#eedfe6", "roof": "#8f3b6b", "hours": None, "sign": "ALUMNI HALL"},
     "mozambique": {"name": "Mozambique Hall", "node": "angm", "x": -225, "z": -150, "w": 28, "d": 28, "h": 13,
                    "style": "hall", "kind": "hall", "wall": "#e8d8e0", "roof": "#7a3e6a", "hours": None,
                    "sign": "MOZAMBIQUE HALL"},
@@ -285,7 +288,8 @@ BLURBS = {
     "fajuyi": "Fajuyi boys never sleep. Late-night gist, ball on the court, and the occasional block party.",
     "etf": "The newer hall by the road: cleaner toilets, stronger water, and everybody wants a bed here.",
     "moremi": "Moremi babes run the female halls. Strict porters, fine rooms, long queues at the tap.",
-    "akintola": "Akintola is quiet in the day and alive at night. Bring your own bucket.",
+    "akintola": "Akintola is quiet in the day and alive at night. Bring your own bucket. (A girls' hall.)",
+    "alumni": "Alumni Hall: a girls' hall, newer rooms, strict porters and a very loud hall week.",
     "mozambique": "Mozambique Hall, Mozzy for short. Busy corridors and the best hall week.",
     "angola": "Angola Hall, next door to Mozambique at AngloMoz. Close-knit, loud on hall week, far from the faculties.",
     "staff": "Staff Quarters on Road 7. Leafy, calm, and a long walk from everything.",

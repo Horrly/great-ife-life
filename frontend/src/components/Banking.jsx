@@ -262,8 +262,9 @@ function AtmOnly({ game, run }) {
 
 /** The bank app on your phone (white text on the phone's wallpaper). */
 export function BankApp({ game, run }) {
-  const { openBank, transfer, lookupAccount, busy } = useGame();
+  const { openBank, transfer, lookupAccount, appDeposit, busy } = useGame();
   const [tab, setTab] = useState("home");
+  const [dep, setDep] = useState(0);
   const [number, setNumber] = useState("");
   const [bankId, setBankId] = useState("");
   const [who, setWho] = useState(null);
@@ -327,15 +328,29 @@ export function BankApp({ game, run }) {
           <span className="text-xs">{copied ? "Copied" : "Copy"}</span>
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-1.5">
-        {[["home", "Statement"], ["send", "Transfer"]].map(([id, label]) => (
+      <div className="grid grid-cols-3 gap-1.5">
+        {[["home", "Statement"], ["deposit", "Deposit"], ["send", "Transfer"]].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} aria-pressed={tab === id}
             className={`rounded-full py-1.5 text-sm font-bold ${tab === id ? "bg-white text-ink" : "bg-black/25"}`}>
             {label}
           </button>
         ))}
       </div>
-      {tab === "home" ? (
+      {tab === "deposit" ? (
+        <div className="space-y-2 rounded-2xl bg-white/95 p-3 text-ink">
+          <p className="text-sm font-bold">Deposit cash into your account</p>
+          <p className="text-xs text-muted">Any amount, any time. You have {naira(game.cash ?? game.money ?? 0)} in cash.</p>
+          <AmountInput value={dep} onChange={setDep} max={game.cash ?? game.money ?? 0} label="Amount to deposit"
+            chips={[[1000, "₦1k"], [5000, "₦5k"], [10000, "₦10k"], [game.cash ?? game.money ?? 0, "All cash"]]} />
+          <button className="btn-primary w-full" disabled={busy || dep < 1 || dep > (game.cash ?? game.money ?? 0)}
+            onClick={async () => {
+              const g = await run(appDeposit(dep), `Depositing ${naira(dep)}`);
+              if (g) setDep(0);
+            }}>
+            Deposit {dep ? naira(dep) : ""}
+          </button>
+        </div>
+      ) : tab === "home" ? (
         <ul className="space-y-1.5">
           {acct.history.length === 0 && <li className="text-sm opacity-80">No transactions yet.</li>}
           {acct.history.map((h, i) => (

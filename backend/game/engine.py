@@ -968,6 +968,14 @@ def _check(state, action) -> str | None:
         return "You already own one"
     if special == "sell_business" and action["business"] not in state["businesses"]:
         return "You don't own this"
+    if special == "remote_apply":
+        job = C.REMOTE_JOBS[action["job"]]
+        if state["flags"].get("remote_job") == action["job"]:
+            return "You already work here"
+        if job["needs"] and skill_level(state, job["needs"][0]) < job["needs"][1]:
+            return f"Needs {C.SKILLS[job['needs'][0]]['name']} level {job['needs'][1]}: practise on your laptop"
+    if special == "remote_shift" and not state["flags"].get("remote_job"):
+        return "Apply for a remote job first"
     if special == "promote":
         if not state["businesses"]:
             return "Start a business first"
@@ -978,6 +986,8 @@ def _check(state, action) -> str | None:
         return f"You need {req['min_prep']}% readiness to teach"
     if req.get("smartphone") and not has_smartphone(state):
         return "Needs a smartphone"
+    if req.get("phone") and not state.get("phone"):
+        return "You need a phone"
     if req.get("keypad") and (phone_info(state) or {}).get("os") != "keypad":
         return "Only on a torchlight phone"
     if req.get("camera") and (phone_info(state) or {}).get("camera", 0) < req["camera"]:
@@ -1359,6 +1369,17 @@ def _do_action(state, action, messages):
     elif special == "buy_business":
         state["businesses"][action["business"]] = state["total_days"]
         line = f"You started a {C.BUSINESSES[action['business']]['name'].lower()}! It pays out every night."
+    elif special == "remote_apply":
+        job = C.REMOTE_JOBS[action["job"]]
+        state["flags"]["remote_job"] = action["job"]
+        line = f"You got the job: {job['name']} (remote)! Work a shift on your laptop on weekdays."
+    elif special == "remote_shift":
+        job = C.REMOTE_JOBS[state["flags"]["remote_job"]]
+        pay = int(job["pay"] * (1 + 0.08 * (skill_level(state, job["skill"]) - 1)))
+        _receive(state, pay, f"Salary: {job['name']}", "bank")
+        state["stats"]["hustle_income"] += pay
+        _gain_xp(state, job["skill"], 6, messages)
+        line = f"Shift done as {job['name']}. ₦{pay:,} paid into your account."
     elif special == "promote":
         p = C.PROMOS[action["promo"]]
         state["promo"] = {"boost": p["boost"], "until": state["total_days"] + p["nights"], "label": p["label"]}
@@ -2532,7 +2553,9 @@ def ask_parents(state: dict, amount: int, now: float | None = None) -> tuple[dic
 def fixtures(state, now: float | None = None) -> list[dict]:
     """Eight virtual matches. They change every 10 minutes and everyone sees the same ones."""
     slot = int(now // 600) if now is not None else state["clock"] // 10
-    rng = random.Random(f"fixtures-{slot}")
+    # a fresh set of matches every 10 minutes, and straight after each of your bets has played out
+    rnd = state.get("flags", {}).get("bet_round", 0)
+    rng = random.Random(f"fixtures-{slot}-{rnd}" if rnd else f"fixtures-{slot}")
     teams = rng.sample(C.BET_TEAMS, 2 * C.BET_MATCHES)
     out = []
     for i in range(C.BET_MATCHES):
@@ -2611,6 +2634,7 @@ def place_bet(state: dict, match=None, pick: str = "", stake: int = 0, adult: bo
     odds = round(odds, 2)
     won = all(leg["won"] for leg in legs)
     flags["bets_today"] += 1
+    flags["bet_round"] = flags.get("bet_round", 0) + 1  # new matches on the board once this slip is done
     _bank_move(state, -stake, "Bet stake")
     state["stats"]["bets"] += 1
     state["stats"]["staked"] += stake
@@ -2800,6 +2824,26 @@ def atm_withdraw(state: dict, amount: int, now: float | None = None, machine: st
     messages.insert(0, f"The {machine_name} ATM counted out ₦{amount:,}." + (f" (₦{fee} fee: another bank's ATM.)" if fee else "")
                     + f" Balance: ₦{bank_balance(state):,}.")
     return _finish(state, messages, now, 5)
+
+
+def app_deposit(state: dict, amount: int, now: float | None = None) -> tuple[dict, list[str]]:
+    """Put cash into your account from the bank app (a cash-in agent comes to you): any amount, any time, free."""
+    state = upgrade(copy.deepcopy(state))
+    messages = _begin(state, now)
+    if not state.get("bank"):
+        raise GameError("Open a bank account first.")
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        raise GameError("Enter an amount.")
+    if amount < 1:
+        raise GameError("Enter an amount.")
+    if amount > state["money"]:
+        raise GameError(f"You only have ₦{state['money']:,} in cash.")
+    state["money"] -= amount
+    _bank_move(state, amount, "Cash deposit (app)")
+    messages.insert(0, f"🏦 ₦{amount:,} deposited. Balance: ₦{bank_balance(state):,}.")
+    return _finish(state, messages, now, 3)
 
 
 def pos_cash(state: dict, kind: str, amount: int, method: str = "card",

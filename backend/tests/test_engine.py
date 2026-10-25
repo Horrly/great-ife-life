@@ -1239,3 +1239,37 @@ def test_bet_slip_with_many_matches_pays_only_if_all_land():
     assert s2["playback"] <= 13
     with pytest.raises(E.GameError):
         E.place_bet(s, stake=50, adult=True, now=t_of(s), picks=picks)
+
+
+def test_laptop_skills_lead_to_a_remote_job():
+    s = banked(at(new(seed="remote"), 10, where="hol"), 1_000)
+    s["items"].append("laptop")
+    assert "Needs Coding level 4" in E._check(s, C.ACTIONS_BY_ID["job_junior_dev"])
+    assert E._check(s, C.ACTIONS_BY_ID["remote_shift"]) == "Apply for a remote job first"
+    s["skills"]["coding"] = C.SKILL_LEVELS[3]  # level 4
+    s, msgs = E.act(s, "job_junior_dev", t_of(s))
+    assert s["flags"]["remote_job"] == "junior_dev"
+    s = at(s, 14, where="hol")
+    bal = E.bank_balance(s)
+    s, msgs = E.act(s, "remote_shift", t_of(s))
+    assert E.bank_balance(s) >= bal + C.REMOTE_JOBS["junior_dev"]["pay"]
+
+
+def test_deposit_any_amount_of_cash_from_the_app():
+    s = banked(at(new(seed="dep"), 23, where="staff"), 0)
+    s["money"] = 7_777
+    s2, _ = E.app_deposit(s, 7_777, t_of(s))
+    assert E.bank_balance(s2) == 7_777 and s2["money"] < 7_777
+    with pytest.raises(E.GameError):
+        E.app_deposit(s, 50_000, t_of(s))
+
+
+def test_new_matches_after_every_bet_and_halls_by_gender():
+    s = banked(at(new(seed="newgames"), 12, where="staff"), 50_000)
+    before = [(g["home"], g["away"]) for g in E.fixtures(s, t_of(s))]
+    s2, _ = E.place_bet(s, stake=100, adult=True, now=t_of(s), picks=[(0, "1")])
+    after = [(g["home"], g["away"]) for g in E.fixtures(s2, t_of(s2))]
+    assert before != after
+    assert set(C.HALLS["male"]) == {"awo", "fajuyi", "etf", "angola"}
+    assert set(C.HALLS["female"]) == {"akintola", "moremi", "mozambique", "alumni"} and "alumni" in W.BUILDINGS
+    assert not any("(2 hrs)" in a["label"] for a in C.ACTIONS)

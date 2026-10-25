@@ -110,7 +110,7 @@ PROFILES = {
 # --- Where you live ---------------------------------------------------------------------------------
 # Rent is for a whole session (two semesters) and falls due again when a new session starts.
 # Halls take four in a room; off campus, landlords allow two tenants at most.
-HALLS = {"male": ["awo", "fajuyi", "etf", "akintola", "angola"], "female": ["moremi", "mozambique"]}
+HALLS = {"male": ["awo", "fajuyi", "etf", "angola"], "female": ["akintola", "moremi", "mozambique", "alumni"]}
 HOUSING = {
     "hostel": {"name": "Hall bunk", "capacity": 4, "rent": (30_000, 30_000), "emoji": "🛏",
                "blurb": "Four in a room, bunk beds, one socket, endless gist. The cheapest way to live.",
@@ -414,6 +414,7 @@ SKILLS = {
     "shoes": {"name": "Shoemaking"},
     "hustling": {"name": "Hustling", "blurb": "Grows with every hustle. Makes all hustles and businesses pay more."},
     "charisma": {"name": "Charisma", "blurb": "Grows when you're social. Friends, fans and customers like you more."},
+    "data": {"name": "Data analysis", "blurb": "Excel, dashboards and numbers. Practise on a laptop; opens remote analyst work."},
 }
 # Ten levels per skill. Each level is one bar to fill; a full bar takes you to the next level.
 SKILL_LEVELS = [0, 20, 50, 90, 140, 200, 270, 350, 440, 540]   # XP needed for levels 1..10
@@ -650,6 +651,79 @@ for _fid, _f in FOODSTUFF.items():
     ACTIONS.append({"id": f"shop_{_fid}", "at": "market", "label": f"Buy {_f['pack'].lower()}", "hours": [(H(7), H(20, 30))],
                     "minutes": 10, "cost": _f["price"], "effects": {}, "special": "grocery", "food": _fid,
                     "blurb": f"{_f['units']} {_f['unit']}{'s' if _f['units'] > 1 else ''} of {_f['name'].lower()} for cooking at home."})
+ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
+
+# --- More with what you own: laptop courses, remote jobs, WhatsApp hustles and quick pick-me-ups ------------
+ACTIONS += [
+    {"id": "learn_data", "at": "laptop", "label": "Take an online data analysis course", "hours": [(H(6), H(26))],
+     "minutes": 120, "cost": 300, "effects": {"energy": -7, "fun": -2}, "skill": "data", "xp": 12, "learn": True,
+     "blurb": "Excel, pivot tables and your first dashboard. ₦300 of data.", "done": "Your first chart came out right."},
+    {"id": "learn_uiux", "at": "laptop", "label": "Learn UI design in Figma", "hours": [(H(6), H(26))],
+     "minutes": 120, "cost": 200, "effects": {"energy": -6, "fun": 3}, "skill": "design", "xp": 14, "learn": True,
+     "blurb": "Redesign an app you hate. Free tutorials, ₦200 of data.", "done": "Your screens look like a real app now."},
+    {"id": "learn_video", "at": "laptop", "label": "Edit videos and learn motion graphics", "hours": [(H(6), H(26))],
+     "minutes": 120, "cost": 200, "effects": {"energy": -7, "fun": 6}, "skill": "content", "xp": 12, "learn": True,
+     "blurb": "CapCut on the phone was the start. Now: proper editing.", "done": "That transition was clean."},
+    # WhatsApp hustles (any smartphone)
+    {"id": "wa_thrift", "once_per_day": True, "requires": {"smartphone": True}, "at": "phone",
+     "label": "Sell thrift clothes on your WhatsApp status", "hours": [(H(7), H(23))], "minutes": 90, "cost": 1_000, "earn": 3_200,
+     "effects": {"energy": -4, "social": 6}, "hustle": True, "skill": "hustling", "xp": 3,
+     "blurb": "Okrika from Ojaja, photos on your bed, 'DM for price'. ₦1,000 for stock."},
+    {"id": "wa_food", "once_per_day": True, "requires": {"smartphone": True}, "at": "phone",
+     "label": "Take food orders in the hall WhatsApp group", "hours": [(H(10), H(21))], "minutes": 90, "earn": 2_000,
+     "effects": {"energy": -6, "social": 8}, "hustle": True,
+     "blurb": "You collect orders, a buka cooks, you deliver and keep the margin."},
+    {"id": "wa_tv", "once_per_day": True, "requires": {"smartphone": True}, "at": "phone",
+     "label": "Post paid adverts on your WhatsApp TV", "hours": [(H(7), H(24))], "minutes": 45, "earn": 1_500,
+     "effects": {"energy": -2, "fun": 2}, "hustle": True, "skill": "content", "xp": 3,
+     "blurb": "Your status views are your billboard. Hostels, gadgets, hair: ₦500 a post."},
+    # quick pick-me-ups for your needs
+    {"id": "call_friend", "requires": {"phone": True}, "at": "phone", "label": "Call a friend", "hours": [(H(7), H(24))],
+     "minutes": 20, "effects": {"social": 18, "fun": 5}, "blurb": "Twenty minutes of gist with your secondary school person."},
+    {"id": "music", "requires": {"smartphone": True}, "at": "phone", "label": "Listen to Afrobeats with your earphones",
+     "hours": [(0, H(24))], "minutes": 20, "effects": {"fun": 14, "energy": 2}, "blurb": "Asake, Burna, Tems. Volume up."},
+    {"id": "phone_game", "requires": {"smartphone": True}, "at": "phone", "label": "Play a game on your phone", "hours": [(0, H(24))],
+     "minutes": 20, "effects": {"fun": 16, "energy": -2}, "blurb": "eFootball, Ludo, Candy Crush. Just one more round."},
+    {"id": "skits", "requires": {"smartphone": True}, "at": "phone", "label": "Watch comedy skits", "hours": [(0, H(24))],
+     "minutes": 20, "effects": {"fun": 15, "social": 3}, "blurb": "Sabinus, Taaooma and your hall's own skit makers."},
+    {"id": "wipes", "requires": {"phone": True}, "at": "phone", "label": "Freshen up with wipes and roll-on", "hours": [(0, H(24))],
+     "minutes": 5, "cost": 200, "effects": {"hygiene": 14}, "blurb": "Not a bath, but it'll carry you till evening."},
+    {"id": "order_snacks", "requires": {"smartphone": True}, "at": "phone", "label": "Order snacks (gala, chin-chin, drink)",
+     "hours": [(0, H(24))], "minutes": 20, "cost": 900, "effects": {"hunger": 24, "fun": 3},
+     "blurb": "Delivered by the boy who sells everything in your hall."},
+    {"id": "energy_drink", "requires": {"smartphone": True}, "at": "phone", "label": "Order an energy drink", "hours": [(0, H(24))],
+     "minutes": 10, "cost": 600, "effects": {"energy": 16, "fun": 2}, "blurb": "Fearless or Power Horse. Don't make it a habit."},
+    {"id": "splash", "at": "home", "label": "Splash water on your face", "hours": [(0, H(24))], "minutes": 5,
+     "effects": {"hygiene": 12, "energy": 4}, "blurb": "Wakes you up, cools you down."},
+    {"id": "power_nap", "at": "home", "label": "Power nap", "hours": [(0, H(24))], "minutes": 20,
+     "effects": {"energy": 14}, "blurb": "Twenty minutes, alarm set. Back on your feet."},
+    {"id": "stretch", "at": "home", "label": "Stretch and do push-ups", "hours": [(H(5), H(23))], "minutes": 15,
+     "effects": {"energy": 6, "fun": 6}, "blurb": "A few push-ups between the bunks."},
+]
+
+# Remote jobs: apply on your laptop once you have the skill, then work a shift a day from anywhere with a roof.
+REMOTE_JOBS = {
+    "data_entry": {"name": "Data entry assistant", "pay": 3_000, "needs": None, "skill": "data"},
+    "support": {"name": "Customer support agent", "pay": 5_000, "needs": ("charisma", 3), "skill": "charisma"},
+    "social_media": {"name": "Social media manager", "pay": 6_500, "needs": ("content", 3), "skill": "content"},
+    "designer": {"name": "Junior designer", "pay": 9_000, "needs": ("design", 4), "skill": "design"},
+    "data_analyst": {"name": "Junior data analyst", "pay": 11_000, "needs": ("data", 4), "skill": "data"},
+    "junior_dev": {"name": "Junior developer", "pay": 14_000, "needs": ("coding", 4), "skill": "coding"},
+}
+for _jid, _j in REMOTE_JOBS.items():
+    _need = f" Needs {SKILLS[_j['needs'][0]]['name']} level {_j['needs'][1]}." if _j["needs"] else " Anyone with a laptop can start here."
+    ACTIONS.append({"id": f"job_{_jid}", "at": "laptop", "label": f"Apply: {_j['name']} (remote)", "hours": [(H(8), H(22))],
+                    "minutes": 60, "effects": {"energy": -4}, "special": "remote_apply", "job": _jid,
+                    "blurb": f"Pays about ₦{_j['pay']:,} a shift, weekdays.{_need}"})
+ACTIONS.append({"id": "remote_shift", "at": "laptop", "label": "Work your remote job shift", "hours": [(H(7), H(24))],
+                "minutes": 240, "once_per_day": True, "days": WEEKDAYS_ONLY, "effects": {"energy": -14, "fun": -4},
+                "special": "remote_shift", "hustle": True, "freelance": True,
+                "blurb": "Log in, clear your tasks, log off. Paid into your account."})
+
+# Durations in labels ("(2 hrs)") made no sense once every action plays out in seconds; the card shows the time.
+import re as _re  # noqa: E402
+for _a in ACTIONS:
+    _a["label"] = _re.sub(r"\s*\((\d+(\.\d+)?|one|two|half an?)\s*(hrs?|hours?|mins?|minutes?)\)", "", _a["label"])
 ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
 
 # --- Badges: little goals that make people play "one more day".

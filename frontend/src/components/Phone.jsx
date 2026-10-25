@@ -31,6 +31,9 @@ const APPS = [
   { id: "jiji", name: "Jiji", icon: "🚗", color: "#3db83a", actions: ["buy_car"], day: 5 },
   { id: "timetable", name: "Timetable", icon: "🗓", color: "#7a3e9d", screen: "timetable" },
   { id: "maps", name: "Maps", icon: "🗺", color: "#e9c227", screen: "maps" },
+  { id: "whatsapp", name: "WhatsApp", icon: "📲", color: "#25d366", actions: ["wa_thrift", "wa_food", "wa_tv"] },
+  { id: "chill", name: "Chill", icon: "🎧", color: "#6c4ad6", actions: ["call_friend", "music", "phone_game", "skits", "wipes"] },
+  { id: "food", name: "Food delivery", icon: "🛵", color: "#e2572b", actions: ["order_food", "order_snacks", "energy_drink"] },
   { id: "settings", name: "Settings", icon: "⚙️", color: "#5b6470", screen: "settings" },
 ];
 

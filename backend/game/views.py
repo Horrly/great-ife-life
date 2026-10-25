@@ -818,6 +818,13 @@ def _amount(data) -> int:
         raise E.GameError("Pick an amount.")
 
 
+class BankDepositView(_MoveView):
+    """Deposit any amount of cash into your account from the bank app."""
+
+    def move(self, state, data, t):
+        return E.app_deposit(state, data.get("amount"), t)
+
+
 class BankOpenView(_MoveView):
     def move_game(self, game, data, t):
         bank_id = str(data.get("bank", ""))

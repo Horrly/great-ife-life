@@ -411,3 +411,15 @@ New students now choose from **60 real OAU courses across 11 faculties**: Techno
 - **Look around any room:** inside your hostel, a class, the bank, the buka or anywhere else, drag to turn the camera round the room and up or down; pinch or scroll to zoom. Side walls step out of the way as you turn.
 - **Tap the floor to walk** anywhere inside a building. Tapping a thing (bed, bucket, cooker, a person) still opens what you can do with it.
 - **OgaBet bet slips:** eight matches on the board. Tap results to add as many matches as you like, type or pick a stake, then **Stake** and they all kick off at once, with live scores, goals and ✅/❌ per match. Odds multiply; the slip pays only if every pick lands. Stakes ₦100–₦50,000.
+
+## Laptop careers, WhatsApp hustles, quick needs, deposits
+
+- **What you own decides what you can do.** With a laptop (open it from ⋯ → Open your laptop, inside any building) you can practise coding, take a data analysis course, learn UI design in Figma or edit videos. Each session raises that skill.
+- **Remote jobs:** apply on your laptop for Data entry assistant (anyone), Customer support (Charisma 3), Social media manager (Content creation 3), Junior designer (Design 4), Junior data analyst (Data analysis 4) or Junior developer (Coding 4). Then work one shift a weekday; pay goes to your account and grows with your skill.
+- **WhatsApp app** (any smartphone): sell thrift clothes on your status, take food orders in the hall group, or post paid adverts on your WhatsApp TV.
+- **Quick ways to lift your needs:** the **Chill** app (call a friend, Afrobeats, phone games, comedy skits, wipes and roll-on), the **Food delivery** app (food, snacks, an energy drink), and at home: splash water on your face, power nap, stretch and push-ups.
+- **Deposit any amount** of cash into your account from the Bank app's **Deposit** tab, any time, anywhere (₦1 up to all your cash).
+- **OgaBet:** a fresh set of matches as soon as your slip has played out.
+- **No more "(2 hrs)" in action names**; the card's clock shows how long it really takes.
+- **Green kekes** on campus.
+- **Halls:** boys live in Awo, Fajuyi, ETF and Angola; girls in Akintola, Moremi, Mozambique and the new **Alumni Hall** (beside Awo, position estimated).
