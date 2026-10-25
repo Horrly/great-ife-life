@@ -64,6 +64,10 @@ body {
   outline: 3px solid var(--color-bulb);
   outline-offset: 2px;
 }
+/* text boxes show focus with their own border, not a yellow box inside them */
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: none;
+}
 
 @utility display {
   font-family: var(--font-display);

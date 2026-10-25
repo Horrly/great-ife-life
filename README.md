@@ -429,3 +429,9 @@ New students now choose from **60 real OAU courses across 11 faculties**: Techno
 - **The ring fills all the way.** The action chip's ring now fills smoothly from empty to full over exactly the action's time, for every action, as a GPU animation.
 - **Queue up to 7 actions.** Tap more actions while one is playing and they line up ("Next 3/7") under the chip; each starts when the previous one ends. Tap a queued icon to remove it. If one fails, the rest are cleared.
 - **Why it used to slow down when you tapped:** while an action played, the whole game screen was re-drawn every frame just to move the progress ring, and the dark HUD pills blurred the moving 3D scene behind them on every frame. Both are gone: the ring animates on its own, the pills are solid, and the 3D behind an open sheet renders at a lower frame rate so taps and scrolling stay quick.
+
+## Welcome back screen and a full-size phone
+
+- **Welcome back:** on a phone that already has a game, the first screen is now the game's name and emblem, **your own room** in 3D turning slowly on a lawn, and a card with your face, name, today's date and your money, a big green **Continue**, and "Signed in as @you · Log out" (or "Save progress"). Leaderboard, New life and About sit underneath. New visitors still see the full introduction page (also at `/?about=1`).
+- **The phone, arranged and scrollable:** apps sit in labelled rows (Campus, People, Daily life, Hustle, Fun and shopping), every icon the same size, with a working app search, and the home screen scrolls when there are many apps.
+- **Typing on the phone:** the handset is now big (almost the full width of your screen) and keeps its size when the keyboard opens; the page slides up so the box you're typing in stays visible, instead of the phone shrinking to a tiny box. Text boxes no longer show a yellow box inside them when focused.

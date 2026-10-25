@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import WelcomeBack from "../components/WelcomeBack";
 import { Footer } from "../App";
 import InstallButton from "../components/InstallButton";
 import { api } from "../lib/api";
@@ -44,9 +45,13 @@ export default function Title() {
   }
 
   const playing = game && !loading;
+  const [params] = useSearchParams();
   const primary = playing
     ? { to: game.status === "graduated" ? "/graduation" : "/play", label: `Continue as ${game.name || game.profile.name}` }
     : { to: "/new", label: "Get admission" };
+
+  // coming back on a phone that already has a game: the welcome-back screen, not the sales page
+  if (playing && !params.get("about")) return <WelcomeBack />;
 
   return (
     <div className="min-h-screen bg-white text-ink">

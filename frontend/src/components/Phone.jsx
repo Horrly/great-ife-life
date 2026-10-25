@@ -16,26 +16,29 @@ const WALLPAPER = {
 };
 
 const APPS = [
-  { id: "portal", name: "OAU Portal", icon: "🎓", color: "#14603f", actions: ["pay_fees"], always: true },
-  { id: "chat", name: "Gist", icon: "🗨️", color: "#25a35a", screen: "chat" },
-  { id: "bank", name: "Bank", icon: "🏦", color: "#2f5f9e", screen: "bank" },
-  { id: "call", name: "Call Mummy", icon: "📞", color: "#2fb34a", screen: "parents" },
-  { id: "houses", name: "Houses", icon: "🏠", color: "#c0612b", screen: "houses" },
-  { id: "freelance", name: "Freelance", icon: "🧑‍💻", color: "#1dbf73", actions: ["fl_article", "design_gig"], day: 2 },
-  { id: "bet", name: "OgaBet", icon: "⚽", color: "#0f2f1f", screen: "bet", smart: true, day: 3 },
-  { id: "data", name: "Data Plug", icon: "📶", color: "#f2c230", actions: ["sell_data"], day: 2 },
-  { id: "canva", name: "Canva", icon: "🎨", color: "#19a7ce", actions: ["logo_gig"], day: 3 },
-  { id: "gigs", name: "Gigs", icon: "💼", color: "#6b4f2a", actions: ["bug_fix", "website_gig", "bridal_hair", "barb_wedding"], day: 3 },
-  { id: "social", name: "Socials", icon: "💬", color: "#d6336c", actions: ["scroll", "brand_deal"], day: 2 },
-  { id: "biz", name: "Business", icon: "🏪", color: "#b5482a", match: (id) => (id.startsWith("buy_") && id !== "buy_car") || (id.startsWith("sell_") && id !== "sell_data") || id.startsWith("promo_"), day: 4 },
-  { id: "jiji", name: "Jiji", icon: "🚗", color: "#3db83a", actions: ["buy_car"], day: 5 },
-  { id: "timetable", name: "Timetable", icon: "🗓", color: "#7a3e9d", screen: "timetable" },
-  { id: "maps", name: "Maps", icon: "🗺", color: "#e9c227", screen: "maps" },
-  { id: "whatsapp", name: "WhatsApp", icon: "📲", color: "#25d366", actions: ["wa_thrift", "wa_food", "wa_tv"] },
-  { id: "chill", name: "Chill", icon: "🎧", color: "#6c4ad6", actions: ["call_friend", "music", "phone_game", "skits", "wipes"] },
-  { id: "food", name: "Food delivery", icon: "🛵", color: "#e2572b", actions: ["order_food", "order_snacks", "energy_drink"] },
-  { id: "settings", name: "Settings", icon: "⚙️", color: "#5b6470", screen: "settings" },
+  { id: "portal", group: "campus", name: "OAU Portal", icon: "🎓", color: "#14603f", actions: ["pay_fees"], always: true },
+  { id: "chat", group: "people", name: "Gist", icon: "🗨️", color: "#25a35a", screen: "chat" },
+  { id: "bank", group: "campus", name: "Bank", icon: "🏦", color: "#2f5f9e", screen: "bank" },
+  { id: "call", group: "people", name: "Call Mummy", icon: "📞", color: "#2fb34a", screen: "parents" },
+  { id: "houses", group: "life", name: "Houses", icon: "🏠", color: "#c0612b", screen: "houses" },
+  { id: "freelance", group: "hustle", name: "Freelance", icon: "🧑‍💻", color: "#1dbf73", actions: ["fl_article", "design_gig"], day: 2 },
+  { id: "bet", group: "fun", name: "OgaBet", icon: "⚽", color: "#0f2f1f", screen: "bet", smart: true, day: 3 },
+  { id: "data", group: "hustle", name: "Data Plug", icon: "📶", color: "#f2c230", actions: ["sell_data"], day: 2 },
+  { id: "canva", group: "hustle", name: "Canva", icon: "🎨", color: "#19a7ce", actions: ["logo_gig"], day: 3 },
+  { id: "gigs", group: "hustle", name: "Gigs", icon: "💼", color: "#6b4f2a", actions: ["bug_fix", "website_gig", "bridal_hair", "barb_wedding"], day: 3 },
+  { id: "social", group: "people", name: "Socials", icon: "💬", color: "#d6336c", actions: ["scroll", "brand_deal"], day: 2 },
+  { id: "biz", group: "hustle", name: "Business", icon: "🏪", color: "#b5482a", match: (id) => (id.startsWith("buy_") && id !== "buy_car") || (id.startsWith("sell_") && id !== "sell_data") || id.startsWith("promo_"), day: 4 },
+  { id: "jiji", group: "fun", name: "Jiji", icon: "🚗", color: "#3db83a", actions: ["buy_car"], day: 5 },
+  { id: "timetable", group: "campus", name: "Timetable", icon: "🗓", color: "#7a3e9d", screen: "timetable" },
+  { id: "maps", group: "campus", name: "Maps", icon: "🗺", color: "#e9c227", screen: "maps" },
+  { id: "whatsapp", group: "people", name: "WhatsApp", icon: "📲", color: "#25d366", actions: ["wa_thrift", "wa_food", "wa_tv"] },
+  { id: "chill", group: "life", name: "Chill", icon: "🎧", color: "#6c4ad6", actions: ["call_friend", "music", "phone_game", "skits", "wipes"] },
+  { id: "food", group: "life", name: "Food delivery", icon: "🛵", color: "#e2572b", actions: ["order_food", "order_snacks", "energy_drink"] },
+  { id: "settings", group: "life", name: "Settings", icon: "⚙️", color: "#5b6470", screen: "settings" },
 ];
+
+// The home screen is arranged in labelled rows, in this order
+const GROUPS = [["campus", "Campus"], ["people", "People"], ["life", "Daily life"], ["hustle", "Hustle"], ["fun", "Fun and shopping"]];
 
 // New students get the basics; more apps open over their first days, so nobody drowns on day one.
 function seenApps() {
@@ -350,6 +353,7 @@ function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run, extr
 function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onParents, onBet, run, extra }) {
   const [app, setAppState] = useState(null);
   const [seen, setSeen] = useState(seenApps);
+  const [q, setQ] = useState("");
   const setApp = (a) => {
     if (a && !seen.has(a.id)) {
       markSeen(a.id);
@@ -364,11 +368,18 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onPare
   const usable = APPS.filter((a) => a.screen || a.always || game.phone.some((x) => (a.match ? a.match(x.id) : a.actions.includes(x.id))));
   const visible = usable.filter((a) => !a.day || daysIn >= a.day);
   const locked = usable.filter((a) => a.day && daysIn < a.day);
-  const dock = ios ? visible.slice(0, 4) : [];
-  const grid = ios ? visible.slice(4) : visible;
+  const dock = [];
+  const grid = q.trim() ? visible.filter((a) => a.name.toLowerCase().includes(q.trim().toLowerCase())) : visible;
   return (
     <div
-      className={`relative mx-auto flex h-[min(78vh,640px)] aspect-[9/19] flex-col overflow-hidden border-[10px] border-[#111] bg-black shadow-2xl ${ios ? "rounded-[3rem]" : "rounded-[2rem]"}`}
+      className={`relative mx-auto flex flex-col overflow-hidden border-[10px] border-[#111] bg-black shadow-2xl ${ios ? "rounded-[3rem]" : "rounded-[2rem]"}`}
+      // a big handset that keeps its size when the keyboard opens (lvh ignores the keyboard), like Lagos Life:
+      // the page slides up so what you're typing in stays in view, instead of the phone shrinking to a stamp
+      style={{ width: "min(94vw, 460px)", height: "min(88vh, 88lvh, 900px)" }}
+      onFocus={(e) => {
+        // typing: keep the box you're typing in visible above the keyboard
+        if (e.target.matches?.("input, textarea")) setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 350);
+      }}
     >
       <div className="relative flex min-h-0 flex-1 flex-col" style={{ background: wall }}>
         {ios ? (
@@ -381,53 +392,58 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onPare
           <AppScreen app={app} game={game} onAct={onAct} busy={busy} onBack={() => setApp(null)} onParents={onParents} onBet={onBet} run={run} extra={extra} />
         ) : (
           <>
+            <div className="phone-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <div className="px-5 pb-2 pt-6 text-white">
               <p className="num text-5xl drop-shadow">{clockText(minute).replace(/ (AM|PM)/, "")}</p>
               <p className="text-xs font-bold opacity-90">
                 {game.weekday} · {naira(game.total_money ?? game.money)}
               </p>
             </div>
-            {!ios && (
-              <div className="mx-4 mb-3 rounded-full bg-white/90 px-4 py-2 text-xs text-muted">🔍 Search</div>
+            <label className="mx-4 mb-3 flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-xs text-ink">
+              <span aria-hidden>🔍</span>
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search apps" aria-label="Search apps"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" />
+            </label>
+            {GROUPS.map(([gid, gname]) => {
+              const apps = grid.filter((a) => (a.group || "life") === gid);
+              if (!apps.length) return null;
+              return (
+                <section key={gid} className="px-3 pb-3">
+                  <h3 className="mb-1.5 px-1 text-[11px] font-bold text-white/85 drop-shadow">{gname}</h3>
+                  <ul className="grid grid-cols-4 gap-x-1.5 gap-y-3 rounded-2xl bg-black/15 px-1.5 py-2.5">
+                    {apps.map((a) => (
+                      <li key={a.id} className="text-center">
+                        <button onClick={() => setApp(a)} className="w-full" aria-label={a.name}>
+                          <span className="relative mx-auto grid h-12 w-12 place-items-center rounded-[0.9rem] text-2xl shadow-md"
+                            style={{ background: a.color }} aria-hidden>
+                            {a.icon}
+                            {isNew(a) && (
+                              <span className="absolute -right-2 -top-1 rounded-full bg-danger px-1 text-[9px] font-black text-white">NEW</span>
+                            )}
+                            {a.id === "chat" && game.chat_unread > 0 && (
+                              <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-danger px-1 text-[11px] font-black text-white">
+                                {game.chat_unread}
+                              </span>
+                            )}
+                          </span>
+                          <span className="mt-1 line-clamp-2 block text-[10px] font-bold leading-tight text-white drop-shadow">{a.name}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+            {locked.length > 0 && (
+              <p className="mx-4 mb-3 rounded-full bg-black/25 px-3 py-1.5 text-center text-[11px] font-bold text-white">
+                🔒 {(() => {
+                  const d = Math.min(...locked.map((a) => a.day));
+                  return `${locked.filter((a) => a.day === d).length} more app${locked.filter((a) => a.day === d).length > 1 ? "s" : ""} open on day ${d}`;
+                })()}
+              </p>
             )}
-            <ul className="grid flex-1 grid-cols-4 content-start gap-x-2 gap-y-4 px-4">
-              {grid.map((a) => (
-                <li key={a.id} className="text-center">
-                  <button onClick={() => setApp(a)} className="w-full" aria-label={a.name}>
-                    <span
-                      className={`relative mx-auto grid h-12 w-12 place-items-center text-2xl shadow-md ${ios ? "rounded-[0.9rem]" : "rounded-full"}`}
-                      style={{ background: a.color }}
-                      aria-hidden
-                    >
-                      {a.icon}
-                      {isNew(a) && (
-                        <span className="absolute -right-2 -top-1 rounded-full bg-danger px-1 text-[9px] font-black text-white">NEW</span>
-                      )}
-                      {a.id === "chat" && game.chat_unread > 0 && (
-                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-danger px-1 text-[11px] font-black text-white">
-                          {game.chat_unread}
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-1 block truncate text-[10px] font-bold text-white drop-shadow">{a.name}</span>
-                  </button>
-                </li>
-              ))}
-              {locked.length > 0 && (
-                <li className="text-center" title="More apps open over your first days on campus">
-                  <span className={`relative mx-auto grid h-12 w-12 place-items-center bg-black/30 text-lg text-white ${ios ? "rounded-[0.9rem]" : "rounded-full"}`} aria-hidden>
-                    🔒
-                  </span>
-                  <span className="mt-1 block truncate text-[10px] font-bold text-white drop-shadow">
-                    {(() => {
-                      const d = Math.min(...locked.map((a) => a.day));
-                      return `+${locked.filter((a) => a.day === d).length} on day ${d}`;
-                    })()}
-                  </span>
-                </li>
-              )}
-            </ul>
-            {ios && (
+            </div>
+            {ios && dock.length > 0 && (
               <div className="mx-3 mb-3 grid grid-cols-4 gap-2 rounded-[1.6rem] bg-white/25 p-2.5">
                 {dock.map((a) => (
                   <button key={a.id} onClick={() => setApp(a)} aria-label={a.name}
@@ -547,12 +563,9 @@ export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMa
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-center gap-2 bg-ink/45 p-4"
+    <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-start gap-2 overflow-y-auto bg-ink/45 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:justify-center"
       role="dialog" aria-label={info ? `Your phone: ${info.name}` : "No phone"}>
       <button className="absolute inset-0 cursor-default" aria-label="Put phone away" tabIndex={-1} onClick={onClose} />
-      <button className="float absolute right-4 top-[max(3.6rem,calc(env(safe-area-inset-top)+3rem))] z-10 rounded-full px-4 py-2 text-sm font-bold" onClick={onClose}>
-        × Close
-      </button>
       {info ? (
         <div className="slide-up relative flex flex-col items-center gap-2">
           {info.os === "keypad" ? (
@@ -561,10 +574,13 @@ export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMa
             <SmartPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onMaps={onMaps} extra={extra}
               onHousing={onHousing} onParents={onParents} onBet={onBet} run={run} />
           )}
-          <p className="text-center text-xs font-bold text-white">
-            {info.name}
-            {info.cracked && " · cracked screen (fix it at Ojaja)"}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-center text-xs font-bold text-white">
+              {info.name}
+              {info.cracked && " · cracked screen (fix it at Ojaja)"}
+            </p>
+            <button className="float rounded-full px-4 py-1.5 text-sm font-bold" onClick={onClose}>× Close</button>
+          </div>
         </div>
       ) : (
         <div className="slide-up relative max-w-xs rounded-3xl bg-white p-5 text-center">
