@@ -539,6 +539,82 @@ def home_name(state) -> str:
     return h["label"] or f"{C.HOUSING[h['kind']]['name']} in {h['area']}"
 
 
+# --- Your things at home (the 🛋 Furnish tab) -------------------------------------------------------
+
+def furniture(state) -> dict:
+    """slot -> item id of what you own (including things in storage that don't fit your current home)."""
+    return state.setdefault("furniture", {})
+
+
+def furniture_fits(state, item) -> bool:
+    return C.HOME_RANK[housing_kind(state)] >= item["fit"]
+
+
+def _backup(state) -> dict | None:
+    """Your generator, inverter or solar, if you have one set up."""
+    item = C.FURNITURE.get(furniture(state).get("power", ""))
+    return item if item and furniture_fits(state, item) else None
+
+
+def has_light(state) -> bool:
+    return not state["flags"].get("no_light") or _backup(state) is not None
+
+
+def placed_items(state, working=False) -> list[dict]:
+    """Things set up in your home now; working=True leaves out electric things when there's no light."""
+    light = has_light(state)
+    out = []
+    for fid in furniture(state).values():
+        item = C.FURNITURE.get(fid)
+        if not item or not furniture_fits(state, item):
+            continue
+        if working and item.get("power") and not light:
+            continue
+        out.append(item)
+    return out
+
+
+def _fx(state, key, working=True) -> float:
+    return sum(item.get(key, 0) for item in placed_items(state, working))
+
+
+def comfort_points(state) -> int:
+    return int(_fx(state, "comfort", working=False))
+
+
+def _slot_ok(state, need: str) -> str | None:
+    """need is a slot ('tv') or slot:id-prefix ('fan:ac'). Returns why not, or None."""
+    slot, _, prefix = need.partition(":")
+    fid = furniture(state).get(slot)
+    item = C.FURNITURE.get(fid or "")
+    if not item or (prefix and not fid.startswith(prefix)):
+        return "missing"
+    if not furniture_fits(state, item):
+        return f"Your {item['name'].lower()} doesn't fit in {C.FIT_NAMES[C.HOME_RANK[housing_kind(state)]]}"
+    if item.get("power") and not has_light(state):
+        return f"No light: your {item['name'].lower()} needs power"
+    return None
+
+
+def water_saved(state) -> int:
+    return state["flags"].get("water", 0)
+
+
+def _free_bath_water(state) -> str | None:
+    """How you can bathe for free when the taps are dry: 'drum' / 'tank' / 'bucket', or None."""
+    for item in placed_items(state, working=True):
+        if item.get("water"):
+            return item["id"]
+    return "bucket" if water_saved(state) > 0 else None
+
+
+def weekly_bills(state) -> int:
+    total = sum(item.get("bill", 0) for item in placed_items(state))
+    if (_backup(state) or {}).get("solar"):
+        total //= 2
+    return total
+
+
 def phone_info(state) -> dict | None:
     ph = state.get("phone")
     if not ph:
@@ -693,6 +769,13 @@ def _decay(state, t: int) -> dict:
         decay["hygiene"] *= 0.65
     if has_trait(state, "night_crawler") and (t >= 1200 or t < 240):
         decay["energy"] *= 0.6
+    # your things at home: a good mattress keeps you fresher all day; the fan or AC only helps when you're in
+    at_home = state.get("at") == home_building(state)
+    for item in placed_items(state, working=True):
+        if item.get("power") and not at_home:
+            continue
+        for k, m in item.get("decay", {}).items():
+            decay[k] *= m
     return decay
 
 
@@ -830,13 +913,28 @@ def _start_of_day(state, rng, messages=None):
                             "'Open a bank account so we can send it.'")
 
     # Carrying a lot of cash is asking for trouble in a hostel.
-    if state["money"] >= C.CASH_THEFT_FROM and _rng(state, "theft").random() < C.CASH_THEFT_CHANCE:
+    theft = C.CASH_THEFT_CHANCE
+    for item in placed_items(state):
+        theft *= item.get("theft", 1)
+    if state["money"] >= C.CASH_THEFT_FROM and _rng(state, "theft").random() < theft:
         lost = int(state["money"] * _rng(state, "theft-amt").uniform(0.3, 0.5) // 500 * 500)
         state["money"] -= lost
         state["stats"]["thefts"] += 1
         state["stats"]["spent"] += lost
         where = "Someone broke into your room" if housing_kind(state) == "hostel" else "Thieves broke into your place"
         messages.append(f"{where} overnight and took ₦{lost:,} of your cash. Money in the bank is safer.")
+
+    # light bills and subscriptions every Monday; fuel for the generator on dark days
+    bills = weekly_bills(state)
+    if state["dow"] == 0 and bills and flags.get("bills_week") != week_key(state):
+        flags["bills_week"] = week_key(state)
+        paid = _take(state, bills, "Light bill and subscriptions")
+        messages.append(f"⚡ Weekly bills for your things at home: ₦{paid:,}."
+                        + ("" if paid == bills else " You couldn't pay it all; top up before the meter runs out."))
+    backup = _backup(state)
+    if flags.get("no_light") and backup and backup.get("fuel"):
+        paid = _take(state, backup["fuel"], "Fuel for the generator")
+        messages.append(f"⛽ NEPA is still holding light. ₦{paid:,} of fuel went into your generator.")
 
     if flags.get("debt") and total_money(state) > 0:
         take = _take(state, flags["debt"], "Loan app debit")
@@ -886,6 +984,13 @@ def _start_of_day(state, rng, messages=None):
             eligible.append(event)
     if eligible:
         event = rng.choices(eligible, weights=[e["weight"] for e in eligible])[0]
+        backup = _backup(state)
+        if event["id"] == "nepa" and backup:
+            flags["no_light"] = 2
+            flags["seen"].append("nepa")
+            messages.append(f"NEPA took light, but your {backup['name'].lower()} kicked in. Everything at home keeps working."
+                            + (f" Fuel is ₦{backup['fuel']:,} a day." if backup.get("fuel") else ""))
+            return
         _queue_event(state, event["id"])
 
 
@@ -950,8 +1055,8 @@ def _check(state, action) -> str | None:
     flags = state["flags"]
     if action.get("once_per_day") and flags.get(f"done_{action['id']}") == state["total_days"]:
         return "Already done today"
-    if action["id"] == "read_room" and flags.get("no_light"):
-        return "No light in your room"
+    if action["id"] == "read_room" and not has_light(state) and furniture(state).get("lamp") != "lamp":
+        return "No light in your room (a rechargeable lamp helps)"
     if action["id"] == "call_home" and flags.get("called_week") == week_key(state):
         return "Already called this week"
     if action.get("special") == "pay_fees":
@@ -982,6 +1087,14 @@ def _check(state, action) -> str | None:
         if (state.get("promo") or {}).get("until", 0) > state["total_days"]:
             return "A promotion is already running"
     req = action.get("requires", {})
+    for need in req.get("furnish", []):
+        why = _slot_ok(state, need)
+        if why:
+            return "Buy one in the 🛋 Furnish tab" if why == "missing" else why
+    if req.get("no_tank") and furniture(state).get("water") == "tank":
+        return "You have running water"
+    if action.get("special") == "fetch_water" and water_saved(state) >= C.WATER_MAX:
+        return f"Your {C.WATER_MAX} buckets are already full"
     if req.get("min_prep") and state["prep"] < req["min_prep"]:
         return f"You need {req['min_prep']}% readiness to teach"
     if req.get("smartphone") and not has_smartphone(state):
@@ -1028,7 +1141,7 @@ def action_cost(state, action) -> int:
         cost = 0
     if action.get("special") == "fix_screen" and state.get("phone"):
         cost = C.PHONES[state["phone"]["model"]]["screen_fix"]
-    if action["id"] == "bath" and state["flags"].get("no_water"):
+    if action["id"] == "bath" and state["flags"].get("no_water") and not _free_bath_water(state):
         cost += 300
     return cost
 
@@ -1052,6 +1165,8 @@ def duration(state, action) -> int:
     if m == "lecture":
         lec = current_lecture(state) or {"start": t}
         return max(30, C.LECTURE_MINUTES - max(0, t - lec["start"]))
+    if action.get("special") in ("cook", "recipe") and action["at"] == "home":
+        m = max(5, round(m * (1 - _fx(state, "cook"))))
     return m
 
 
@@ -1125,6 +1240,10 @@ def available_actions(state) -> list[dict]:
         if action.get("special") == "buy_item" and action["item"] in state["items"]:
             continue
         req = action.get("requires", {})
+        if any(_slot_ok(state, need) == "missing" for need in req.get("furnish", [])):
+            continue
+        if req.get("no_tank") and furniture(state).get("water") == "tank":
+            continue
         if action["at"] == "phone" and req.get("keypad") and (phone_info(state) or {}).get("os") != "keypad":
             continue
         owned = action.get("business") in state["businesses"]
@@ -1350,8 +1469,39 @@ def _do_action(state, action, messages):
         line = f"Paid school charges (₦{C.SCHOOL_CHARGES:,}). Exam card collected!"
         if action["id"] == "pay_fees_bc":
             line = f"The business centre paid your school charges (₦{C.SCHOOL_CHARGES:,} + ₦200). Exam card collected!"
-    elif special == "bath" and flags.get("no_water"):
-        line = "Bought a bucket of water and had a bath (₦300)."
+    elif special == "bath":
+        free = _free_bath_water(state) if flags.get("no_water") else None
+        if free == "bucket":
+            flags["water"] = water_saved(state) - 1
+            line = "No water in the taps, but you used a bucket you fetched earlier. Fresh, and free."
+        elif free:
+            line = f"The taps are dry, but your {C.FURNITURE[free]['name'].lower()} has water. Fresh, and free."
+        elif flags.get("no_water"):
+            line = "Bought a bucket of water and had a bath (₦300)."
+        for item in placed_items(state, working=True):
+            for k, v in item.get("bath", {}).items():
+                effects[k] = effects.get(k, 0) + v
+        if furniture(state).get("heater") and not _slot_ok(state, "heater"):
+            line = "A hot shower. " + line if line != action.get("done") else "A hot shower. You feel brand new."
+    elif special == "fetch_water":
+        flags["water"] = min(C.WATER_MAX, water_saved(state) + C.WATER_PER_TRIP)
+        if flags.get("no_water"):
+            line = f"The taps were dry, so you queued at the borehole. {flags['water']} buckets saved in your room."
+        else:
+            line = f"Two full buckets from the tap and fresh gist from the queue. {flags['water']} buckets saved."
+    elif special == "watch_tv":
+        tv = C.FURNITURE[furniture(state)["tv"]]
+        effects["fun"] = effects.get("fun", 0) - 14 + tv["watch"] + _fx(state, "boost")
+    elif special == "play_console":
+        con = C.FURNITURE[furniture(state)["console"]]
+        effects["fun"] = con["play"] + _fx(state, "boost")
+        line = f"{con['name']}: " + line
+    elif special == "fifa_centre":
+        con = C.FURNITURE[furniture(state)["console"]]
+        earn = _hustle_pay(state, int(con["earn"] * rng.uniform(0.7, 1.4)) // 100 * 100)
+        _add_money(state, earn)
+        state["stats"]["hustle_income"] += earn
+        line = f"FIFA centre on your {con['name']}: {earn // 300} matches at ₦300. +₦{earn:,}"
     elif special == "skit":
         state["stats"]["skits"] += 1
         level = skill_level(state, "content")
@@ -1397,6 +1547,12 @@ def _do_action(state, action, messages):
         _add_moodlet(state, "slept_well")
         night = not C.WAKE_UP <= t0 < C.H(20)
         line = "You slept like a baby and woke up fully rested." if night else "Good afternoon sleep. Fully rested."
+        bonus = _fx(state, "sleep_fun")
+        if bonus:
+            effects["fun"] = effects.get("fun", 0) + bonus
+            bed = C.FURNITURE.get(furniture(state).get("bed", ""))
+            if bed and furniture_fits(state, bed):
+                line += f" Your {bed['name'].lower()} made all the difference."
     if action.get("tdb"):
         state["stats"]["tdb"] += 1
 
@@ -1436,12 +1592,20 @@ def _do_action(state, action, messages):
     if action.get("weekly"):
         flags[f"week_{action['id']}"] = week_key(state)
     if action.get("skill") and action.get("xp"):
-        _gain_xp(state, action["skill"], action["xp"], messages)
+        xp = action["xp"]
+        if action["at"] == "laptop" and state.get("at") == home_building(state):
+            xp = round(xp * (1 + _fx(state, "learn")))
+        _gain_xp(state, action["skill"], xp, messages)
+
+    if action["at"] == "home" and effects.get("hunger", 0) > 0 and (special in ("cook", "recipe") or action["id"] == "warm_leftovers"):
+        effects["hunger"] *= 1 + _fx(state, "meal")
+    if action["id"] == "music" and state.get("at") == home_building(state):
+        effects["fun"] = effects.get("fun", 0) + _fx(state, "boost")
 
     # Reading counts for how you felt when you sat down, not after the time has gone.
     before = state["prep"]
     if action["id"] == "read_room" and effects.get("prep"):
-        effects["prep"] *= 1 + C.HOME_STUDY_BONUS.get(housing_kind(state), 0)
+        effects["prep"] *= 1 + C.HOME_STUDY_BONUS.get(housing_kind(state), 0) + _fx(state, "study")
     if action.get("study") and special != "lecture" and effects.get("prep", 0) > 0:
         effects["prep"] *= _brain(state, minutes)
     study_effects = {k: v for k, v in effects.items() if k == "prep"}
@@ -1625,8 +1789,14 @@ def active_moodlets(state) -> list[dict]:
         live.append("sapa")
     elif total_money(state) >= 200_000:
         live.append("soft_life")
-    if state["flags"].get("no_light"):
+    if not has_light(state):
         live.append("no_light")
+    if state.get("at") == home_building(state):
+        points = comfort_points(state)
+        for need, mid in C.COMFORT_LEVELS:
+            if points >= need:
+                live.append(mid)
+                break
     for lid in live:
         name, emoji, value = C.LIVE_MOODLETS[lid]
         out.append({"id": lid, "name": name, "emoji": emoji, "value": value, "left": None})
@@ -2846,6 +3016,118 @@ def app_deposit(state: dict, amount: int, now: float | None = None) -> tuple[dic
     return _finish(state, messages, now, 3)
 
 
+def furnish_view(state) -> dict:
+    rank = C.HOME_RANK[housing_kind(state)]
+    owned = furniture(state)
+    items = []
+    for item in C.FURNITURE.values():
+        current = C.FURNITURE.get(owned.get(item["slot"], ""))
+        trade = int(current["price"] * C.FURNITURE_RESALE) if current and current["id"] != item["id"] else 0
+        items.append({
+            "id": item["id"], "cat": item["cat"], "slot": item["slot"], "name": item["name"], "emoji": item["emoji"],
+            "price": item["price"], "blurb": item["blurb"], "fit": item["fit"], "fits": rank >= item["fit"],
+            "fit_name": C.FIT_NAMES[item["fit"]], "power": bool(item.get("power")), "bill": item.get("bill", 0),
+            "fuel": item.get("fuel", 0), "owned": owned.get(item["slot"]) == item["id"],
+            "replaces": current["name"] if trade else None, "trade_in": trade, "pay": item["price"] - trade,
+            "sell": int(item["price"] * C.FURNITURE_RESALE), "perks": _perks(item),
+        })
+    return {
+        "categories": C.FURNISH_CATEGORIES, "items": items, "home": C.HOUSING[housing_kind(state)]["name"],
+        "rank": rank, "comfort": comfort_points(state), "levels": [{"points": p, "id": m, "name": C.LIVE_MOODLETS[m][0]}
+                                                             for p, m in sorted(C.COMFORT_LEVELS)],
+        "bills": weekly_bills(state), "light": has_light(state), "backup": (_backup(state) or {}).get("name"),
+        "stored": [C.FURNITURE[f]["name"] for f in owned.values() if f in C.FURNITURE and not furniture_fits(state, C.FURNITURE[f])],
+    }
+
+
+def _perks(item) -> list[str]:
+    """Plain-words chips for what an item does."""
+    out = []
+    d = item.get("decay", {})
+    if d.get("energy"):
+        out.append(f"Energy lasts {round((1 - d['energy']) * 100)}% longer")
+    if d.get("hygiene"):
+        out.append(f"Stay fresh {round((1 - d['hygiene']) * 100)}% longer")
+    if d.get("fun"):
+        out.append(f"Fun lasts {round((1 - d['fun']) * 100)}% longer")
+    if item.get("sleep_fun"):
+        out.append(f"+{item['sleep_fun']} fun after sleep")
+    if item.get("watch"):
+        out.append(f"Watch TV: +{item['watch']} fun")
+    if item.get("play"):
+        out.append(f"Play: +{item['play']} fun · FIFA centre ~₦{item['earn']:,}")
+    if item.get("boost"):
+        out.append(f"+{item['boost']} fun to TV, games and music")
+    if item.get("cook"):
+        out.append(f"Cook {round(item['cook'] * 100)}% faster")
+    if item.get("meal"):
+        out.append(f"Meals fill {round(item['meal'] * 100)}% more")
+    if item.get("water"):
+        out.append("Free baths when the taps are dry")
+    for k, v in item.get("bath", {}).items():
+        out.append(f"Bath: +{v} {k}")
+    if item.get("light") == "lamp":
+        out.append("Read at home without light")
+    if item.get("light") == "backup":
+        out.append("Light when NEPA takes it" + (f" (fuel ₦{item['fuel']:,}/dark day)" if item.get("fuel") else ", no fuel"))
+    if item.get("solar"):
+        out.append("Halves your weekly bills")
+    if item.get("study"):
+        out.append(f"Reading at home +{round(item['study'] * 100)}%")
+    if item.get("learn"):
+        out.append(f"Laptop practice +{round(item['learn'] * 100)}% XP")
+    if item.get("theft"):
+        out.append(f"Break-ins {round((1 - item['theft']) * 100)}% less likely")
+    if item.get("comfort"):
+        out.append(f"Comfort +{item['comfort']}")
+    return out
+
+
+def buy_furniture(state: dict, item_id: str, now: float | None = None) -> tuple[dict, list[str]]:
+    """Buy something for your home. A better one in the same slot replaces the old one (sold at 40%)."""
+    state = upgrade(copy.deepcopy(state))
+    messages = _begin(state, now)
+    if state["phase"] != "play":
+        raise GameError("Finish what's on screen first.")
+    item = C.FURNITURE.get(str(item_id))
+    if not item:
+        raise GameError("Pick something to buy.")
+    if not furniture_fits(state, item):
+        raise GameError(f"The {item['name'].lower()} needs at least {C.FIT_NAMES[item['fit']]}. Move to a bigger place first.")
+    owned = furniture(state)
+    old = C.FURNITURE.get(owned.get(item["slot"], ""))
+    if old and old["id"] == item["id"]:
+        raise GameError("You already have this.")
+    trade = int(old["price"] * C.FURNITURE_RESALE) if old else 0
+    pay = item["price"] - trade
+    if pay > 0:
+        _spend(state, pay, "any", f"Bought {item['name']}")
+    elif pay < 0:
+        _add_money(state, -pay)
+    owned[item["slot"]] = item["id"]
+    state["stats"]["furniture"] = state["stats"].get("furniture", 0) + 1
+    line = f"{item['emoji']} Your {item['name'].lower()} has been delivered and set up!"
+    if old:
+        line += f" The used-furniture man took your old {old['name'].lower()} for ₦{trade:,}."
+    messages.insert(0, line)
+    _check_badges(state, messages)
+    return _finish(state, messages, now, 0)
+
+
+def sell_furniture(state: dict, item_id: str, now: float | None = None) -> tuple[dict, list[str]]:
+    state = upgrade(copy.deepcopy(state))
+    messages = _begin(state, now)
+    item = C.FURNITURE.get(str(item_id))
+    owned = furniture(state)
+    if not item or owned.get(item["slot"]) != item["id"]:
+        raise GameError("You don't own that.")
+    back = int(item["price"] * C.FURNITURE_RESALE)
+    del owned[item["slot"]]
+    _add_money(state, back)
+    messages.insert(0, f"Sold your {item['name'].lower()} to a used-furniture buyer for ₦{back:,} cash.")
+    return _finish(state, messages, now, 0)
+
+
 def pos_cash(state: dict, kind: str, amount: int, method: str = "card",
              now: float | None = None) -> tuple[dict, list[str]]:
     """POS agents: withdraw (by card, or by transferring to them) or deposit cash, for a charge."""
@@ -3237,6 +3519,11 @@ def view(state: dict, now: float | None = None) -> dict:
         "phone_info": phone_info(state),
         "items": [{"id": i, "name": C.ITEMS[i]["name"]} for i in state["items"]],
         "pantry": state["pantry"],
+        "furniture": furniture(state),
+        "furnish": furnish_view(state),
+        "comfort": comfort_points(state),
+        "light": has_light(state),
+        "water": water_saved(state),
         "food": [{"id": k, "name": C.FOODSTUFF[k]["name"], "unit": C.FOODSTUFF[k]["unit"], "count": v}
                  for k, v in state.get("food", {}).items() if k in C.FOODSTUFF and v > 0],
         "next_venue": (next_lecture(state) or {}).get("venue"),

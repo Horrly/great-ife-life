@@ -34,6 +34,7 @@ urlpatterns = [
     path("api/game/bank/pos/", g.PosView.as_view()),
     path("api/game/bank/lookup/", g.BankLookupView.as_view()),
     path("api/game/bank/transfer/", g.TransferView.as_view()),
+    path("api/game/furnish/", g.FurnishView.as_view()),
     path("api/game/bank/deposit/", g.BankDepositView.as_view()),
     path("api/game/social/", g.SocialView.as_view()),
     path("api/game/riddle/", g.RiddleView.as_view()),

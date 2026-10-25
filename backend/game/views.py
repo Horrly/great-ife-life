@@ -828,6 +828,15 @@ class BankDepositView(_MoveView):
         return E.app_deposit(state, data.get("amount"), t)
 
 
+class FurnishView(_MoveView):
+    """Buy (or sell) something for your home from the 🛋 Furnish tab."""
+
+    def move(self, state, data, t):
+        if data.get("sell"):
+            return E.sell_furniture(state, data.get("item"), t)
+        return E.buy_furniture(state, data.get("item"), t)
+
+
 class BankOpenView(_MoveView):
     def move_game(self, game, data, t):
         bank_id = str(data.get("bank", ""))

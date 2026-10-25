@@ -1273,3 +1273,75 @@ def test_new_matches_after_every_bet_and_halls_by_gender():
     assert set(C.HALLS["male"]) == {"awo", "fajuyi", "etf", "angola"}
     assert set(C.HALLS["female"]) == {"akintola", "moremi", "mozambique", "alumni"} and "alumni" in W.BUILDINGS
     assert not any("(2 hrs)" in a["label"] for a in C.ACTIONS)
+
+
+# --- Furnish your home -------------------------------------------------------------------------------
+
+def test_buying_furniture_unlocks_tv_and_playstation():
+    s = banked(at(new(seed="furn", home="offcampus"), 15, where="offcampus"), 2_000_000)
+    start = E.total_money(s)
+    assert "watch_tv" not in ids(s, enabled=False)       # hidden until you own a TV
+    s, msgs = E.buy_furniture(s, "tv43", t_of(s))
+    s, msgs = E.buy_furniture(s, "ps5", t_of(s))
+    assert s["furniture"] == {"tv": "tv43", "console": "ps5"}
+    assert 0 <= E.total_money(s) - (start - 320_000 - 950_000) <= 2_000   # (+ the daily streak reward)
+    assert {"watch_tv", "play_console", "fifa_centre"} <= ids(s)
+    fun = s["needs"]["fun"] = 20
+    s, msgs = E.act(s, "play_console", t_of(s))
+    assert s["needs"]["fun"] > fun + 20
+    assert "PS5" in msgs[0]
+
+
+def test_upgrading_trades_in_the_old_one_and_big_things_need_a_big_home():
+    s = banked(at(new(seed="furn2", home="offcampus"), 12, where="offcampus"), 3_000_000)
+    s, _ = E.buy_furniture(s, "foam6", t_of(s))
+    before = E.total_money(s)
+    s, msgs = E.buy_furniture(s, "ortho", t_of(s))
+    assert E.total_money(s) == before - (180_000 - int(65_000 * C.FURNITURE_RESALE))
+    assert "took your old" in msgs[0]
+    with pytest.raises(E.GameError, match="flat"):
+        E.buy_furniture(s, "smartbed", t_of(s))          # a self-contain is too small
+    with pytest.raises(E.GameError):
+        E.buy_furniture(s, "ortho", t_of(s))             # already have it
+    s, msgs = E.sell_furniture(s, "ortho", t_of(s))
+    assert "bed" not in s["furniture"]
+
+
+def test_hall_students_can_only_get_small_things():
+    s = banked(at(new(seed="furn3", home="none"), 12), 500_000)
+    s = at(s, 12, where=E.home_building(s))
+    assert E.housing_kind(s) == "hostel"
+    s, _ = E.buy_furniture(s, "foam_pad", t_of(s))
+    s, _ = E.buy_furniture(s, "lamp", t_of(s))
+    with pytest.raises(E.GameError):
+        E.buy_furniture(s, "tv32", t_of(s))
+
+
+def test_generator_keeps_the_light_on_and_furniture_changes_needs():
+    s = banked(at(new(seed="furn4", home="offcampus"), 12, where="offcampus"), 5_000_000)
+    s["flags"]["no_light"] = 2
+    s, _ = E.buy_furniture(s, "tv32", t_of(s))
+    assert "watch_tv" in ids(s, enabled=False) and "watch_tv" not in ids(s)   # no light, no TV
+    assert "needs power" in action(s, "watch_tv")["reason"]
+    s, _ = E.buy_furniture(s, "gen_small", t_of(s))
+    assert E.has_light(s) and "watch_tv" in ids(s)
+    plain = E._decay(s, H(12))["energy"]
+    s, _ = E.buy_furniture(s, "bedframe", t_of(s))
+    assert E._decay(s, H(12))["energy"] > plain   # falls slower
+    assert E.comfort_points(s) >= 5
+    assert E.weekly_bills(s) == 300
+
+
+def test_fetching_water_gives_needs_and_a_free_bath_when_taps_are_dry():
+    s = banked(at(new(seed="water", home="none"), 9), 0)
+    s = at(s, 9, where=E.home_building(s))
+    s["money"] = 0
+    s["needs"]["hygiene"] = 30
+    s["flags"]["no_water"] = 2
+    assert E.action_cost(s, C.ACTIONS_BY_ID["bath"]) == 300
+    s, msgs = E.act(s, "fetch_water", t_of(s))
+    assert s["flags"]["water"] == 2 and s["needs"]["hygiene"] > 30
+    s = at(s, 10)
+    assert E.action_cost(s, C.ACTIONS_BY_ID["bath"]) == 0
+    s, msgs = E.act(s, "bath", t_of(s))
+    assert s["flags"]["water"] == 1 and "bucket you fetched" in msgs[0]

@@ -432,6 +432,7 @@ def test_call_parents_and_bet(monkeypatch):
     game = Game.objects.get(pk=Game.objects.latest("pk").pk)
     st = dict(game.state)
     st["phone"] = {"model": "samsung", "cracked": False}
+    st["flags"]["seen"] = st["flags"].get("seen", []) + ["phone_dead"]  # don't let it fall in the bucket now
     game.state = st
     game.save()
     g = client.get("/api/game/").data
@@ -464,6 +465,7 @@ def _with_account(client, g, bank="opay"):
     game = Game.objects.get(token_hash=views.hash_token(client._credentials["HTTP_X_GAME_TOKEN"]))
     st = dict(game.state)
     st["phone"] = {"model": "samsung", "cracked": False}
+    st["flags"]["seen"] = st["flags"].get("seen", []) + ["phone_dead"]  # don't let it fall in the bucket now
     game.state = st
     game.save()
     g = clear(client, client.get("/api/game/").data)

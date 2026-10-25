@@ -15,12 +15,18 @@ import { nameFor, randomLook } from "../game3d/look";
 import PlacePanel from "../components/Place";
 import MeSheet, { InboxSheet } from "../components/MeSheet";
 import { HousingChooser, SleepingOverlay, SleepOverlay } from "../components/Home";
+import Furnish from "../components/Furnish";
 import { BottomSheet, DecisionCard, Toast } from "../components/ui";
 import { setRain, sfx } from "../lib/sfx";
 import CampusEngine from "../game3d/Engine";
 import { save } from "../lib/api";
 import { clockText } from "../lib/format";
 import { loadWorld, useGame } from "../lib/game";
+
+/** slot -> item for the things you own that fit your current home (drawn in your room). */
+export function placedFurniture(game) {
+  return Object.fromEntries((game?.furnish?.items || []).filter((i) => i.owned && i.fits).map((i) => [i.slot, i.id]));
+}
 
 /** The game clock is real Lagos time: the server's minute plus the real seconds since it answered. */
 function useLiveClock(game) {
@@ -146,7 +152,7 @@ function useInbox(log) {
 
 export default function Play() {
   const { game, busy, error, setError, messages, setMessages, act, choose, next, travel, enter, leave, sync, plan, account,
-    askParents, bet, moveHome, joinRoom, housing, postNote, social, chat, transferTo, riddleSearch, skip } = useGame();
+    askParents, bet, moveHome, joinRoom, housing, postNote, social, chat, transferTo, riddleSearch, skip, furnish } = useGame();
   const navigate = useNavigate();
   const host = useRef(null);
   const engine = useRef(null);
@@ -490,14 +496,15 @@ export default function Play() {
   const classTarget = game.test?.at || game.next_venue || game.faculty;
 
   // your own room is drawn in 3D, with your roommates in it
-  const roomKey = JSON.stringify(game.room?.people?.map((p) => [p.id, p.where]) ?? null);
+  const placed = placedFurniture(game);
+  const roomKey = JSON.stringify([game.room?.people?.map((p) => [p.id, p.where]) ?? null, placed]);
   const noLight = game.moodlets?.some((m) => m.id === "no_light");
   const hour = Math.floor(minute / 60);
   const hereKey = JSON.stringify(game.here_people?.map((p) => p.id) ?? []);
   useEffect(() => {
     const e = engine.current;
     if (!e) return;
-    if (atHome && game.room && !lookAround) e.showRoom({ ...game.room, kind: game.housing.kind }, noLight);
+    if (atHome && game.room && !lookAround) e.showRoom({ ...game.room, kind: game.housing.kind, furniture: placed }, noLight);
     else if (inside && building && !lookAround && !journey) {
       const type = INSIDE[building.style] || "common";
       e.showPlace({
@@ -578,6 +585,7 @@ export default function Play() {
     { id: "home", label: "Home", icon: "🏠", active: atHome && panel !== "map", onClick: () => (atHome ? setPanel("place") : goTo(game.home)) },
     { id: "class", label: game.test ? "Test" : "Class", icon: game.test ? "✍️" : "📚", active: inside && game.at === classTarget && panel !== "map",
       onClick: () => (inside && game.at === classTarget ? setPanel("place") : goTo(classTarget)) },
+    { id: "furnish", label: "Furnish", icon: "🛋", active: panel === "furnish", onClick: () => setPanel((p) => (p === "furnish" ? null : "furnish")) },
     { id: "map", label: "Map", icon: "🗺", active: panel === "map", onClick: () => setPanel((p) => (p === "map" ? null : "map")) },
   ];
   const settingsProps = {
@@ -800,6 +808,12 @@ export default function Play() {
       {panel === "housing" && !overlayOpen && (
         <BottomSheet title="Houses" subtitle="Halls, off-campus places, and moving in with friends" onClose={close}>
           <HousingChooser game={game} load={housing} onMove={onMoveHome} onJoin={(code) => onMoveHome({ code })} busy={busy} />
+        </BottomSheet>
+      )}
+      {panel === "furnish" && !overlayOpen && (
+        <BottomSheet title="🛋 Furnish your place" subtitle="Beds, power, TVs, kitchen and more: they really change your needs" onClose={close}>
+          <Furnish game={game} busy={busy} onBuy={(id) => furnish(id)} onSell={(id) => furnish(id, true)}
+            onHousing={() => setPanel("housing")} />
         </BottomSheet>
       )}
       {panel === "laptop" && !overlayOpen && (

@@ -273,8 +273,13 @@ ACTIONS = [
     {"id": "nap", "at": "home", "label": "Nap (1 hour)", "hours": [(0, H(24))], "minutes": 60,
      "effects": {"energy": 14, "fun": 2}, "blurb": "Just one hour. (It's never one hour.)", "done": "Short nap. You feel better."},
     {"id": "bath", "at": "home", "label": "Have a bath", "hours": [(0, H(24))], "minutes": 20,
-     "effects": {"hygiene": 60, "energy": 3}, "special": "bath", "blurb": "Fetch water, bathe, feel like a person again.",
+     "effects": {"hygiene": 60, "energy": 3}, "special": "bath", "blurb": "Bucket bath with a sponge and black soap. Feel like a person again.",
      "done": "Fresh. You feel like a person again."},
+    {"id": "fetch_water", "at": "home", "label": "Fetch water", "hours": [(H(5), H(23))], "minutes": 25,
+     "effects": {"hygiene": 10, "social": 6, "energy": -6}, "special": "fetch_water", "requires": {"no_tank": True},
+     "blurb": "Two buckets from the tap downstairs, or the borehole when the taps are dry. You wash your face and "
+              "catch up on gist in the queue. Saved water means a free bath when there's no water.",
+     "done": "Two full buckets, a cool face and fresh gist from the tap."},
     {"id": "cook", "at": "home", "label": "Cook noodles and egg", "hours": [(0, H(24))], "minutes": 40, "cost": 600,
      "effects": {"hunger": 40}, "special": "cook",
      "blurb": "Two packs, one egg, zero shame. Free if you have noodles and eggs from the market.",
@@ -987,7 +992,11 @@ LIVE_MOODLETS = {
     "no_light": ("No Light", "🕯️", -6),
     "soft_life": ("Soft Life", "😌", 8),
     "flat_life": ("Flat Life", "🏡", 6),
+    "cosy_home": ("Cosy Home", "🛋", 6),
+    "dream_home": ("Dream Home", "🏰", 12),
 }
+WATER_MAX = 4          # buckets you can keep in your room
+WATER_PER_TRIP = 2
 
 # --- Moments in a lecture -------------------------------------------------------------------------
 CLASS_MOMENT_CHANCE = 0.55
@@ -1276,3 +1285,226 @@ ACTIONS += [
      "spectacle": {"emoji": "🍽️", "text": "{name} just walked the red carpet at the departmental dinner!"}},
 ]
 ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}   # again, now the big-moment actions are in
+
+# --- Furnish your place (the 🛋 tab) -------------------------------------------------------------------
+# Off campus you can turn a bare room into a home. Each item fills one slot (a better mattress replaces the old
+# one, which a used-furniture buyer takes off your hands). What an item can do:
+#   decay      needs fall slower ({"energy": 0.9} = 10% slower)       sleep_fun  extra fun when you wake
+#   study      reading at home works better (+0.1 = 10%)              learn      laptop practice earns more XP
+#   cook       home cooking is quicker (fraction of the time saved)   meal       home meals fill you more
+#   bath       extra needs from a bath                                water      baths are free when the taps are dry
+#   light      "lamp": you can read when NEPA takes light; "backup": everything keeps working (fuel = ₦ per dark day)
+#   theft      chance of a break-in is multiplied by this             comfort    makes home feel good (Cosy/Dream Home)
+#   bill       ₦ a week on the prepaid meter or subscription          power      needs electricity to work
+#   fit        smallest home it fits in (0 hall bunk, 1 single room, 2 self-contain, 3 flat)
+HOME_RANK = {"hostel": 0, "single": 1, "self_con": 2, "flat": 3}
+FIT_NAMES = {0: "a hall bunk", 1: "a single room", 2: "a self-contain", 3: "a flat"}
+FURNISH_CATEGORIES = [
+    {"id": "sleep", "name": "Sleep", "emoji": "🛏", "blurb": "Better sleep keeps your energy up all day."},
+    {"id": "comfort", "name": "Power & cooling", "emoji": "⚡", "blurb": "Beat NEPA and the Ife heat."},
+    {"id": "enjoy", "name": "Enjoyment", "emoji": "🎮", "blurb": "TV, PlayStation and sound. Fun at home, and a FIFA hustle."},
+    {"id": "kitchen", "name": "Kitchen", "emoji": "🍳", "blurb": "Cook faster, eat better, keep drinks cold."},
+    {"id": "bath", "name": "Bath & laundry", "emoji": "🚿", "blurb": "Water when the taps are dry, and hot baths."},
+    {"id": "living", "name": "Living room", "emoji": "🛋", "blurb": "Somewhere for friends to sit. Your place, your style."},
+    {"id": "study", "name": "Study & work", "emoji": "📚", "blurb": "Read better at home and earn more on your laptop."},
+    {"id": "security", "name": "Security", "emoji": "🔒", "blurb": "Thieves love student areas. Make yours the hard one."},
+]
+# (id, category, slot, name, emoji, price, blurb, effects)
+_FURNITURE = [
+    # Sleep
+    ("foam_pad", "sleep", "bed", "Thick foam topper", "🧽", 18_000,
+     "Goes on top of the hall's thin foam. Your back will thank you.", {"decay": {"energy": 0.96}, "sleep_fun": 2, "comfort": 1, "fit": 0}),
+    ("foam6", "sleep", "bed", "6-inch foam mattress", "🛏", 65_000,
+     "A proper mattress on the floor. No more waking up with springs in your ribs.",
+     {"decay": {"energy": 0.94}, "sleep_fun": 3, "comfort": 2, "fit": 1}),
+    ("ortho", "sleep", "bed", "Orthopaedic mattress", "🛏", 180_000,
+     "Firm, even support. You wake up ready, not sore.", {"decay": {"energy": 0.9}, "sleep_fun": 5, "comfort": 3, "fit": 1}),
+    ("bedframe", "sleep", "bed", "Wooden bed with orthopaedic mattress", "🪵", 380_000,
+     "A carpenter-made frame off the floor, with a good mattress. Feels like home.",
+     {"decay": {"energy": 0.87}, "sleep_fun": 7, "comfort": 5, "fit": 1}),
+    ("kingbed", "sleep", "bed", "King-size upholstered bed", "👑", 1_200_000,
+     "Padded headboard, deep mattress, room to stretch out. Oba-level sleep.",
+     {"decay": {"energy": 0.83}, "sleep_fun": 10, "comfort": 8, "fit": 2}),
+    ("smartbed", "sleep", "bed", "Memory-foam king bed with massage", "✨", 3_500_000,
+     "Memory foam, a massage setting and soft lights under the frame. Nobody on campus sleeps like you.",
+     {"decay": {"energy": 0.78}, "sleep_fun": 14, "comfort": 12, "power": True, "bill": 500, "fit": 3}),
+    ("bedding", "sleep", "linen", "Fresh bedsheets and pillows", "🛌", 25_000,
+     "A matching set and two soft pillows.", {"sleep_fun": 3, "comfort": 1, "fit": 0}),
+    ("duvet", "sleep", "linen", "Luxury duvet set", "☁️", 95_000,
+     "Hotel-white duvet, four pillows and a throw. Lying in it is a mood.", {"sleep_fun": 6, "comfort": 3, "fit": 1}),
+    ("net", "sleep", "net", "Treated mosquito net", "🦟", 9_000,
+     "No more slapping yourself at 3 AM.", {"decay": {"energy": 0.97}, "comfort": 1, "fit": 0}),
+
+    # Power & cooling
+    ("lamp", "comfort", "lamp", "Rechargeable lamp", "🔦", 9_000,
+     "Charge it when there's light; read with it when there isn't.", {"light": "lamp", "fit": 0}),
+    ("rfan", "comfort", "fan", "Rechargeable fan", "🪭", 32_000,
+     "Runs for hours without light. Hot nights get easier.", {"decay": {"energy": 0.97, "hygiene": 0.95}, "sleep_fun": 2, "comfort": 1, "fit": 0}),
+    ("standfan", "comfort", "fan", "Standing fan", "🌀", 45_000,
+     "Strong breeze on full speed. Needs light.",
+     {"decay": {"energy": 0.95, "hygiene": 0.92}, "sleep_fun": 3, "comfort": 2, "power": True, "bill": 300, "fit": 1}),
+    ("ac1", "comfort", "fan", "1HP air conditioner", "❄️", 480_000,
+     "Cold room, deep sleep, no sweat. The meter feels it.",
+     {"decay": {"energy": 0.9, "hygiene": 0.82, "fun": 0.95}, "sleep_fun": 6, "comfort": 6, "power": True, "bill": 3_000, "fit": 1}),
+    ("ac15", "comfort", "fan", "1.5HP inverter AC", "🧊", 850_000,
+     "Quiet, very cold and easier on the meter than the old ones.",
+     {"decay": {"energy": 0.87, "hygiene": 0.78, "fun": 0.93}, "sleep_fun": 8, "comfort": 8, "power": True, "bill": 2_200, "fit": 2}),
+    ("gen_small", "comfort", "power", "Small petrol generator", "⛽", 140_000,
+     "The famous 'I better pass my neighbour'. Light when NEPA takes it, but you buy fuel.",
+     {"light": "backup", "fuel": 2_500, "fit": 1}),
+    ("gen_big", "comfort", "power", "Big petrol generator", "🔌", 520_000,
+     "Carries the AC, fridge and TV together. Drinks fuel.", {"light": "backup", "fuel": 4_500, "comfort": 1, "fit": 2}),
+    ("inverter", "comfort", "power", "Inverter and batteries", "🔋", 1_100_000,
+     "Charges when there's light, carries you when there isn't. No noise, no fuel.",
+     {"light": "backup", "comfort": 3, "fit": 1}),
+    ("solar", "comfort", "power", "Solar panels with inverter", "☀️", 2_600_000,
+     "Panels on the roof, batteries inside. Free light and a much smaller bill.",
+     {"light": "backup", "solar": True, "comfort": 4, "fit": 2}),
+
+    # Enjoyment
+    ("tv32", "enjoy", "tv", '32" LED TV', "📺", 135_000,
+     "Small but sharp. Movies, music videos, the news your dad watches.", {"watch": 14, "comfort": 1, "power": True, "bill": 300, "fit": 1}),
+    ("tv43", "enjoy", "tv", '43" smart TV', "📺", 320_000,
+     "YouTube and streaming apps built in.", {"watch": 18, "comfort": 2, "power": True, "bill": 400, "fit": 1}),
+    ("tv55", "enjoy", "tv", '55" 4K smart TV', "🖥", 650_000,
+     "Big enough for movie nights. Football looks like you're in the stadium.",
+     {"watch": 22, "comfort": 4, "power": True, "bill": 500, "fit": 2}),
+    ("tv75", "enjoy", "tv", '75" QLED TV', "🎬", 1_800_000,
+     "A wall of picture. Your friends will start 'checking on you' every weekend.",
+     {"watch": 28, "comfort": 7, "power": True, "bill": 700, "fit": 3}),
+    ("decoder", "enjoy", "decoder", "Satellite TV decoder", "📡", 40_000,
+     "Live football, Big Brother and every channel. Monthly subscription.", {"comfort": 1, "power": True, "bill": 4_000, "fit": 1}),
+    ("ps4", "enjoy", "console", "PS4 Slim (fairly used)", "🎮", 280_000,
+     "Two pads, FIFA and Mortal Kombat. Still plenty of fun.", {"play": 18, "earn": 2_000, "comfort": 1, "power": True, "bill": 200, "fit": 1}),
+    ("ps5", "enjoy", "console", "PS5", "🎮", 950_000,
+     "Fast, beautiful and the newest FIFA. Your room becomes the hangout.",
+     {"play": 24, "earn": 3_500, "comfort": 3, "power": True, "bill": 300, "fit": 1}),
+    ("ps5pro", "enjoy", "console", "PS5 Pro with VR", "🕹", 1_500_000,
+     "The best console money can buy, and a VR headset.", {"play": 30, "earn": 4_500, "comfort": 5, "power": True, "bill": 400, "fit": 2}),
+    ("speaker", "enjoy", "sound", "Bluetooth speaker", "🔊", 45_000,
+     "Loud enough for the whole compound to know your playlist.", {"boost": 4, "comfort": 1, "fit": 0}),
+    ("theatre", "enjoy", "sound", "Home theatre system", "🎵", 250_000,
+     "Five speakers and a woofer. Movies hit different.", {"boost": 8, "comfort": 2, "power": True, "bill": 200, "fit": 2}),
+    ("soundbar", "enjoy", "sound", "Soundbar with subwoofer", "🎶", 600_000,
+     "Cinema sound from one slim bar. Clean and loud.", {"boost": 11, "comfort": 4, "power": True, "bill": 200, "fit": 2}),
+
+    # Kitchen
+    ("burner", "kitchen", "cooker", "Single-burner gas stove", "🔥", 28_000,
+     "Faster than a kerosene stove and no black pots.", {"cook": 0.15, "fit": 1}),
+    ("cooker4", "kitchen", "cooker", "4-burner gas cooker with oven", "🍳", 320_000,
+     "Rice, stew and plantain all at once. You can even bake.", {"cook": 0.35, "meal": 0.05, "comfort": 2, "fit": 2}),
+    ("fridge", "kitchen", "cold", "Fridge", "🧊", 290_000,
+     "Cold water, cold drinks and soup that lasts the week.",
+     {"meal": 0.1, "comfort": 2, "power": True, "bill": 1_200, "fit": 1}),
+    ("freezer", "kitchen", "cold", "Fridge and chest freezer", "❄️", 650_000,
+     "Buy chicken and fish in bulk; cook like a proper home.",
+     {"meal": 0.18, "comfort": 3, "power": True, "bill": 2_000, "fit": 2}),
+    ("microwave", "kitchen", "microwave", "Microwave", "♨️", 95_000,
+     "Warm last night's food in two minutes.", {"comfort": 1, "power": True, "bill": 300, "fit": 1}),
+    ("blender", "kitchen", "blender", "Blender", "🥤", 35_000,
+     "Smoothies, zobo, and pepper for your stew without the grinding stone.", {"meal": 0.03, "power": True, "fit": 1}),
+    ("airfryer", "kitchen", "airfryer", "Air fryer", "🍟", 110_000,
+     "Crunchy plantain and chicken with almost no oil.", {"meal": 0.05, "comfort": 1, "power": True, "bill": 300, "fit": 1}),
+
+    # Bath and laundry
+    ("drum", "bath", "water", "Big water drum", "🛢", 18_000,
+     "Fill it when water runs. When the taps are dry, you still bathe for free.", {"water": True, "fit": 1}),
+    ("tank", "bath", "water", "Overhead tank and pumping machine", "🚰", 420_000,
+     "Your own tank on a stand. Running water every day.", {"water": True, "bath": {"fun": 4}, "comfort": 3, "power": True, "bill": 300, "fit": 2}),
+    ("heater", "bath", "heater", "Instant water heater", "♨️", 85_000,
+     "A hot shower on a cold harmattan morning.", {"bath": {"energy": 6, "fun": 6}, "comfort": 2, "power": True, "bill": 600, "fit": 2}),
+    ("toiletries", "bath", "vanity", "Mirror, shelf and nice toiletries", "🪞", 35_000,
+     "Good soap, lotion and perfume, all in one place.", {"decay": {"hygiene": 0.92}, "bath": {"fun": 3}, "comfort": 1, "fit": 1}),
+    ("washer", "bath", "laundry", "Washing machine", "🧺", 380_000,
+     "No more Saturday hand-washing. Your clothes always smell fresh.",
+     {"decay": {"hygiene": 0.85}, "comfort": 3, "power": True, "bill": 500, "fit": 2}),
+
+    # Living room
+    ("sofa3", "living", "sofa", "3-seater fabric sofa", "🛋", 220_000,
+     "Somewhere for visitors to sit that isn't your bed.", {"comfort": 3, "fit": 1}),
+    ("sofaL", "living", "sofa", "L-shaped sofa set", "🛋", 650_000,
+     "Sits six. Movie nights are now officially at your place.", {"comfort": 5, "fit": 2}),
+    ("leather", "living", "sofa", "Italian leather sofa set", "💺", 2_200_000,
+     "Cream leather and a glass centre table. Your landlord is now scared of you.", {"comfort": 9, "fit": 3}),
+    ("rug", "living", "rug", "Soft rug", "🟥", 30_000, "Warm under your feet; it ties the room together.", {"comfort": 1, "fit": 1}),
+    ("curtains", "living", "curtains", "Curtains and blinds", "🪟", 45_000,
+     "Keeps the morning sun out so you sleep in.", {"sleep_fun": 2, "comfort": 1, "fit": 1}),
+    ("art", "living", "decor", "Wall art and LED strips", "🖼", 38_000,
+     "Frames, a neon sign and colour-changing lights. Your room has a vibe.", {"decay": {"fun": 0.96}, "comfort": 2, "fit": 0}),
+    ("plants", "living", "plants", "Indoor plants", "🪴", 20_000, "Snake plant and a small palm. Cleaner air, calmer you.",
+     {"decay": {"fun": 0.98}, "comfort": 1, "fit": 1}),
+
+    # Study and work
+    ("desk", "study", "desk", "Reading table and chair", "🪑", 55_000,
+     "A proper table, a lamp and a chair that isn't plastic.", {"study": 0.1, "learn": 0.05, "comfort": 1, "fit": 1}),
+    ("ergo", "study", "desk", "Big desk and ergonomic chair", "💺", 260_000,
+     "Hours of reading without back pain. Feels like an office.", {"study": 0.18, "learn": 0.12, "comfort": 2, "fit": 1}),
+    ("standing", "study", "desk", "Standing desk and monitor", "🖥", 520_000,
+     "A second screen, a desk that rises and falls. Coders' dream.", {"study": 0.22, "learn": 0.2, "comfort": 3, "power": True, "fit": 2}),
+    ("shelf", "study", "shelf", "Bookshelf", "📚", 40_000, "Your textbooks and handouts, finally off the floor.", {"study": 0.05, "comfort": 1, "fit": 1}),
+    ("router", "study", "net_box", "Unlimited Wi-Fi router", "📶", 75_000,
+     "Fast internet at home. Tutorials load, gigs get done.", {"learn": 0.1, "comfort": 1, "power": True, "bill": 5_000, "fit": 1}),
+
+    # Security
+    ("padlock", "security", "lock", "Heavy padlock and burglary-proof bars", "🔐", 25_000,
+     "The cheapest way to stop a break-in.", {"theft": 0.7, "fit": 0}),
+    ("steeldoor", "security", "door", "Steel security door", "🚪", 180_000,
+     "Thieves will try your neighbour instead.", {"theft": 0.45, "comfort": 1, "fit": 1}),
+    ("cctv", "security", "camera", "CCTV camera on your phone", "📹", 260_000,
+     "Watch your room from your phone. Thieves hate cameras.", {"theft": 0.55, "comfort": 1, "power": True, "bill": 300, "fit": 1}),
+]
+FURNITURE = {fid: {"id": fid, "cat": cat, "slot": slot, "name": name, "emoji": emoji, "price": price, "blurb": blurb, **fx}
+             for fid, cat, slot, name, emoji, price, blurb, fx in _FURNITURE}
+FURNITURE_RESALE = 0.4        # a used-furniture buyer pays 40% of the price
+FURNISH_HOURS = (H(7), H(21))  # shops deliver and install from 7 AM to 9 PM
+FURNITURE_TIERS = {}          # slot -> item ids from cheapest to dearest
+for _f in FURNITURE.values():
+    FURNITURE_TIERS.setdefault(_f["slot"], []).append(_f["id"])
+for _ids in FURNITURE_TIERS.values():
+    _ids.sort(key=lambda i: FURNITURE[i]["price"])
+COMFORT_LEVELS = [(30, "dream_home"), (12, "cosy_home")]   # comfort points for each feeling
+
+# Things you can do at home once you have the right things
+ACTIONS += [
+    {"id": "watch_tv", "at": "home", "label": "Watch TV", "hours": [(0, H(24))], "minutes": 60, "effects": {"fun": 14},
+     "requires": {"furnish": ["tv"]}, "special": "watch_tv",
+     "blurb": "Nollywood, music videos or a series. A bigger TV and good sound make it more fun.",
+     "done": "You watched TV and forgot about school for an hour."},
+    {"id": "watch_football", "at": "home", "label": "Watch live football", "hours": [(H(13), H(23))], "minutes": 120,
+     "days": WEEKEND, "effects": {"fun": 24, "social": 8, "energy": -4}, "requires": {"furnish": ["tv", "decoder"]},
+     "special": "watch_tv", "blurb": "Premier League on your own decoder. Your neighbours come to watch.",
+     "done": "Full time! You and your neighbours shouted the whole compound down."},
+    {"id": "play_console", "at": "home", "label": "Play PlayStation", "hours": [(0, H(24))], "minutes": 60,
+     "effects": {"fun": 18, "energy": -3}, "requires": {"furnish": ["tv", "console"]}, "special": "play_console",
+     "blurb": "FIFA, Mortal Kombat or a story game. One more match. Okay, one more.",
+     "done": "Gaming session done. You definitely won more than you lost."},
+    {"id": "fifa_centre", "at": "home", "label": "Run a FIFA centre for the street", "hours": [(H(12), H(22))], "minutes": 180,
+     "once_per_day": True, "effects": {"social": 12, "fun": 6, "energy": -10}, "requires": {"furnish": ["tv", "console"]},
+     "special": "fifa_centre", "hustle": True,
+     "blurb": "₦300 a match. The boys from your street queue at your door with their own pads."},
+    {"id": "movie_night", "at": "home", "label": "Host a movie night", "hours": [(H(18), H(24))], "minutes": 150,
+     "once_per_day": True, "cost": 3_000, "effects": {"social": 26, "fun": 20, "hunger": 12},
+     "requires": {"furnish": ["tv", "sofa"]}, "special": "watch_tv",
+     "blurb": "Popcorn, chin-chin and a big movie. Your friends fill the sofa.",
+     "done": "Movie night was a hit. Everyone wants to come back next week."},
+    {"id": "host_friends", "at": "home", "label": "Invite friends over to hang out", "hours": [(H(10), H(23))], "minutes": 90,
+     "effects": {"social": 22, "fun": 10}, "requires": {"furnish": ["sofa"]},
+     "blurb": "Drinks, music and gist on your sofa.", "done": "Your friends stayed till late. Your place is the spot now."},
+    {"id": "ac_chill", "at": "home", "label": "Relax in the AC", "hours": [(0, H(24))], "minutes": 30,
+     "effects": {"energy": 8, "fun": 8, "hygiene": 4}, "requires": {"furnish": ["fan:ac"]},
+     "blurb": "Lie down in the cold room. The Ife sun can't reach you here.", "done": "Cool, calm and recharged."},
+    {"id": "cold_drink", "at": "home", "label": "Drink something cold from the fridge", "hours": [(0, H(24))], "minutes": 5,
+     "cost": 300, "effects": {"fun": 8, "hunger": 4, "energy": 3}, "requires": {"furnish": ["cold"]},
+     "blurb": "Chilled malt or zobo from your own fridge.", "done": "Ice cold. Exactly what you needed."},
+    {"id": "warm_leftovers", "at": "home", "label": "Warm leftovers in the microwave", "hours": [(0, H(24))], "minutes": 5,
+     "once_per_day": True, "effects": {"hunger": 30}, "requires": {"furnish": ["microwave"]},
+     "blurb": "Last night's food, hot in two minutes. Once a day.", "done": "Leftovers, hot and tasty. Zero effort."},
+    {"id": "smoothie", "at": "home", "label": "Blend a fruit smoothie", "hours": [(0, H(24))], "minutes": 10, "cost": 1_200,
+     "effects": {"hunger": 16, "fun": 6, "energy": 4}, "requires": {"furnish": ["blender"]},
+     "blurb": "Banana, pineapple, watermelon and ice.", "done": "Fresh smoothie. You feel healthy."},
+    {"id": "air_fry", "at": "home", "label": "Air-fry plantain chips", "hours": [(0, H(24))], "minutes": 15,
+     "effects": {"hunger": 22, "fun": 6}, "requires": {"furnish": ["airfryer"], "food": {"plantain": 1}}, "special": "recipe",
+     "blurb": "Crunchy plantain with almost no oil. Needs a plantain.", "done": "Crunchy, golden and gone in 2 minutes."},
+]
+ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
+MOODLETS = globals().get("MOODLETS", {})

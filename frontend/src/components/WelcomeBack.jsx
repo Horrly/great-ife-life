@@ -55,9 +55,10 @@ function RoomDiorama({ game }) {
     const now = new Date();
     const minute = (now.getUTCHours() + 1) % 24 * 60 + now.getUTCMinutes();
     const mine = { name: game.name || "You", you: true, where: "in", look: game.look };
+    const furniture = Object.fromEntries((game.furnish?.items || []).filter((i) => i.owned && i.fits).map((i) => [i.slot, i.id]));
     const info = game.room
-      ? { ...game.room, kind: game.housing?.kind || "hostel" }
-      : { kind: game.housing?.kind || "hostel", label: "Your room", capacity: 4, people: [mine] };
+      ? { ...game.room, kind: game.housing?.kind || "hostel", furniture }
+      : { kind: game.housing?.kind || "hostel", label: "Your room", capacity: 4, people: [mine], furniture };
     let raf = 0;
     let last = performance.now();
     let t = 0;

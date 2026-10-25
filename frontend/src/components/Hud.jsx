@@ -217,7 +217,7 @@ export function NavBar({ items }) {
           sfx("tap");
           it.onClick();
         }} disabled={it.disabled} aria-current={it.active ? "page" : undefined}
-          className={`flex h-12 min-w-[4.6rem] flex-col items-center justify-center rounded-[20px] px-2 disabled:opacity-35 ${it.active ? "bg-ink text-white" : "text-muted"}`}>
+          className={`flex h-12 min-w-[3.9rem] flex-col items-center justify-center rounded-[20px] px-1.5 disabled:opacity-35 ${it.active ? "bg-ink text-white" : "text-muted"}`}>
           <span aria-hidden className="text-lg leading-none">{it.icon}</span>
           <span className="mt-0.5 text-[11px] font-semibold">{it.label}</span>
         </button>

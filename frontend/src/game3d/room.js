@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { makePerson, mat, seat as seatPerson, surface } from "./characters";
 import { labelTexture } from "./textures";
+import { drawBed, drawFurniture, plasticChairs } from "./furnish3d";
 
 // Some actions have their own body language (otherwise the station decides)
 const ACT_FOR_ACTION = { war_cry: "dance", rally_sub: "talk", dept_dinner: "dance", party: "dance", scroll: "phone", gist: "talk" };
@@ -116,7 +117,7 @@ export default class RoomView {
    * noLight = NEPA has taken light.
    */
   show(info, minute, noLight = false) {
-    const key = JSON.stringify([info.kind, info.label, info.people.map((p) => [p.name, p.where, p.you, p.look])]);
+    const key = JSON.stringify([info.kind, info.label, info.people.map((p) => [p.name, p.where, p.you, p.look]), info.furniture]);
     if (key !== this.key) {
       this.key = key;
       this._build(info);
@@ -564,6 +565,8 @@ export default class RoomView {
     this.glass = this.tube = this.fanBlades = null;
     const people = info.people || [];
     const seats = [];
+    const furn = info.furniture || {}; // what you've bought in the Furnish tab
+    let bedTop = 1.5;
     if (info.kind === "hostel") {
       this._shell({ w: 11.5, d: 13, h: 6.2, paint: "#ebe1c8", dado: "#4f7fa8", floor: FLOORS.hostel(), win: 0 });
       this.thing("leave", () => this._door(-5.6, 4.4));
@@ -597,57 +600,52 @@ export default class RoomView {
     } else if (info.kind === "single") {
       this._shell({ w: 12, d: 10, h: 6, paint: "#e7dcc3", dado: "#a8754a", floor: FLOORS.tiles("#c9b9a0") });
       this.thing("leave", () => this._door(-5.85, 2.8));
-      this.thing("rest", () => this._bed(-3.4, -1.5, 3.6, SHEETS[4]));
-      this.thing("study", () => {
+      this.thing("rest", () => {
+        bedTop = drawBed(this, furn, -3.4, -1.5, 3.6, SHEETS[4]);
+      });
+      if (!furn.desk) this.thing("study", () => {
         this._table(3.2, -3.6, 3, 1.6);
         this._chair(3.2, -2.3, "#2f5f9e", Math.PI);
       });
-      this._fan(4.6, 1.2);
       this.thing("room", () => this._locker(0.6, -4.2, "#7a5230"));
       this.thing("care", () => this._bucket(4.6, 3.6, "#d23b3b"));
-      this.thing("food", () => this._cooker(-0.2, 3.6));
+      if (furn.cooker !== "cooker4") this.thing("food", () => this._cooker(-0.2, 3.6));
       this.anchors = { study: [3.2, -1.4], care: [3.6, 2.6], food: [-0.2, 2.4], rest: [-1.2, 0.2], idle: [1.0, 1.0] };
       this._rug(-0.6, 2.2, 4.5, 3, "#7a3e3e");
-      seats.push({ x: -3.4, y: 1.4, z: -0.6, bed: true, side: 1 }, { x: 1.4, y: 0.1, z: 2.4, floorMattress: true, side: -1 });
+      seats.push({ x: -3.4, y: bedTop - 0.1, z: -0.6, bed: true, side: 1 }, { x: 1.4, y: 0.1, z: 2.4, floorMattress: true, side: -1 });
       if (people.length > 1) this.box(2.6, 0.35, 4.6, "#efe8d8", 1.4, 0, 2.2), this.box(2.6, 0.06, 3.4, SHEETS[5], 1.4, 0.35, 2.7);
     } else if (info.kind === "self_con") {
       this._shell({ w: 15, d: 11, h: 6.2, paint: "#efe6d3", dado: null, floor: FLOORS.tiles("#d7cdbd") });
       this.thing("leave", () => this._door(-7.35, 3.4));
-      this.thing("rest", () => this._bed(-4.4, -2.0, 4.2, SHEETS[6]));
-      this.thing("food", () => this._kitchen(4.4, -4.4, 5));
-      this.thing("fun", () => {
-        this._sofa(2.4, 2.4, 4, "#3d5a80", Math.PI);
-        this._tv(-0.4, -4.6);
+      this.thing("rest", () => {
+        bedTop = drawBed(this, furn, -4.4, -2.0, 4.2, SHEETS[6]);
       });
+      this.thing("food", () => this._kitchen(4.4, -4.4, 5));
+      if (!furn.sofa) this.thing("fun", () => plasticChairs(this, [[1.6, 2.2], [3.3, 2.2]]));
       this.thing("care", () => this.box(0.25, 4.2, 2.2, "#f4f4f4", 7.35, 0, -1.8));
       this.anchors = { food: [4.4, -2.8], rest: [-2.0, 0.4], fun: [1.0, 0.8], care: [6.2, -1.8], study: [-1.0, -2.6], idle: [0, 1] };
-      this._rug(1.0, 0.6, 5, 3.4, "#b5482a");
-      this._fan(-1.2, 2.8);
+      if (!furn.rug) this._rug(1.0, 0.6, 5, 3.4, "#b5482a");
       // the bathroom door
       this.box(0.25, 4.2, 2.2, "#f4f4f4", 7.35, 0, -1.8);
       this._poster(7.1, 3.0, 1.6, 1.4, 1.8, "#e07a5f", -Math.PI / 2);
-      seats.push({ x: -4.4, y: 1.4, z: -1.0, bed: true, side: 1 }, { x: 1.6, y: 1.1, z: 2.2, sofa: true });
+      seats.push({ x: -4.4, y: bedTop - 0.1, z: -1.0, bed: true, side: 1 }, { x: 1.6, y: 1.1, z: 2.2, sofa: true });
     } else {
       // a 2-bedroom flat: the parlour, with the two bedroom doors at the back
       this._shell({ w: 18, d: 13, h: 6.6, paint: "#f2ead9", dado: null, floor: FLOORS.tiles("#cdb79a") });
       this.thing("leave", () => this._door(-8.85, 4.2));
       this.thing("rest", () => this.box(2.4, 4.4, 0.25, "#6b4a2a", -5.2, 0, -6.3));
       this.thing("care", () => this.box(2.4, 4.4, 0.25, "#6b4a2a", 6.4, 0, -6.3));
-      this.thing("fun", () => {
-        this._sofa(-2.4, 2.6, 5.2, "#5b3a29", Math.PI);
-        this._sofa(-6.6, -1.0, 2.6, "#5b3a29", Math.PI / 2);
-        this._tv(1.8, -5.2);
-      });
+      if (!furn.sofa) this.thing("fun", () => plasticChairs(this, [[-3.6, 2.4], [-1.2, 2.4], [-6.2, -1.0]]));
       this.thing("food", () => this._kitchen(-1, -5.6, 0.1));
       this.anchors = { fun: [-2.4, 1.0], rest: [-5.2, -4.8], care: [6.4, -4.8], study: [5.8, 2.6], food: [5.8, 0], idle: [1, 2] };
       this._table(-2.4, 0, 3.2, 1.8, "#4a3426");
-      this._rug(-2.6, 0.2, 7, 4.6, "#8e3b46");
+      if (!furn.rug) this._rug(-2.6, 0.2, 7, 4.6, "#8e3b46");
       this._table(5.8, 1.4, 3.6, 2.4, "#6b4a2a");
       for (const [cx, cz, r] of [[4.6, 3.0, Math.PI], [7.0, 3.0, Math.PI], [4.6, -0.2, 0], [7.0, -0.2, 0]]) this._chair(cx, cz, "#3a2a1e", r);
-      // the AC on the wall
-      this.box(3, 0.9, 0.8, "#f4f4f4", -4.6, 4.6, -6.1);
       seats.push({ x: -3.6, y: 1.1, z: 2.4, sofa: true }, { x: -1.2, y: 1.1, z: 2.4, sofa: true });
     }
+
+    drawFurniture(this, info.kind, furn);
 
     // your roommates (and you)
     const others = people.filter((p) => !p.you);
