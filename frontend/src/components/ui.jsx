@@ -105,7 +105,7 @@ export function Toast({ messages, error, onDismiss, onDone, top = "7.2rem" }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 z-[25] flex justify-center px-4" style={{ top }} aria-live="polite">
       <button key={current + index} onClick={() => (error ? onDismiss() : onDone?.())}
-        className={`toast-in pointer-events-auto w-full max-w-md rounded-2xl px-4 py-2.5 text-left text-sm font-medium shadow-[0_8px_28px_rgb(10_44_29/0.16)] backdrop-blur ${
+        className={`toast-in pointer-events-auto w-full max-w-md rounded-2xl px-4 py-2.5 text-left text-sm font-medium shadow-[0_8px_28px_rgb(10_44_29/0.16)] ${
           error ? "bg-danger text-white" : "bg-white/95 text-ink"
         }`} role={error ? "alert" : "status"}>
         {current}
@@ -146,7 +146,7 @@ export function DecisionCard({ event, onChoose, busy }) {
 export function MomentCard({ children, label }) {
   useEffect(() => sfx("wish"), []);
   return (
-    <div className="pointer-events-auto absolute inset-0 z-50 grid place-items-center bg-ink/45 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={label}>
+    <div className="pointer-events-auto absolute inset-0 z-50 grid place-items-center bg-ink/45 p-4" role="dialog" aria-modal="true" aria-label={label}>
       <div className="pop max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">{children}</div>
     </div>
   );

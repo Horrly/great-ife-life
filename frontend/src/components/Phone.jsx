@@ -428,7 +428,7 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onPare
               )}
             </ul>
             {ios && (
-              <div className="mx-3 mb-3 grid grid-cols-4 gap-2 rounded-[1.6rem] bg-white/25 p-2.5 backdrop-blur">
+              <div className="mx-3 mb-3 grid grid-cols-4 gap-2 rounded-[1.6rem] bg-white/25 p-2.5">
                 {dock.map((a) => (
                   <button key={a.id} onClick={() => setApp(a)} aria-label={a.name}
                     className="mx-auto grid h-12 w-12 place-items-center rounded-[0.9rem] text-2xl shadow" style={{ background: a.color }}>

@@ -423,3 +423,9 @@ New students now choose from **60 real OAU courses across 11 faculties**: Techno
 - **No more "(2 hrs)" in action names**; the card's clock shows how long it really takes.
 - **Green kekes** on campus.
 - **Halls:** boys live in Awo, Fajuyi, ETF and Angola; girls in Akintola, Moremi, Mozambique and the new **Alumni Hall** (beside Awo, position estimated).
+
+## Smooth progress ring, action queue, less lag
+
+- **The ring fills all the way.** The action chip's ring now fills smoothly from empty to full over exactly the action's time, for every action, as a GPU animation.
+- **Queue up to 7 actions.** Tap more actions while one is playing and they line up ("Next 3/7") under the chip; each starts when the previous one ends. Tap a queued icon to remove it. If one fails, the rest are cleared.
+- **Why it used to slow down when you tapped:** while an action played, the whole game screen was re-drawn every frame just to move the progress ring, and the dark HUD pills blurred the moving 3D scene behind them on every frame. Both are gone: the ring animates on its own, the pills are solid, and the 3D behind an open sheet renders at a lower frame rate so taps and scrolling stay quick.

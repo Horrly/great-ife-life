@@ -120,16 +120,28 @@ export function InboxButton({ count, onClick }) {
 }
 
 /** A running action: icon in a progress ring, top-left. You can keep looking around while it plays. */
-export function ActionChip({ lapse, progress, onSkip }) {
+/** The action you're doing, with a ring that fills smoothly until it's done (a CSS animation, so it never stutters). */
+export function ActionChip({ lapse, onSkip }) {
+  const size = 36;
+  const stroke = 3.5;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  // fixed for this action, so a re-render never restarts the ring
+  const left = useMemo(() => Math.max(0.1, lapse.seconds - (performance.now() - lapse.start) / 1000), [lapse.start]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <button type="button" onClick={onSkip} title="Tap to skip: the result is the same"
       className="float pointer-events-auto flex h-11 max-w-[60vw] items-center gap-2 rounded-full py-1 pl-1 pr-3.5 text-left" role="status" aria-live="polite">
-      <Ring value={progress} size={36} stroke={3.5}>
-        <span className="text-base">{lapse.icon || "⏳"}</span>
-      </Ring>
+      <span className="relative grid shrink-0 place-items-center" style={{ width: size, height: size }}>
+        <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0 -rotate-90" aria-hidden>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(0 0 0 / 0.08)" strokeWidth={stroke} />
+          <circle key={lapse.start} cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1c9a5e" strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={c} style={{ "--ring-c": c, strokeDashoffset: c, animation: `ring-fill ${left}s linear forwards` }} />
+        </svg>
+        <span className="relative text-base leading-none">{lapse.icon || "⏳"}</span>
+      </span>
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold">{lapse.label}</span>
-        <span className="block text-[11px] text-muted">{progress < 1 ? "× tap to skip" : "Done"}</span>
+        <span className="block text-[11px] text-muted">× tap to skip</span>
       </span>
     </button>
   );
@@ -277,7 +289,7 @@ export function Joystick({ onMove }) {
   }
   return (
     <div ref={base}
-      className="pointer-events-auto relative h-[7.5rem] w-[7.5rem] touch-none rounded-full border-2 border-white/70 bg-ink/20 backdrop-blur-sm"
+      className="pointer-events-auto relative h-[7.5rem] w-[7.5rem] touch-none rounded-full border-2 border-white/70 bg-ink/20"
       onPointerDown={(e) => {
         id.current = e.pointerId;
         e.currentTarget.setPointerCapture(e.pointerId);

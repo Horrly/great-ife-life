@@ -206,7 +206,12 @@ export default function Play() {
   const [jp, setJp] = useState({ p: 0, seg: null });
   const [lapse, setLapse] = useState(null);
   const stopLapse = useRef(false);
-  const [lp, setLp] = useState(0);
+  // up to 7 actions waiting their turn while one plays out
+  const [queue, setQueue] = useState([]);
+  const queueRef = useRef([]);
+  const playingRef = useRef(false);
+  const actingRef = useRef(false); // waiting for the server to accept an action
+  const skipPromise = useRef(null);
   const [hint, setHint] = useState(true);
   const [placeStation, setPlaceStation] = useState(null);
   const [bankHall, setBankHall] = useState(null);
@@ -263,6 +268,8 @@ export default function Play() {
     if (!game.at && panel === "place") setPanel(null);
   }, [game.at]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => engine.current?.setLook(game.look), [game.look]);
+  // while a sheet covers the screen, the 3D behind it only needs a few frames a second (saves the phone for taps)
+  useEffect(() => engine.current?.setLowRate(Boolean(panel) && panel !== "map"), [panel]);
   useEffect(() => {
     engine.current?.setWeather(game.weather);
     setRain(game.weather?.rain ? (game.weather.heavy ? 2 : 1) : 0);
@@ -297,10 +304,13 @@ export default function Play() {
   async function playback(label, g, icon, station, actionId, extra = {}) {
     if (!g?.playback) return;
     stopLapse.current = false;
-    setLapse({ label, icon, ...extra });
+    playingRef.current = true;
+    // the chip animates its own ring from these (no re-render of the whole game every frame: that was the lag)
+    setLapse({ label, icon, seconds: g.playback, start: performance.now(), ...extra });
     engine.current?.roomActivity(station || null, icon, actionId);
-    await animate(g.playback, setLp, stopLapse);
+    await animate(g.playback, () => {}, stopLapse);
     setLapse(null);
+    playingRef.current = false;
     engine.current?.roomActivity(null);
   }
   // "× tap to skip": stop watching; the server lets you move on, and the result stays the same
@@ -308,7 +318,22 @@ export default function Play() {
     if (stopLapse.current) return;
     stopLapse.current = true;
     sfx("tap");
-    skip();
+    skipPromise.current = skip();
+  }
+  function setQ(list) {
+    queueRef.current = list;
+    setQueue(list);
+  }
+  /** After an action finishes, start the next one you queued. */
+  async function runNext() {
+    if (!queueRef.current.length) return;
+    if (skipPromise.current) {
+      await skipPromise.current; // the server must know you skipped before the next one starts
+      skipPromise.current = null;
+    }
+    const [next, ...rest] = queueRef.current;
+    setQ(rest);
+    await onAct(next, true);
   }
   function skipJourney() {
     sfx("tap");
@@ -350,20 +375,37 @@ export default function Play() {
     }
   }
 
-  async function onAct(action) {
+  async function onAct(action, fromQueue = false) {
+    // already doing something: line it up (at most 7 waiting)
+    if (!fromQueue && (playingRef.current || actingRef.current)) {
+      if (queueRef.current.length >= 7) {
+        setError("Your queue is full (7 actions). Let some finish first.");
+        return;
+      }
+      setQ([...queueRef.current, action]);
+      sfx("tap");
+      return;
+    }
     const energyBefore = game.needs.energy;
+    actingRef.current = true;
     const g = await act(action.id);
+    actingRef.current = false;
     if (g && action.cost > 0 && action.at !== "phone" && action.at !== "laptop") {
       setTab((t) => ({ at: g.at, items: [...(t.at === g.at ? t.items : []), { label: action.label.split(" (")[0], cost: action.cost }] }));
     }
     setPanel((p) => (p === "phone" || p === "laptop" ? null : p));
-    if (!g || action.id === "wake") return;
+    if (!g) {
+      setQ([]); // something went wrong: don't plough on with the rest
+      return;
+    }
+    if (action.id === "wake") return;
     if (action.id === "sleep") {
       setPanel(null);
       await playback("Sleeping", g, "😴", "rest", "sleep", { sleep: { from: energyBefore } });
-      return;
+    } else {
+      await playback(action.label, g, iconFor(action), action.station, action.id);
     }
-    await playback(action.label, g, iconFor(action), action.station, action.id);
+    await runNext();
   }
 
   async function onParents(amount) {
@@ -590,7 +632,21 @@ export default function Play() {
         {!clean && panel !== "map" && (
           <div className="mx-auto mt-2 flex max-w-5xl items-start justify-between gap-2">
             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-              {lapse && <ActionChip lapse={lapse} progress={lp} onSkip={skipLapse} />}
+              {lapse && (
+                <div className="flex flex-col items-start gap-1">
+                  <ActionChip lapse={lapse} onSkip={skipLapse} />
+                  {queue.length > 0 && (
+                    <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-black/45 py-1 pl-2 pr-1" aria-label={`${queue.length} queued`}>
+                      <span className="text-[11px] font-bold text-white">Next {queue.length}/7</span>
+                      {queue.map((a, i) => (
+                        <button key={`${a.id}-${i}`} type="button" title={`${a.label}: tap to remove`} aria-label={`Remove ${a.label} from the queue`}
+                          className="grid h-7 w-7 place-items-center rounded-full bg-white text-sm shadow"
+                          onClick={() => setQ(queue.filter((_, j) => j !== i))}>{iconFor(a)}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {controls && !lapse && (
                 <div className="flex w-full min-w-0 items-center gap-2">
                   <RoundIcon icon="🎯" label="Today's missions" badge={game.missions.filter((m) => !m.done).length || null} onClick={() => openMe("goals")} />
@@ -794,7 +850,7 @@ export default function Play() {
       )}
       {panel === "dm" && dm && <DmSheet thread={dm.thread} name={dm.name} onClose={close} />}
       {panel === "riddle" && controls && <RiddleSheet game={game} busy={busy} onClose={close} onSearch={onRiddleSearch} />}
-      {lapse?.sleep && <SleepingOverlay from={lapse.sleep.from} progress={lp} minute={minute} onWake={skipLapse} />}
+      {lapse?.sleep && <SleepingOverlay from={lapse.sleep.from} seconds={lapse.seconds} start={lapse.start} minute={minute} onWake={skipLapse} />}
       {!journey && <Spectacle events={game.events} />}
 
       {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} fromName={journey.fromName} onSkip={skipJourney} />}

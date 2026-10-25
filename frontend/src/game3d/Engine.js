@@ -1024,8 +1024,17 @@ export default class CampusEngine {
 
   // --- The frame loop ------------------------------------------------------------------------------
 
+  /** Render fewer frames while a sheet covers the screen, so taps and scrolling stay quick. */
+  setLowRate(on) {
+    this.lowRate = Boolean(on);
+  }
+
   _frame() {
     if (this.disposed) return;
+    if (this.lowRate && !this.journey) {
+      this._skip = ((this._skip || 0) + 1) % 4;
+      if (this._skip) return; // about 15 frames a second behind the sheet
+    }
     const raw = Math.min(0.5, this.clock.getDelta());
     const dt = Math.min(0.05, raw); // animation step; journeys use real time so slow phones aren't slower
     this._updateTraffic(dt);

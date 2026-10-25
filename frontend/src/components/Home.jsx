@@ -210,10 +210,22 @@ export function RoomCard({ room, onNote }) {
 
 /** Asleep (real hours pass) or resting at the Health Centre. */
 /** Sleeping: the night plays out in about 15 seconds while your energy bar fills up. Tap anywhere to wake. */
-export function SleepingOverlay({ from, progress, minute, onWake }) {
+export function SleepingOverlay({ from, seconds, start, minute, onWake }) {
+  // this overlay ticks on its own, so the rest of the game isn't re-drawn every frame
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const step = () => {
+      const p = Math.min(1, (performance.now() - start) / 1000 / seconds);
+      setProgress(p);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [start, seconds]);
   const energy = Math.round(from + (100 - from) * progress);
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-[#05100b]/85 p-6 text-center text-white backdrop-blur-sm"
+    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-[#05100b]/92 p-6 text-center text-white"
       role="dialog" aria-label="Sleeping" onClick={onWake}>
       <button type="button" className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full bg-white/15 text-xl"
         aria-label="Wake up now" onClick={(e) => { e.stopPropagation(); onWake(); }}>×</button>
@@ -243,7 +255,7 @@ export function SleepOverlay({ game, minute, onWake, busy }) {
   const a = game.asleep;
   const energy = game.needs.energy;
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-[#05100b]/85 p-6 text-center text-white backdrop-blur-sm"
+    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-[#05100b]/85 p-6 text-center text-white"
       role="dialog" aria-label={a.until ? "Resting" : "Asleep"}>
       <div className="w-full max-w-sm">
         <p className="text-6xl" aria-hidden>{a.until ? "🏥" : "😴"}</p>
