@@ -404,3 +404,10 @@ New students now choose from **60 real OAU courses across 11 faculties**: Techno
 - **Hide the buttons.** A 🙈 button next to "Go outside" (and outside next to ⋯) hides the place card and bottom buttons so you can see your whole room, the bucket and the gas cooker; **👁 Show buttons** brings them back.
 - **Cook real meals.** Ojaja sells rice, beans, garri, yam, spaghetti, noodles, eggs, plantain, stew ingredients, egusi and ugwu, and chicken or fish (or a mixed basket). At home you can cook jollof rice, rice and stew with chicken, beans and dodo, yam and egg sauce, jollof spaghetti, eba and egusi, dodo and egg, noodles and egg, or soak garri, whatever your ingredients allow. The Food tab shows what's in your room, and meals you can make come first.
 - **Cooking in the hostel is legal.** No porter seizing your stove or pot, no fines.
+
+## Settings, look around rooms, tap to walk, OgaBet slips
+
+- **⚙️ Settings** in the phone (and in the ⋯ menu): sound, flat map, hide buttons, keyboard shortcuts, and your account: **Save your progress**, **Log out**, **Delete account** (password to confirm), or **Delete this game** for players without an account (type DELETE).
+- **Look around any room:** inside your hostel, a class, the bank, the buka or anywhere else, drag to turn the camera round the room and up or down; pinch or scroll to zoom. Side walls step out of the way as you turn.
+- **Tap the floor to walk** anywhere inside a building. Tapping a thing (bed, bucket, cooker, a person) still opens what you can do with it.
+- **OgaBet bet slips:** eight matches on the board. Tap results to add as many matches as you like, type or pick a stake, then **Stake** and they all kick off at once, with live scores, goals and ✅/❌ per match. Odds multiply; the slip pays only if every pick lands. Stakes ₦100–₦50,000.

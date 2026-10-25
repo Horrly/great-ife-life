@@ -101,7 +101,7 @@ export function GameProvider({ children }) {
   const leave = useCallback(() => move("/game/exit/", {}), [move]);
   const setLook = useCallback((look, traits, dream) => move("/game/look/", { look, traits, dream }), [move]);
   const askParents = useCallback((amount) => move("/game/parents/", { amount }), [move]);
-  const bet = useCallback((match, pick, stake, adult) => move("/game/bet/", { match, pick, stake, adult }), [move]);
+  const bet = useCallback((picks, stake, adult) => move("/game/bet/", { picks, stake, adult }), [move]);
   const moveHome = useCallback((body) => move("/game/housing/move/", body), [move]);
   const joinRoom = useCallback((code) => move("/game/housing/join/", { code }), [move]);
   const housing = useCallback(() => api("/game/housing/"), []);

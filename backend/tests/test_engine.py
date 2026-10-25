@@ -1,3 +1,4 @@
+import math
 import copy
 import random
 
@@ -1223,3 +1224,18 @@ def test_lecture_theatres_open_for_night_reading():
     s = at(new(seed="night-read"), 23, where="thousand")
     assert E.building_open("thousand", E.tod(s)) and E.building_open("odlt", E.tod(s))
     assert "lt_tdb" in ids(s)
+
+
+def test_bet_slip_with_many_matches_pays_only_if_all_land():
+    s = banked(at(new(seed="acca"), 12, where="staff"), 100_000)
+    games = E.fixtures(s, t_of(s))
+    assert len(games) == C.BET_MATCHES
+    picks = [(i, "1") for i in range(5)]
+    s2, msgs = E.place_bet(s, stake=2_500, adult=True, now=t_of(s), picks=picks)
+    slip = s2["last_bet"]
+    assert len(slip["legs"]) == 5 and slip["stake"] == 2_500
+    assert slip["odds"] == pytest.approx(round(math.prod(games[i]["odds"]["1"] for i in range(5)), 2), rel=1e-6)
+    assert slip["won"] == all(leg["won"] for leg in slip["legs"])
+    assert s2["playback"] <= 13
+    with pytest.raises(E.GameError):
+        E.place_bet(s, stake=50, adult=True, now=t_of(s), picks=picks)

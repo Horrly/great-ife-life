@@ -581,6 +581,25 @@ export default class CampusEngine {
         touches.set(e.pointerId, [e.clientX, e.clientY]);
         return;
       }
+      if (this.roomMode && this.roomView) {
+        // inside: drag to look round the room, pinch to zoom
+        const before = touches.get(e.pointerId);
+        if (touches.size >= 2 && before) {
+          const [a, b] = [...touches.values()];
+          const d0 = Math.hypot(a[0] - b[0], a[1] - b[1]);
+          touches.set(e.pointerId, [e.clientX, e.clientY]);
+          const [c, d] = [...touches.values()];
+          const d1 = Math.hypot(c[0] - d[0], c[1] - d[1]);
+          if (d0 > 0 && d1 > 0) this.roomView.zoomBy(d0 / d1);
+          return;
+        }
+        if (!drag || drag.id !== e.pointerId) return;
+        this.roomView.orbit(e.clientX - drag.x, e.clientY - (drag.y ?? e.clientY));
+        drag.x = e.clientX;
+        drag.y = e.clientY;
+        touches.set(e.pointerId, [e.clientX, e.clientY]);
+        return;
+      }
       if (!drag || drag.id !== e.pointerId) return;
       this.camYaw -= (e.clientX - drag.x) * 0.008;
       drag.x = e.clientX;
@@ -605,6 +624,7 @@ export default class CampusEngine {
     el.addEventListener("pointercancel", this._pu);
     this._wheel = (e) => {
       if (this.mapMode) this.mapZoom = Math.max(0.45, Math.min(3.2, this.mapZoom * (e.deltaY > 0 ? 0.9 : 1.1)));
+      else if (this.roomMode && this.roomView) this.roomView.zoomBy(e.deltaY > 0 ? 1.08 : 0.93);
       else this.camDist = Math.max(6, Math.min(60, this.camDist + e.deltaY * 0.03));
       e.preventDefault();
     };
@@ -1247,6 +1267,7 @@ export default class CampusEngine {
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     const station = this.roomView.pick(ndc);
     if (station) this.opts.onRoomTap?.(station);
+    else this.roomView.walkToTap(ndc); // tapped the floor: walk there
   }
 
   /** Show the inside of a campus place, with the people in it. */

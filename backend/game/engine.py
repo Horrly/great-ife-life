@@ -1132,7 +1132,7 @@ def available_actions(state) -> list[dict]:
             "locked": bool(action.get("min_level") and skill_level(state, skill) < action["min_level"]),
             "enabled": reason is None, "reason": reason, "minutes": minutes,
             "ends": clock_text(state["clock"] + minutes),
-            "seconds": ACTION_SECONDS[0] if action.get("special") == "sleep" else action_seconds(minutes),
+            "seconds": SLEEP_SECONDS if action.get("special") == "sleep" else action_seconds(minutes),
             "freelance": bool(action.get("freelance")),
             "station": station(action),
         })
@@ -2530,12 +2530,12 @@ def ask_parents(state: dict, amount: int, now: float | None = None) -> tuple[dic
 
 
 def fixtures(state, now: float | None = None) -> list[dict]:
-    """Four virtual matches. They change every 10 minutes and everyone sees the same ones."""
+    """Eight virtual matches. They change every 10 minutes and everyone sees the same ones."""
     slot = int(now // 600) if now is not None else state["clock"] // 10
     rng = random.Random(f"fixtures-{slot}")
-    teams = rng.sample(C.BET_TEAMS, 8)
+    teams = rng.sample(C.BET_TEAMS, 2 * C.BET_MATCHES)
     out = []
-    for i in range(4):
+    for i in range(C.BET_MATCHES):
         home, away = teams[2 * i], teams[2 * i + 1]
         h, a = rng.uniform(0.8, 1.6), rng.uniform(0.6, 1.4)
         draw = 0.27
@@ -2546,9 +2546,26 @@ def fixtures(state, now: float | None = None) -> list[dict]:
     return out
 
 
-def place_bet(state: dict, match: int, pick: str, stake: int, adult: bool = False,
-              now: float | None = None) -> tuple[dict, list[str]]:
-    """A bet on a virtual match: settled in seconds. The odds are fair minus the bookie's cut."""
+def _play_match(rng, g) -> dict:
+    """Play one virtual match: the result, the score and the minute each goal went in."""
+    r = rng.random()
+    result = "1" if r < g["probs"]["1"] else "X" if r < g["probs"]["1"] + g["probs"]["X"] else "2"
+    goals = {"1": (rng.randint(1, 3), 0), "X": (rng.randint(0, 2),) * 2, "2": (0, rng.randint(1, 3))}[result]
+    if result == "1":
+        goals = (goals[0], rng.randint(0, goals[0] - 1))
+    elif result == "2":
+        goals = (rng.randint(0, goals[1] - 1), goals[1])
+    minutes = sorted(rng.sample(range(2, 90), goals[0] + goals[1]))
+    sides = ["home"] * goals[0] + ["away"] * goals[1]
+    rng.shuffle(sides)
+    return {"result": result, "score": f"{g['home']} {goals[0]}-{goals[1]} {g['away']}",
+            "goals": [[m, side] for m, side in zip(minutes, sides)]}
+
+
+def place_bet(state: dict, match=None, pick: str = "", stake: int = 0, adult: bool = False,
+              now: float | None = None, picks: list | None = None) -> tuple[dict, list[str]]:
+    """A bet slip on virtual matches: one pick, or several multiplied together (an accumulator). Every match on
+    the slip kicks off at once and plays out in seconds. The odds are fair minus the bookie's cut."""
     state = upgrade(copy.deepcopy(state))
     messages = _begin(state, now)
     if state["phase"] != "play":
@@ -2560,8 +2577,8 @@ def place_bet(state: dict, match: int, pick: str, stake: int, adult: bool = Fals
         if not adult:
             raise GameError("Betting is for 18 and over. Confirm your age first.")
         flags["bet_adult"] = True
-    if stake not in C.BET_STAKES:
-        raise GameError("Pick a stake.")
+    if not C.BET_MIN <= stake <= C.BET_MAX:
+        raise GameError(f"Stake between ₦{C.BET_MIN:,} and ₦{C.BET_MAX:,}.")
     if not state.get("bank"):
         raise GameError("Fund your betting wallet from a bank account. Open one first.")
     if bank_balance(state) < stake:
@@ -2571,39 +2588,49 @@ def place_bet(state: dict, match: int, pick: str, stake: int, adult: bool = Fals
     if flags["bets_today"] >= 10:
         raise GameError("That's 10 bets today. The app has locked you out until tomorrow.")
     games = fixtures(state, now)
-    if not 0 <= match < len(games) or pick not in ("1", "X", "2"):
-        raise GameError("Pick a match and a result.")
-    g = games[match]
+    slip = picks if picks is not None else [(match, pick)]
+    chosen = {}
+    for m, p in slip:
+        try:
+            m = int(m)
+        except (TypeError, ValueError):
+            raise GameError("Pick a match and a result.")
+        if not 0 <= m < len(games) or p not in ("1", "X", "2"):
+            raise GameError("Pick a match and a result.")
+        chosen[m] = p  # one pick per match
+    if not chosen:
+        raise GameError("Pick at least one match.")
     rng = _rng(state, "bet")
-    r = rng.random()
-    result = "1" if r < g["probs"]["1"] else "X" if r < g["probs"]["1"] + g["probs"]["X"] else "2"
-    goals = {"1": (rng.randint(1, 3), 0), "X": (rng.randint(0, 2),) * 2, "2": (0, rng.randint(1, 3))}[result]
-    if result == "1":
-        goals = (goals[0], rng.randint(0, goals[0] - 1))
-    elif result == "2":
-        goals = (rng.randint(0, goals[1] - 1), goals[1])
-    score = f"{g['home']} {goals[0]}-{goals[1]} {g['away']}"
+    legs, odds = [], 1.0
+    for m, p in sorted(chosen.items()):
+        g = games[m]
+        played = _play_match(rng, g)
+        odds *= g["odds"][p]
+        legs.append({"home": g["home"], "away": g["away"], "pick": p, "odds": g["odds"][p], **played,
+                     "won": played["result"] == p})
+    odds = round(odds, 2)
+    won = all(leg["won"] for leg in legs)
     flags["bets_today"] += 1
     _bank_move(state, -stake, "Bet stake")
     state["stats"]["bets"] += 1
     state["stats"]["staked"] += stake
-    if pick == result:
-        win = int(round(stake * g["odds"][pick]))
+    kind = "Single" if len(legs) == 1 else f"{len(legs)}-match accumulator"
+    win = int(round(stake * odds)) if won else 0
+    if won:
         _bank_move(state, win, "Bet winnings")
         state["stats"]["bet_won"] += win
         _add_moodlet(state, "odds_landed")
         flags["bet_ever_won"] = True
-        messages.insert(0, f"{score}. Odds landed! ₦{stake:,} became ₦{win:,}.")
+        messages.insert(0, f"{kind} landed at {odds}! ₦{stake:,} became ₦{win:,}.")
     else:
         _add_moodlet(state, "bet_cut")
-        messages.insert(0, f"{score}. Bet cut. You lost ₦{stake:,}.")
-    # when the goals went in, so the phone can play the match out minute by minute instead of in a blink
-    minutes = sorted(rng.sample(range(2, 90), goals[0] + goals[1]))
-    sides = ["home"] * goals[0] + ["away"] * goals[1]
-    rng.shuffle(sides)
-    state["last_bet"] = {"score": score, "won": pick == result, "pick": pick, "result": result,
-                         "home": g["home"], "away": g["away"], "stake": stake,
-                         "goals": [[m, side] for m, side in zip(minutes, sides)], "at": now}
+        cut = sum(1 for leg in legs if not leg["won"])
+        messages.insert(0, f"{kind}: {cut} match{'es' if cut > 1 else ''} cut it. You lost ₦{stake:,}.")
+    first = legs[0]
+    state["last_bet"] = {"legs": legs, "odds": odds, "stake": stake, "won": won, "win": win, "at": now,
+                         # single-match fields, for older screens
+                         "score": first["score"], "pick": first["pick"], "result": first["result"],
+                         "home": first["home"], "away": first["away"], "goals": first["goals"]}
     return _finish(state, messages, now, BET_MATCH_SECONDS)
 
 
@@ -3145,7 +3172,7 @@ def view(state: dict, now: float | None = None) -> dict:
         "settling": settling(state),
         "parents": {"asks": C.PARENT_ASKS, "cap": p["parent_cap"],
                     "called": state["flags"].get("parents_week") == week_key(state)},
-        "betting": {"stakes": C.BET_STAKES, "adult": bool(state["flags"].get("bet_adult")),
+        "betting": {"stakes": C.BET_STAKES, "min": C.BET_MIN, "max": C.BET_MAX, "adult": bool(state["flags"].get("bet_adult")),
                     "fixtures": [{k: v for k, v in f.items() if k != "probs"} for f in fixtures(state, now)],
                     "staked": state["stats"].get("staked", 0), "won": state["stats"].get("bet_won", 0),
                     "today": state["flags"].get("bets_today", 0) if state["flags"].get("bet_day") == state["total_days"] else 0,

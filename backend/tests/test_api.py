@@ -620,3 +620,19 @@ def test_sug_election_one_vote_a_week(monkeypatch):
     res = a.post("/api/sug/", {"candidate": pick}, format="json")
     assert res.status_code == 400 and "One student" in res.data["detail"]
     assert a.post("/api/sug/", {"candidate": "nobody"}, format="json").status_code == 400
+
+
+def test_delete_account_and_unsaved_game(no_login_throttle):
+    client, game = start(name="Bye")
+    res = client.post("/api/game/delete/", {"confirm": "nope"}, format="json")
+    assert res.status_code == 400
+    assert client.post("/api/game/delete/", {"confirm": "DELETE"}, format="json").status_code == 204
+    assert client.get("/api/game/").status_code == 404
+
+    client, game = start(name="Ada")
+    acct = client.post("/api/account/register/", {"username": "ada_bye", "password": "greatife123"}, format="json").data
+    client.credentials(HTTP_X_GAME_TOKEN=client._credentials["HTTP_X_GAME_TOKEN"], HTTP_X_ACCOUNT_TOKEN=acct["account_token"])
+    assert client.delete("/api/account/", {"password": "wrong"}, format="json").status_code == 400
+    assert client.delete("/api/account/", {"password": "greatife123"}, format="json").status_code == 204
+    assert not Game.objects.filter(display_name="Ada").exists()
+    assert APIClient().post("/api/account/login/", {"username": "ada_bye", "password": "greatife123"}, format="json").status_code != 200

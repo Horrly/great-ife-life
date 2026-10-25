@@ -5,6 +5,7 @@ import { clockText, duration, naira } from "../lib/format";
 import { BankApp } from "./Banking";
 import ChatApp from "./Chat";
 import { SugCard } from "./Extras";
+import Settings from "./Settings";
 
 const WALLPAPER = {
   ios: "linear-gradient(160deg, #1f6f4a 0%, #0e4a30 40%, #f2a65a 100%)",
@@ -30,6 +31,7 @@ const APPS = [
   { id: "jiji", name: "Jiji", icon: "🚗", color: "#3db83a", actions: ["buy_car"], day: 5 },
   { id: "timetable", name: "Timetable", icon: "🗓", color: "#7a3e9d", screen: "timetable" },
   { id: "maps", name: "Maps", icon: "🗺", color: "#e9c227", screen: "maps" },
+  { id: "settings", name: "Settings", icon: "⚙️", color: "#5b6470", screen: "settings" },
 ];
 
 // New students get the basics; more apps open over their first days, so nobody drowns on day one.
@@ -139,7 +141,8 @@ function ParentsScreen({ game, busy, onParents }) {
 const MATCH_SECONDS = 13; // the server keeps you "watching" this long
 
 /** The match plays out: 90 minutes over 45 real seconds, half-time included, goals as they happen. */
-function LiveMatch({ bet, busyFor }) {
+/** Every match on your slip plays at once: 90 minutes in 13 seconds, half-time included, goals as they go in. */
+function LiveSlip({ bet, busyFor }) {
   const start = useRef(0);
   const [, setTick] = useState(0);
   if (start.current === 0 || start.current.at !== bet.at) {
@@ -154,24 +157,41 @@ function LiveMatch({ bet, busyFor }) {
   }, [live, bet.at]);
   // first half 0–6 s, half-time 6–7 s, second half 7–13 s
   const minute = !live ? 90 : elapsed < 6 ? Math.floor((elapsed / 6) * 45) : elapsed < 7 ? 45 : 45 + Math.floor(((elapsed - 7) / 6) * 45);
-  const scored = (bet.goals || []).filter(([m]) => m <= minute);
-  const h = scored.filter(([, side]) => side === "home").length;
-  const a = scored.length - h;
-  const latest = scored[scored.length - 1];
-  const fresh = live && latest && minute - latest[0] < 12;
+  const legs = bet.legs || [{ home: bet.home, away: bet.away, pick: bet.pick, result: bet.result, goals: bet.goals || [], won: bet.won }];
+  const pickName = (leg) => (leg.pick === "1" ? leg.home : leg.pick === "2" ? leg.away : "Draw");
   return (
     <div className={`rounded-xl px-3 py-2.5 ${live ? "bg-[#0b2416]" : bet.won ? "bg-[#1f7a46]" : "bg-[#7a1f1f]"}`} aria-live="polite">
       <div className="flex items-center justify-between text-[11px] font-bold opacity-85">
         <span>{live ? (elapsed >= 6 && elapsed < 7 ? "Half-time" : `🔴 LIVE ${minute}'`) : "Full time"}</span>
-        <span>Your pick: {bet.pick === "1" ? bet.home : bet.pick === "2" ? bet.away : "Draw"}</span>
+        <span>{legs.length > 1 ? `${legs.length}-match slip · odds ${bet.odds}` : `Odds ${bet.odds ?? ""}`} · ₦{(bet.stake || 0).toLocaleString("en-NG")}</span>
       </div>
-      <div className="mt-1 flex items-center justify-between gap-2 text-sm font-black">
-        <span className="min-w-0 flex-1 truncate">{bet.home}</span>
-        <span className="num rounded-md bg-black/30 px-2 py-0.5 text-lg">{h} – {a}</span>
-        <span className="min-w-0 flex-1 truncate text-right">{bet.away}</span>
-      </div>
-      {fresh && <p className="pop mt-1 text-center text-sm font-black text-bulb">⚽ GOAL! {latest[1] === "home" ? bet.home : bet.away} ({latest[0]}')</p>}
-      {!live && <p className="mt-1 text-center text-sm font-bold">{bet.won ? "Odds landed! 🎉" : "Bet cut."}</p>}
+      <ul className="mt-1.5 space-y-1">
+        {legs.map((leg, i) => {
+          const scored = leg.goals.filter(([m]) => m <= minute);
+          const h = scored.filter(([, side]) => side === "home").length;
+          const a = scored.length - h;
+          const now = h > a ? "1" : h < a ? "2" : "X";
+          const going = live ? now === leg.pick : leg.won;
+          const latest = scored[scored.length - 1];
+          const fresh = live && latest && minute - latest[0] < 12;
+          return (
+            <li key={i} className={`rounded-lg px-2 py-1.5 ${fresh ? "bg-bulb/25" : "bg-black/20"}`}>
+              <div className="flex items-center gap-2 text-xs font-bold">
+                <span className="min-w-0 flex-1 truncate">{leg.home}</span>
+                <span className="num rounded bg-black/30 px-1.5">{h} – {a}</span>
+                <span className="min-w-0 flex-1 truncate text-right">{leg.away}</span>
+                <span aria-label={going ? "on course" : "not landing"}>{going ? "✅" : "❌"}</span>
+              </div>
+              <p className="text-[10px] opacity-75">Your pick: {pickName(leg)}{fresh ? ` · ⚽ GOAL ${latest[0]}'` : ""}</p>
+            </li>
+          );
+        })}
+      </ul>
+      {!live && (
+        <p className="mt-1.5 text-center text-sm font-black">
+          {bet.won ? `Odds landed! You won ₦${(bet.win || 0).toLocaleString("en-NG")} 🎉` : "Bet cut. Better luck next time."}
+        </p>
+      )}
     </div>
   );
 }
@@ -179,13 +199,16 @@ function LiveMatch({ bet, busyFor }) {
 function BetScreen({ game, busy, onBet }) {
   const b = game.betting;
   const [adult, setAdult] = useState(b.adult);
+  const [slip, setSlip] = useState({}); // match index -> "1" | "X" | "2"
+  const top = useRef(null);
   const [stake, setStake] = useState(b.stakes[1]);
   const net = b.won - b.staked;
+  const live = b.last && game.busy_for > 0;
   if (!adult) {
     return (
       <div className="space-y-3 p-4 text-white">
         <p className="display text-3xl">OgaBet ⚽</p>
-        <p className="text-sm">Virtual football: each match plays out over about 13 seconds. The bookie keeps about 12% of every naira, so over time the app wins.</p>
+        <p className="text-sm">Virtual football: pick as many matches as you like, choose your stake, and they all play out in about 13 seconds. The bookie keeps about 12% of every naira, so over time the app wins.</p>
         <label className="flex items-start gap-2 rounded-xl bg-white/15 p-3 text-sm">
           <input type="checkbox" className="mt-1 h-4 w-4" onChange={(e) => setAdult(e.target.checked)} />
           I'm 18 or older
@@ -193,36 +216,34 @@ function BetScreen({ game, busy, onBet }) {
       </div>
     );
   }
+  const picks = Object.entries(slip).map(([m, p]) => ({ match: Number(m), pick: p }));
+  const odds = picks.reduce((acc, { match, pick }) => acc * (b.fixtures.find((f) => f.index === match)?.odds[pick] || 1), 1);
+  const balance = game.bank?.balance ?? 0;
+  const okStake = stake >= (b.min || 100) && stake <= (b.max || 50000) && stake <= balance;
+  const toggle = (index, k) => setSlip((cur) => {
+    const next = { ...cur };
+    if (next[index] === k) delete next[index];
+    else next[index] = k;
+    return next;
+  });
   return (
-    <div className="space-y-2.5 p-3 text-white">
+    <div ref={top} className="space-y-2.5 p-3 pb-44 text-white">
       <div className="flex items-baseline justify-between rounded-xl bg-white/10 px-3 py-2 text-xs">
         <span>Bets today: {b.today}/10</span>
         <span className={net < 0 ? "font-bold text-[#ff9a8a]" : "font-bold text-[#8fe3a8]"}>
-          {b.staked ? `${net < 0 ? "Down" : "Up"} ${naira(Math.abs(net))} overall` : "No bets yet"}
+          {live ? "Matches in play…" : b.staked ? `${net < 0 ? "Down" : "Up"} ${naira(Math.abs(net))} overall` : "No bets yet"}
         </span>
       </div>
-      {b.last && (b.last.goals ? <LiveMatch bet={b.last} busyFor={game.busy_for} /> : (
-        <p className={`rounded-xl px-3 py-2 text-sm font-bold ${b.last.won ? "bg-[#1f7a46]" : "bg-[#7a1f1f]"}`}>
-          {b.last.score} · {b.last.won ? "Won" : "Lost"}
-        </p>
-      ))}
-      <div className="flex gap-1.5" role="radiogroup" aria-label="Stake">
-        {b.stakes.map((n) => (
-          <button key={n} role="radio" aria-checked={stake === n} onClick={() => setStake(n)}
-            className={`flex-1 rounded-lg px-1 py-1.5 text-xs font-black ${stake === n ? "bg-bulb text-ink" : "bg-white/15"}`}>
-            {ASK_LABEL(n)}
-          </button>
-        ))}
-      </div>
+      {b.last && <LiveSlip bet={b.last} busyFor={game.busy_for} />}
+      <p className="text-xs font-bold opacity-85">Tap a result to add it to your slip. Pick as many matches as you like.</p>
       <ul className="space-y-2">
         {b.fixtures.map((f) => (
-          <li key={f.index} className="rounded-xl bg-white/95 p-2.5 text-ink">
+          <li key={f.index} className={`rounded-xl p-2.5 text-ink ${slip[f.index] ? "bg-[#fff6d6] ring-2 ring-bulb" : "bg-white/95"}`}>
             <p className="text-sm font-bold">{f.home} <span className="text-muted">vs</span> {f.away}</p>
             <div className="mt-1.5 grid grid-cols-3 gap-1.5">
               {["1", "X", "2"].map((k) => (
-                <button key={k} disabled={busy || (game.bank?.balance ?? 0) < stake || b.today >= 10}
-                  onClick={() => onBet(f.index, k, stake, true)}
-                  className="rounded-lg bg-[#0f2f1f] px-1 py-1.5 text-white disabled:opacity-50">
+                <button key={k} disabled={live} aria-pressed={slip[f.index] === k} onClick={() => toggle(f.index, k)}
+                  className={`rounded-lg px-1 py-1.5 disabled:opacity-50 ${slip[f.index] === k ? "bg-bulb text-ink" : "bg-[#0f2f1f] text-white"}`}>
                   <span className="block text-[10px] opacity-70">{k === "1" ? "Home" : k === "X" ? "Draw" : "Away"}</span>
                   <span className="num text-base">{f.odds[k].toFixed(2)}</span>
                 </button>
@@ -232,13 +253,47 @@ function BetScreen({ game, busy, onBet }) {
         ))}
       </ul>
       <p className="text-[11px] opacity-75">New matches every 10 minutes. Only bet what you can afford to lose.</p>
+      {picks.length > 0 && (
+        <div className="absolute inset-x-2 bottom-2 z-10 rounded-2xl bg-white p-3 text-ink shadow-2xl">
+          <div className="flex items-center justify-between text-sm font-bold">
+            <span>🧾 {picks.length} {picks.length === 1 ? "match" : "matches"} · odds {odds.toFixed(2)}</span>
+            <button className="text-xs font-bold text-muted underline" onClick={() => setSlip({})}>Clear</button>
+          </div>
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className="text-sm font-bold">₦</span>
+            <input type="number" inputMode="numeric" className="num min-w-0 flex-1 rounded-lg border border-line px-2 py-1.5 text-sm"
+              value={stake} min={b.min || 100} max={b.max || 50000} onChange={(e) => setStake(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+              aria-label="Stake amount" />
+          </div>
+          <div className="mt-1.5 flex gap-1">
+            {b.stakes.map((n) => (
+              <button key={n} onClick={() => setStake(n)}
+                className={`flex-1 rounded-lg px-1 py-1 text-[11px] font-black ${stake === n ? "bg-ink text-white" : "bg-chip"}`}>{ASK_LABEL(n)}</button>
+            ))}
+          </div>
+          <button className="btn mt-2 w-full rounded-full bg-go py-2.5 text-sm text-white disabled:opacity-50"
+            disabled={busy || live || !okStake || b.today >= 10}
+            onClick={async () => {
+              const ok = await onBet(picks, stake, true);
+              if (ok) {
+                setSlip({});
+                // jump up to the live scores
+                top.current?.closest(".overflow-y-auto")?.scrollTo({ top: 0, behavior: "smooth" });
+              }
+            }}>
+            {stake > balance ? "Not enough in your account" : `Stake ₦${stake.toLocaleString("en-NG")} · win ₦${Math.round(stake * odds).toLocaleString("en-NG")}`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run }) {
+function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run, extra }) {
   let body;
-  if (app.screen === "chat") {
+  if (app.screen === "settings") {
+    body = <Settings {...extra} />;
+  } else if (app.screen === "chat") {
     body = <ChatApp />;
   } else if (app.screen === "parents") {
     body = <ParentsScreen game={game} busy={busy} onParents={onParents} />;
@@ -289,7 +344,7 @@ function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run }) {
   );
 }
 
-function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onParents, onBet, run }) {
+function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onParents, onBet, run, extra }) {
   const [app, setAppState] = useState(null);
   const [seen, setSeen] = useState(seenApps);
   const setApp = (a) => {
@@ -320,7 +375,7 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onPare
         )}
         <StatusBar minute={minute} />
         {app ? (
-          <AppScreen app={app} game={game} onAct={onAct} busy={busy} onBack={() => setApp(null)} onParents={onParents} onBet={onBet} run={run} />
+          <AppScreen app={app} game={game} onAct={onAct} busy={busy} onBack={() => setApp(null)} onParents={onParents} onBet={onBet} run={run} extra={extra} />
         ) : (
           <>
             <div className="px-5 pb-2 pt-6 text-white">
@@ -481,7 +536,7 @@ function KeypadPhone({ info, game, minute, onAct, busy, onParents }) {
 }
 
 /** The phone overlay. */
-export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMarket, onHousing, onParents, onBet, run }) {
+export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMarket, onHousing, onParents, onBet, run, extra }) {
   const info = game.phone_info;
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -500,7 +555,7 @@ export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMa
           {info.os === "keypad" ? (
             <KeypadPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onParents={onParents} />
           ) : (
-            <SmartPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onMaps={onMaps}
+            <SmartPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onMaps={onMaps} extra={extra}
               onHousing={onHousing} onParents={onParents} onBet={onBet} run={run} />
           )}
           <p className="text-center text-xs font-bold text-white">

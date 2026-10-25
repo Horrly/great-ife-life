@@ -7,6 +7,7 @@ import {
   MoreMenu, NavBar, NeedsCard, NeedsPill, NextClassPill, PhoneButton, PlaceCard, PlaceSheet, RoundIcon, StatusDrawer, WalletPill,
 } from "../components/Hud";
 import Phone from "../components/Phone";
+import Settings from "../components/Settings";
 import MapView from "../components/MapView";
 import { DmSheet, PersonSheet } from "../components/Person";
 import { Receipt, RiddleSheet, Spectacle } from "../components/Extras";
@@ -371,9 +372,10 @@ export default function Play() {
     await playback("Calling Mummy", g, "📞");
   }
 
-  async function onBet(match, pick, stake, adult) {
-    const g = await bet(match, pick, stake, adult);
-    if (g) await playback("The match is on…", g, "⚽");
+  async function onBet(picks, stake, adult) {
+    const g = await bet(picks, stake, adult);
+    if (g) playback(picks.length > 1 ? `${picks.length} matches are on…` : "The match is on…", g, "⚽");
+    return Boolean(g);
   }
 
   /** Bank, ATM and POS moves: wait for the server, then play the few seconds it takes. */
@@ -536,7 +538,16 @@ export default function Play() {
       onClick: () => (inside && game.at === classTarget ? setPanel("place") : goTo(classTarget)) },
     { id: "map", label: "Map", icon: "🗺", active: panel === "map", onClick: () => setPanel((p) => (p === "map" ? null : "map")) },
   ];
+  const settingsProps = {
+    flatMap, setFlatMap: engine.current && !no3d ? setFlatMap : null, onSave: () => setPanel("save"),
+    onHideButtons: () => {
+      setPanel(null);
+      setClean(true);
+    },
+    onShortcuts: () => setPanel("keys"),
+  };
   const more = [
+    { icon: "⚙️", label: "Settings", onClick: () => setPanel("settings") },
     ...(game.has_laptop ? [{ icon: "💻", label: "Open your laptop", onClick: () => setPanel("laptop") }] : []),
     { icon: "🎯", label: "Today's missions", onClick: () => openMe("goals") },
     { icon: "🏠", label: "Houses (move or invite)", onClick: () => setPanel("housing") },
@@ -727,7 +738,8 @@ export default function Play() {
         <Phone game={game} minute={minute} onAct={onAct} busy={busy} onClose={close}
           onMaps={() => setPanel("map")}
           onMarket={() => goTo("market")}
-          onHousing={() => setPanel("housing")} onParents={onParents} onBet={onBet} run={runMove} />
+          onHousing={() => setPanel("housing")} onParents={onParents} onBet={onBet} run={runMove}
+          extra={settingsProps} />
       )}
       {panel === "housing" && !overlayOpen && (
         <BottomSheet title="Houses" subtitle="Halls, off-campus places, and moving in with friends" onClose={close}>
@@ -747,6 +759,13 @@ export default function Play() {
         <MeSheet game={game} account={account} tab={meTab} onClose={close} onSave={() => setPanel("save")} onTitle={() => navigate("/")} />
       )}
       {panel === "inbox" && <InboxSheet game={game} onClose={close} />}
+      {panel === "settings" && (
+        <BottomSheet title="⚙️ Settings" onClose={close} height="auto">
+          <div className="-m-3 rounded-2xl bg-[#2d3a35]">
+            <Settings {...settingsProps} />
+          </div>
+        </BottomSheet>
+      )}
       {panel === "keys" && (
         <BottomSheet title="Keyboard shortcuts" onClose={close} height="auto">
           <ul className="grid grid-cols-2 gap-1.5 text-sm">

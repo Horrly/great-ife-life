@@ -147,9 +147,16 @@ export default class RoomView {
     // step back far enough that the whole room fits the screen, phone or laptop
     const v = THREE.MathUtils.degToRad(this.camera.fov) / 2;
     const hfov = Math.atan(Math.tan(v) * this.camera.aspect);
-    const dist = Math.max((r.w * (this.camera.aspect < 0.8 ? 0.45 : 0.54)) / Math.tan(hfov), (r.d * 0.55 + r.h * 0.5) / Math.tan(v));
-    const elev = 0.62; // looking down into the room
-    const sway = Math.sin(this.t * 0.25) * 0.05; // a gentle drift so the room feels alive; it never spins
+    const zoomK = this.userZoom ?? 1;
+    const dist = zoomK * Math.max((r.w * (this.camera.aspect < 0.8 ? 0.45 : 0.54)) / Math.tan(hfov), (r.d * 0.55 + r.h * 0.5) / Math.tan(v));
+    // drag to turn round the room (and up/down), pinch or scroll to zoom; a gentle drift when you leave it alone
+    this.viewYaw = THREE.MathUtils.lerp(this.viewYaw || 0, this.userYaw || 0, Math.min(1, dt * 8));
+    const elev = this.userElev ?? 0.62;
+    const sway = this.viewYaw + (this.userYaw ? 0 : Math.sin(this.t * 0.25) * 0.05);
+    if (this.sideWalls) {
+      this.sideWalls.left.visible = sway > -0.3;
+      this.sideWalls.right.visible = sway < 0.3;
+    }
     const tx = 0;
     const ty = r.h * 0.28;
     const tz = -r.d * 0.05;
@@ -183,6 +190,8 @@ export default class RoomView {
   }
 
   _clear() {
+    this.userYaw = 0; // a new room starts from the usual view
+    this.userElev = undefined;
     if (!this.group) return;
     this.scene.remove(this.group);
     this.group.traverse((o) => {
@@ -251,6 +260,34 @@ export default class RoomView {
     obj.userData.station = station;
     this.tappables.push(obj);
     return obj;
+  }
+
+  /** Turn the camera round the room by a finger drag (pixels). */
+  orbit(dx, dy) {
+    this.userYaw = THREE.MathUtils.clamp((this.userYaw || 0) - dx * 0.008, -1.35, 1.35);
+    this.userElev = THREE.MathUtils.clamp((this.userElev ?? 0.62) + dy * 0.004, 0.3, 1.25);
+  }
+
+  zoomBy(k) {
+    this.userZoom = THREE.MathUtils.clamp((this.userZoom ?? 1) * k, 0.45, 1.35);
+  }
+
+  /** Tap the floor: walk there (unless you're busy with something). Returns true if it was the floor. */
+  walkToTap(ndc) {
+    if (!this.group || !this.you || !this.size || this.you.children[0].userData.managed) return false;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const hit = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) return false;
+    const hw = this.size.w / 2 - 1;
+    const hd = this.size.d / 2 - 1;
+    if (Math.abs(hit.x) > hw + 1 || Math.abs(hit.z) > hd + 3) return false;
+    this.walkGoal = [THREE.MathUtils.clamp(hit.x, -hw, hw), THREE.MathUtils.clamp(hit.z, -hd, hd)];
+    this.doing = null;
+    this.doingAction = null;
+    this.faceTarget = null;
+    this.youHome = this.walkGoal; // stay where you walked to
+    return true;
   }
 
   /** What's under the finger: a station id ("food", "rest", "self"…) or null. */
@@ -333,6 +370,7 @@ export default class RoomView {
       m.userData.own = true;
       this.group.add(m);
     }
+    this.sideWalls = { left, right }; // hidden when you turn the camera round to look past them
     // skirting
     this.box(w, 0.25, 0.08, "#5a4632", 0, 0, -d / 2 + 0.18);
     // the window on the back wall: louvre blades behind burglar bars; daylight comes through it

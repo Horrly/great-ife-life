@@ -190,7 +190,10 @@ def pos_fee(amount: int) -> int:
 BET_STAKES = [100, 500, 1_000, 5_000, 20_000]
 BET_MARGIN = 0.12          # the bookie keeps about 12% of every naira staked
 BET_TEAMS = ["Arsenal", "Chelsea", "Man United", "Man City", "Liverpool", "Spurs", "Real Madrid", "Barcelona",
-             "Enyimba", "Shooting Stars", "Rangers", "Kano Pillars", "Remo Stars", "Sunshine Stars", "PSG", "Bayern"]
+             "Enyimba", "Shooting Stars", "Rangers", "Kano Pillars", "Remo Stars", "Sunshine Stars", "PSG", "Bayern",
+             "Juventus", "AC Milan", "Inter", "Dortmund", "Ajax", "Lobi Stars", "Plateau United", "Bendel Insurance"]
+BET_MATCHES = 8            # matches on the board at once
+BET_MIN, BET_MAX = 100, 50_000
 
 # Each course has a faculty building (classrooms, study groups) and lecture theatres it uses.
 # Tests and exams are written in "exams".

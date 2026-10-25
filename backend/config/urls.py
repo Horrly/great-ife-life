@@ -38,6 +38,7 @@ urlpatterns = [
     path("api/game/riddle/", g.RiddleView.as_view()),
     path("api/game/riddle/search/", g.RiddleSearchView.as_view()),
     path("api/game/skip/", g.SkipView.as_view()),
+    path("api/game/delete/", g.DeleteGameView.as_view()),
     path("api/sug/", g.SugView.as_view()),
     path("api/chat/", g.ChatThreadsView.as_view()),
     path("api/chat/messages/", g.ChatMessagesView.as_view()),

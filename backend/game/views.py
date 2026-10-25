@@ -538,10 +538,14 @@ class ParentsView(_MoveView):
 class BetView(_MoveView):
     def move(self, state, data, t):
         try:
-            match, stake = int(data.get("match")), int(data.get("stake"))
+            stake = int(data.get("stake"))
         except (TypeError, ValueError):
-            raise E.GameError("Pick a match and a stake.")
-        return E.place_bet(state, match, str(data.get("pick", "")), stake, bool(data.get("adult")), t)
+            raise E.GameError("Pick a stake.")
+        picks = data.get("picks")
+        if isinstance(picks, list) and picks:
+            slip = [(p.get("match"), str(p.get("pick", ""))) for p in picks[:C.BET_MATCHES] if isinstance(p, dict)]
+            return E.place_bet(state, stake=stake, adult=bool(data.get("adult")), now=t, picks=slip)
+        return E.place_bet(state, data.get("match"), str(data.get("pick", "")), stake, bool(data.get("adult")), t)
 
 
 class HousingView(APIView):
@@ -754,6 +758,30 @@ class LoginView(APIView):
 class AccountView(APIView):
     def get(self, request):
         return Response(account_payload(account_for(request)))
+
+    def delete(self, request):
+        """Delete your account and every life on it, for good. Your password confirms it's you."""
+        user = account_for(request)
+        if not user.check_password(str(request.data.get("password", ""))):
+            raise ValidationError({"password": "That password is wrong."})
+        with transaction.atomic():
+            Game.objects.filter(user=user).delete()
+            AccountSession.objects.filter(user=user).delete()
+            user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DeleteGameView(APIView):
+    """Delete the game on this device (for players without an account). Lives saved to an account go with the account."""
+
+    def post(self, request):
+        game = game_for(request)
+        if game.user_id:
+            raise ValidationError({"detail": "This life is saved to your account. Delete the account to remove it."})
+        if str(request.data.get("confirm", "")).upper() != "DELETE":
+            raise ValidationError({"detail": "Type DELETE to confirm."})
+        game.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class LogoutView(APIView):
