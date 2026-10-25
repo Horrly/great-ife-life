@@ -685,6 +685,9 @@ def life_summary(game: Game) -> dict:
         "cgpa": game.final_cgpa if game.status == "graduated" else (E.cgpa(state) if state["results"] else None),
         "class": game.final_class or None, "share_code": game.share_code if game.status == "graduated" else None,
         "updated_at": game.updated_at,
+        # for the welcome-back screen
+        "look": state.get("look"), "money": E.total_money(state) if game.status == "playing" else None,
+        "housing": (state.get("housing") or {}).get("kind"),
     }
 
 

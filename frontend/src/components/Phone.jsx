@@ -350,7 +350,7 @@ function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run, extr
   );
 }
 
-function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onParents, onBet, run, extra }) {
+function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onParents, onBet, run, extra, onClose }) {
   const [app, setAppState] = useState(null);
   const [seen, setSeen] = useState(seenApps);
   const [q, setQ] = useState("");
@@ -375,7 +375,7 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onPare
       className={`relative mx-auto flex flex-col overflow-hidden border-[10px] border-[#111] bg-black shadow-2xl ${ios ? "rounded-[3rem]" : "rounded-[2rem]"}`}
       // a big handset that keeps its size when the keyboard opens (lvh ignores the keyboard), like Lagos Life:
       // the page slides up so what you're typing in stays in view, instead of the phone shrinking to a stamp
-      style={{ width: "min(94vw, 460px)", height: "min(88vh, 88lvh, 900px)" }}
+      style={{ width: "min(94vw, 460px)", height: "min(80vh, 80lvh, 860px)" }}
       onFocus={(e) => {
         // typing: keep the box you're typing in visible above the keyboard
         if (e.target.matches?.("input, textarea")) setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 350);
@@ -458,14 +458,15 @@ function SmartPhone({ info, game, minute, onAct, busy, onMaps, onHousing, onPare
         {info.cracked && <Crack />}
       </div>
       {ios ? (
-        <div className="flex justify-center bg-transparent py-1.5" style={{ background: wall }}>
-          <span className="h-1 w-28 rounded-full bg-white/80" aria-hidden />
-        </div>
+        <button type="button" className="flex justify-center py-2" style={{ background: wall }} aria-label={app ? "Home screen" : "Put the phone away"}
+          onClick={() => (app ? setApp(null) : onClose())}>
+          <span className="h-1.5 w-28 rounded-full bg-white/85" />
+        </button>
       ) : (
-        <div className="flex justify-around bg-black py-1.5 text-sm text-white/80" aria-hidden>
-          <span>◁</span>
-          <span>○</span>
-          <span>□</span>
+        <div className="flex justify-around bg-black py-1 text-lg text-white/85">
+          <button type="button" className="px-5 py-1" aria-label={app ? "Back" : "Put the phone away"} onClick={() => (app ? setApp(null) : onClose())}>◁</button>
+          <button type="button" className="px-5 py-1" aria-label="Home screen" onClick={() => setApp(null)}>○</button>
+          <button type="button" className="px-5 py-1" aria-label="Put the phone away" onClick={onClose}>□</button>
         </div>
       )}
     </div>
@@ -563,15 +564,17 @@ export default function Phone({ game, minute, onAct, busy, onClose, onMaps, onMa
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-start gap-2 overflow-y-auto bg-ink/45 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:justify-center"
+    <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-start gap-2 overflow-y-auto bg-ink/45 p-3 pt-[max(3.75rem,calc(env(safe-area-inset-top)+3.25rem))] sm:justify-center"
       role="dialog" aria-label={info ? `Your phone: ${info.name}` : "No phone"}>
       <button className="absolute inset-0 cursor-default" aria-label="Put phone away" tabIndex={-1} onClick={onClose} />
+      <button className="fixed right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-50 grid h-11 w-11 place-items-center rounded-full bg-white text-xl font-bold text-ink shadow-lg"
+        aria-label="Close the phone" onClick={onClose}>×</button>
       {info ? (
         <div className="slide-up relative flex flex-col items-center gap-2">
           {info.os === "keypad" ? (
             <KeypadPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onParents={onParents} />
           ) : (
-            <SmartPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onMaps={onMaps} extra={extra}
+            <SmartPhone info={info} game={game} minute={minute} onAct={onAct} busy={busy} onMaps={onMaps} extra={extra} onClose={onClose}
               onHousing={onHousing} onParents={onParents} onBet={onBet} run={run} />
           )}
           <div className="flex items-center gap-2">

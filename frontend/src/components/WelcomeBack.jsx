@@ -97,12 +97,45 @@ function RoomDiorama({ game }) {
   return <div ref={host} className="absolute inset-0" aria-label="Your room" role="img" />;
 }
 
-export default function WelcomeBack() {
-  const { game, account, logout } = useGame();
+/**
+ * Coming back: the game on this phone, or (signed in on a new phone) the latest unfinished life on the account.
+ * life = an account life summary, used when there's no game on this device yet.
+ */
+/** While the saved game loads: the same sky and emblem, so the page doesn't flash the long introduction. */
+export function WelcomeSplash() {
+  return (
+    <div className="grid min-h-[100dvh] place-items-center bg-[linear-gradient(180deg,#bfdcf3_0%,#dcecf8_45%,#eef4f0_100%)] text-center">
+      <div>
+        <Emblem />
+        <p className="display mt-3 text-4xl text-[#18222b]">Great Ife Life</p>
+        <p className="mt-2 text-sm text-[#46525c]">Opening your game…</p>
+      </div>
+    </div>
+  );
+}
+
+export default function WelcomeBack({ life = null }) {
+  const { game: local, account, logout, resumeLife } = useGame();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const date = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "short", timeZone: "Africa/Lagos" }).format(new Date());
+  const game = local || {
+    name: life?.name, look: life?.look || {}, total_money: life?.money ?? 0, housing: { kind: life?.housing || "hostel" },
+    room: null, status: life?.status || "playing", profile: { name: life?.profile },
+  };
   const go = game.status === "graduated" ? "/graduation" : "/play";
+  async function onContinue() {
+    if (!local && life) {
+      setBusy(true);
+      try {
+        await resumeLife(life.id);
+      } catch {
+        setBusy(false);
+        return;
+      }
+    }
+    navigate(go);
+  }
   return (
     <div className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-[linear-gradient(180deg,#bfdcf3_0%,#dcecf8_45%,#eef4f0_100%)] text-ink">
       <header className="relative z-10 px-5 pt-[max(1.75rem,env(safe-area-inset-top))] text-center">
@@ -124,9 +157,9 @@ export default function WelcomeBack() {
               <span className="block text-sm text-muted">{date} · {nairaShort(game.total_money ?? game.money ?? 0)}</span>
             </span>
           </div>
-          <button className="mt-3 w-full rounded-[1.4rem] bg-[#1c8a52] py-4 text-xl font-bold text-white shadow-[0_5px_0_#0f5c35] active:translate-y-0.5 active:shadow-[0_3px_0_#0f5c35]"
-            onClick={() => navigate(go)}>
-            Continue
+          <button className="mt-3 w-full rounded-[1.4rem] bg-[#1c8a52] py-4 text-xl font-bold text-white shadow-[0_5px_0_#0f5c35] active:translate-y-0.5 active:shadow-[0_3px_0_#0f5c35] disabled:opacity-70"
+            onClick={onContinue} disabled={busy}>
+            {busy ? "Opening your game…" : "Continue"}
           </button>
           <div className="mt-3 flex items-center justify-between px-1 text-sm">
             {account ? (

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import WelcomeBack from "../components/WelcomeBack";
+import WelcomeBack, { WelcomeSplash } from "../components/WelcomeBack";
 import { Footer } from "../App";
 import InstallButton from "../components/InstallButton";
 import { api } from "../lib/api";
@@ -50,8 +50,13 @@ export default function Title() {
     ? { to: game.status === "graduated" ? "/graduation" : "/play", label: `Continue as ${game.name || game.profile.name}` }
     : { to: "/new", label: "Get admission" };
 
-  // coming back on a phone that already has a game: the welcome-back screen, not the sales page
-  if (playing && !params.get("about")) return <WelcomeBack />;
+  // coming back (a game on this phone, or signed in with an unfinished life): the welcome-back screen, not the
+  // long introduction
+  const about = params.get("about");
+  if (!about && loading) return <WelcomeSplash />;
+  if (!about && playing) return <WelcomeBack />;
+  const latest = account?.lives?.find((l) => l.status === "playing");
+  if (!about && !game && latest) return <WelcomeBack life={latest} />;
 
   return (
     <div className="min-h-screen bg-white text-ink">
