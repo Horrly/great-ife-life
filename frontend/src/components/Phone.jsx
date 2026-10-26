@@ -5,6 +5,7 @@ import { clockText, duration, naira } from "../lib/format";
 import { BankApp } from "./Banking";
 import ChatApp from "./Chat";
 import { SugCard } from "./Extras";
+import Businesses from "./Businesses";
 import Settings from "./Settings";
 
 const WALLPAPER = {
@@ -27,7 +28,7 @@ const APPS = [
   { id: "canva", group: "hustle", name: "Canva", icon: "🎨", color: "#19a7ce", actions: ["logo_gig"], day: 3 },
   { id: "gigs", group: "hustle", name: "Gigs", icon: "💼", color: "#6b4f2a", actions: ["bug_fix", "website_gig", "bridal_hair", "barb_wedding"], day: 3 },
   { id: "social", group: "people", name: "Socials", icon: "💬", color: "#d6336c", actions: ["scroll", "brand_deal"], day: 2 },
-  { id: "biz", group: "hustle", name: "Business", icon: "🏪", color: "#b5482a", match: (id) => (id.startsWith("buy_") && id !== "buy_car") || (id.startsWith("sell_") && id !== "sell_data") || id.startsWith("promo_"), day: 4 },
+  { id: "biz", group: "hustle", name: "Businesses", icon: "🏪", color: "#b5482a", screen: "biz", day: 4 },
   { id: "jiji", group: "fun", name: "Jiji", icon: "🚗", color: "#3db83a", actions: ["buy_car"], day: 5 },
   { id: "timetable", group: "campus", name: "Timetable", icon: "🗓", color: "#7a3e9d", screen: "timetable" },
   { id: "maps", group: "campus", name: "Maps", icon: "🗺", color: "#e9c227", screen: "maps" },
@@ -307,6 +308,8 @@ function AppScreen({ app, game, onAct, busy, onBack, onParents, onBet, run, extr
     body = <BetScreen game={game} busy={busy} onBet={onBet} />;
   } else if (app.screen === "bank") {
     body = <BankApp game={game} run={run} />;
+  } else if (app.screen === "biz") {
+    body = <Businesses game={game} onAct={onAct} busy={busy} />;
   } else if (app.screen === "timetable") {
     body = (
       <ul className="space-y-1.5 p-3 text-sm text-white">

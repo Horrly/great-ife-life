@@ -557,32 +557,75 @@ ITEMS = {
     "cobbler_kit": {"name": "Shoemaker's kit"},
 }
 
-# --- Businesses: pay out every night after costs (like Lagos Life). Some days are bad days.
-BUSINESSES = {
-    "kiosk": {"name": "Data and recharge kiosk", "price": 30_000, "income": (500, 1_200),
-              "bad_chance": 0.10, "bad_loss": 400, "bad_text": "The network was down all day. No sales.",
-              "blurb": "A table, an umbrella and every network's cards. Students always need data."},
-    "printer": {"name": "Printing and typing stand", "price": 60_000, "income": (1_000, 2_600), "exam_boost": 1.6,
-                "bad_chance": 0.12, "bad_loss": 1_000, "bad_text": "The printer jammed. Repairs cost you.",
-                "blurb": "Projects, assignments and past questions. Busiest just before exams."},
-    "food": {"name": "Food stall at the hall junction", "price": 150_000, "income": (2_500, 6_000),
-             "bad_chance": 0.15, "bad_loss": 3_000, "bad_text": "NEPA took light and your stock spoiled.",
-             "blurb": "Jollof, plantain and late-night noodles. Big money, big risk."},
+# --- Businesses and investments (the Businesses app). Capital is the price you pay to start.
+# Every evening at BUSINESS_PAYOUT_AT your takings come in, and rent (if any) goes out. Some days are bad days.
+BUSINESS_PAYOUT_AT = H(20)     # 8 PM: "Evening takings" land in your account
+BUSINESS_CATS = {
+    "fashion": {"name": "Fashion and perfume", "emoji": "👔"},
+    "gadgets": {"name": "Gadgets", "emoji": "📱"},
+    "food": {"name": "Food and drink", "emoji": "🍢"},
+    "services": {"name": "Services", "emoji": "✂️"},
+    "airtime": {"name": "Data and airtime", "emoji": "📶"},
 }
-BUSINESSES.update({
-    "chinchin": {"name": "Chin-chin supply to hall shops", "price": 20_000, "income": (400, 1_000),
-                 "bad_chance": 0.10, "bad_loss": 500, "bad_text": "A whole batch got soft in the rain.",
+# place: "campus" (market, halls, SUB, Ojaja) or "off" (Ife town, rent every evening)
+BUSINESSES = {
+    "perfume_stall": {"name": "Perfume and body spray stall", "place": "campus", "cat": "fashion", "price": 25_000,
+                      "income": (700, 1_800), "bad_chance": 0.10, "bad_loss": 500,
+                      "bad_text": "A supplier sold you fake oil. Customers came back angry.",
+                      "blurb": "A table at the Ojaja market with oils, sprays and a mirror. Students buy before every party."},
+    "shirts": {"name": "Shirt and tie-dye table", "place": "campus", "cat": "fashion", "price": 40_000,
+               "income": (900, 2_400), "bad_chance": 0.12, "bad_loss": 800,
+               "bad_text": "Rain soaked the stock. Half the shirts were spoiled.",
+               "blurb": "Plain tees, tie-dye and Ankara shirts sold at the market. Cheap to start, busy on weekends."},
+    "gadget_tray": {"name": "Phone accessories tray at the SUB", "place": "campus", "cat": "gadgets", "price": 50_000,
+                    "income": (1_000, 2_800), "bad_chance": 0.14, "bad_loss": 1_000,
+                    "bad_text": "A batch of chargers was fake and got returned.",
+                    "blurb": "Earphones, chargers, power banks and screen guards. Everyone's phone breaks eventually."},
+    "kiosk": {"name": "Data and recharge kiosk", "place": "campus", "cat": "airtime", "price": 30_000,
+              "income": (500, 1_200), "bad_chance": 0.10, "bad_loss": 400,
+              "bad_text": "The network was down all day. No sales.",
+              "blurb": "A table, an umbrella and every network's cards. Students always need data."},
+    "printer": {"name": "Printing and typing stand", "place": "campus", "cat": "services", "price": 60_000,
+                "income": (1_000, 2_600), "exam_boost": 1.6, "bad_chance": 0.12, "bad_loss": 1_000,
+                "bad_text": "The printer jammed. Repairs cost you.",
+                "blurb": "Projects, assignments and past questions. Busiest just before exams."},
+    "food": {"name": "Food stall at the hall junction", "place": "campus", "cat": "food", "price": 150_000,
+             "income": (2_500, 6_000), "bad_chance": 0.15, "bad_loss": 3_000,
+             "bad_text": "NEPA took light and your stock spoiled.",
+             "blurb": "Jollof, plantain and late-night noodles. Big money, big risk."},
+    "chinchin": {"name": "Chin-chin supply to hall shops", "place": "campus", "cat": "food", "price": 20_000,
+                 "income": (400, 1_000), "bad_chance": 0.10, "bad_loss": 500,
+                 "bad_text": "A whole batch got soft in the rain.",
                  "blurb": "You fry, a younger student delivers to the hall shops."},
-    "cobbler": {"name": "Shoe repair stand at Ojaja", "price": 35_000, "income": (600, 1_500),
-                "bad_chance": 0.10, "bad_loss": 600, "bad_text": "Your apprentice glued a sole on backwards.",
+    "puffpuff": {"name": "Puff-puff and buns stand", "place": "campus", "cat": "food", "price": 15_000,
+                 "income": (300, 900), "bad_chance": 0.10, "bad_loss": 300,
+                 "bad_text": "The oil burnt and the dough didn't rise.",
+                 "blurb": "Hot puff-puff in nylon at the hall gate. Morning rush and late-night readers."},
+    "cobbler": {"name": "Shoe repair stand at Ojaja", "place": "campus", "cat": "services", "price": 35_000,
+                "income": (600, 1_500), "bad_chance": 0.10, "bad_loss": 600,
+                "bad_text": "Your apprentice glued a sole on backwards.",
                 "blurb": "An umbrella, a stool and an apprentice."},
-    "barbershop": {"name": "Barbing salon at Ojaja", "price": 90_000, "income": (1_500, 3_500),
-                   "bad_chance": 0.12, "bad_loss": 1_500, "bad_text": "NEPA took light; the generator drank your profit.",
+    "barbershop": {"name": "Barbing salon at Ojaja", "place": "campus", "cat": "services", "price": 90_000,
+                   "income": (1_500, 3_500), "bad_chance": 0.12, "bad_loss": 1_500,
+                   "bad_text": "NEPA took light; the generator drank your profit.",
                    "blurb": "Two chairs, a mirror, a generator and loud music."},
-})
-BUSINESSES["puffpuff"] = {"name": "Puff-puff and buns stand", "price": 15_000, "income": (300, 900),
-                          "bad_chance": 0.10, "bad_loss": 300, "bad_text": "The oil burnt and the dough didn't rise.",
-                          "blurb": "Hot puff-puff in nylon at the hall gate. Morning rush and late-night readers."}
+    "perfume_shop": {"name": "Perfume shop in Ife town", "place": "off", "cat": "fashion", "price": 200_000,
+                     "rent": 1_000, "income": (4_000, 9_000), "bad_chance": 0.12, "bad_loss": 3_000,
+                     "bad_text": "Someone broke the back door and took the best bottles.",
+                     "blurb": "A proper shop with a glass counter, a fan and a landlord who wants his rent."},
+    "boutique": {"name": "Clothing boutique in Ife town", "place": "off", "cat": "fashion", "price": 300_000,
+                 "rent": 1_500, "income": (5_500, 12_000), "bad_chance": 0.13, "bad_loss": 4_000,
+                 "bad_text": "A big order came back, and the tailor ran off with the fabric.",
+                 "blurb": "Ready-made kaftans, jeans and aso-ebi for owambe. Students and lecturers both shop here."},
+    "gadget_shop": {"name": "Gadget shop in Ife town", "place": "off", "cat": "gadgets", "price": 450_000,
+                    "rent": 2_000, "income": (7_000, 16_000), "bad_chance": 0.15, "bad_loss": 6_000,
+                    "bad_text": "NEPA took light and a customer's phone got damaged in your shop. You paid for it.",
+                    "blurb": "Phones, laptops, power banks and a solar lamp in the window. Serious money, serious stock."},
+    "provision": {"name": "Provision store off campus", "place": "off", "cat": "food", "price": 250_000,
+                  "rent": 1_200, "income": (4_500, 9_500), "bad_chance": 0.12, "bad_loss": 3_000,
+                  "bad_text": "The fridge failed overnight and your stock spoiled.",
+                  "blurb": "Bread, eggs, milk, sugar and recharge cards. The whole street shops here."},
+}
 BUSINESS_RESALE = 0.6
 # Push your businesses for a few nights (like Lagos Life's flyers, radio and influencers)
 PROMOS = {
@@ -595,10 +638,11 @@ PROMOS = {
 }
 
 for _bid, _b in BUSINESSES.items():
-    ACTIONS.append({"id": f"buy_{_bid}", "at": "phone", "label": f"Start a {_b['name'].lower()}",
+    ACTIONS.append({"id": f"buy_{_bid}", "at": "phone", "label": f"Start: {_b['name']}", "place": _b["place"], "cat": _b["cat"],
                     "hours": [(H(8), H(18))], "minutes": 60, "cost": _b["price"], "effects": {"energy": -6},
                     "special": "buy_business", "business": _bid,
-                    "blurb": f"{_b['blurb']} Makes about ₦{_b['income'][0]:,} to ₦{_b['income'][1]:,} a day."})
+                    "blurb": f"{_b['blurb']} Capital ₦{_b['price']:,}. Takings ₦{_b['income'][0]:,} to ₦{_b['income'][1]:,} every evening"
+                             + (f", minus ₦{_b['rent']:,} rent." if _b.get("rent") else ".")})
     ACTIONS.append({"id": f"sell_{_bid}", "at": "phone", "label": f"Sell your {_b['name'].lower()}",
                     "hours": [(H(8), H(18))], "minutes": 30, "effects": {}, "special": "sell_business", "business": _bid,
                     "blurb": f"Get ₦{int(_b['price'] * BUSINESS_RESALE):,} back (60% of what you paid)."})

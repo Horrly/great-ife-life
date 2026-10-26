@@ -457,3 +457,10 @@ New students now choose from **60 real OAU courses across 11 faculties**: Techno
 - **Pick your main account** with "Make main". The bank counter and the ATM use your main account. Any account can be used at a POS agent.
 - **Move money between your accounts** for free from the Banking Area or the Bank app. Spending (ATM, POS, Jiji, portal) draws from your accounts in order, main first.
 - **Limitation:** other students still send money to your main account by account number. Sending straight to a second account needs a database change, and is not in yet.
+
+## Businesses: on campus and in town
+- **One Businesses app** (opens on day 4) with three tabs: **On campus** (the Ojaja market, halls, the SUB), **Off campus** (shops in Ife town) and **Mine**.
+- **Capital first.** Every business costs its capital to start. Campus stalls are cheap: a perfume stall (₦25,000), a shirt and tie-dye table (₦40,000), a phone accessories tray at the SUB (₦50,000). Town shops cost more: a perfume shop (₦200,000), a boutique (₦300,000), a gadget shop (₦450,000), a provision store (₦250,000).
+- **Paid every evening at 8:00 PM.** Takings go straight to your account. Off-campus shops pay rent first, every evening.
+- **Bad days happen.** Fake stock, rain, NEPA, break-ins. The chance is shown on each card.
+- **Sell back for 60%** of what you paid, and push your businesses with flyers, WhatsApp status or a campus influencer from the **Mine** tab.

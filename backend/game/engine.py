@@ -764,8 +764,8 @@ def tick(state, now: float | None, messages=None):
 
 
 def _boundaries(t: int) -> int:
-    """Minutes until the next moment something happens: 1 AM, 5 AM, 6 AM (new day), 6:30, 11 AM, midnight."""
-    for b in (60, 300, 360, C.WAKE_UP, C.H(11), 1440):
+    """Minutes until the next moment something happens: 1 AM, 5 AM, 6 AM (new day), 6:30, 11 AM, 8 PM (takings), midnight."""
+    for b in (60, 300, 360, C.WAKE_UP, C.H(11), C.BUSINESS_PAYOUT_AT, 1440):
         if t < b:
             return b - t
     return 1440 - t
@@ -830,6 +830,8 @@ def _pass_time(state, minutes: int, messages, away: bool = False):
         t = tod(state)
         if t == 0:
             _end_of_day(state, messages)
+        elif t == C.BUSINESS_PAYOUT_AT:
+            _business_payouts(state, messages)
         elif t == 360:
             _start_of_day(state, _rng(state, f"day{state['total_days']}"), messages)
         _maybe_wake(state, messages)
@@ -891,7 +893,7 @@ def _check_collapse(state, messages):
 
 
 def _end_of_day(state, messages):
-    """Midnight: businesses pay out, the day turns over, and the semester may end."""
+    """Midnight: the day turns over, and the semester may end. (Businesses pay out in the evening.)"""
     held_today = len(lectures_today(state))
     kind = test_today(state)
     if kind == "ca" and state["ca"] is None:
@@ -899,7 +901,6 @@ def _end_of_day(state, messages):
     if kind == "exam" and not test_written(state):
         messages.append("You missed today's exams. Those courses get 0.")
     state["lectures_held"] += held_today
-    _business_payouts(state, messages)
     state["total_days"] += 1
     state["dow"] = (state["dow"] + 1) % 7
     state["flags"]["attended_keys"] = []
@@ -1682,15 +1683,16 @@ def _gain_xp(state, skill, xp, messages):
 
 
 def _business_payouts(state, messages):
-    """Every night each business makes money after costs, or has a bad day."""
+    """Every evening (8 PM) each business takes its takings, pays its rent, or has a bad day."""
     if not state["businesses"]:
         return
     rng = _rng(state, f"biz{state['total_days']}")
     total, bad = 0, []
     for bid in sorted(state["businesses"]):
         b = C.BUSINESSES[bid]
+        rent = b.get("rent", 0)
         if rng.random() < b["bad_chance"]:
-            loss = min(b["bad_loss"], state["money"] + total)
+            loss = min(b["bad_loss"] + rent, state["money"] + total)
             total -= loss
             bad.append(b["bad_text"])
             continue
@@ -1703,14 +1705,14 @@ def _business_payouts(state, messages):
         promo = state.get("promo") or {}
         if promo.get("until", 0) > state["total_days"]:
             amount = int(amount * (1 + promo["boost"]))
-        total += amount
+        total += amount - rent
     if total > 0:
         _add_money(state, total)
         state["stats"]["business_income"] += total
     elif total < 0:
         _add_money(state, total)
-    line = f"Your business{'es' if len(state['businesses']) > 1 else ''} made ₦{total:,} today." if total >= 0 else \
-        f"Bad day for business: you lost ₦{-total:,}."
+    line = f"Evening takings: your business{'es' if len(state['businesses']) > 1 else ''} made ₦{total:,} after rent." if total >= 0 else \
+        f"Bad evening for business: you lost ₦{-total:,}."
     messages.append(" ".join([line] + bad))
 
 
@@ -3534,6 +3536,21 @@ def upcoming(state) -> list[str]:
     return notes
 
 
+def _shops(state, phone):
+    """The Businesses app: every business you could start or sell, with the reason when you can't."""
+    by_id = {a["id"]: a for a in phone}
+    out = []
+    for bid, b in C.BUSINESSES.items():
+        buy, sell = by_id.get(f"buy_{bid}"), by_id.get(f"sell_{bid}")
+        owned = bid in state["businesses"]
+        out.append({"id": bid, "name": b["name"], "blurb": b["blurb"], "place": b["place"], "cat": b["cat"],
+                    "capital": b["price"], "income": list(b["income"]), "rent": b.get("rent", 0),
+                    "bad_chance": round(b["bad_chance"] * 100), "owned": owned,
+                    "start": buy, "sell": sell, "sell_back": int(b["price"] * C.BUSINESS_RESALE),
+                    "since_day": state["businesses"].get(bid)})
+    return out
+
+
 def view(state: dict, now: float | None = None) -> dict:
     state = upgrade(copy.deepcopy(state))
     p = C.PROFILES[state["profile"]]
@@ -3653,6 +3670,9 @@ def view(state: dict, now: float | None = None) -> dict:
                     "floor": C.SKILL_LEVELS[skill_level(state, k) - 1]}
                    for k, v in C.SKILLS.items()],
         "businesses": [{"id": k, "name": C.BUSINESSES[k]["name"]} for k in state["businesses"]],
+        "shops": _shops(state, phone),
+        "biz_cats": C.BUSINESS_CATS,
+        "payout_at": clock_text(C.BUSINESS_PAYOUT_AT),
         "business_income": state["stats"]["business_income"],
         "trekked_km": round(state["stats"]["trekked"] * W.METRES_PER_UNIT / 1000, 1),
         "badges": [{"id": k, "name": n, "description": d, "earned": k in state["badges"]} for k, (n, d) in C.BADGES.items()],

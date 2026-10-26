@@ -600,7 +600,7 @@ def test_big_gigs_are_weekly():
     assert "Once a week" in action(at(s, 9), "website_gig")["reason"]
 
 
-def test_business_pays_every_night_and_resells_for_60_percent():
+def test_business_pays_every_evening_and_resells_for_60_percent():
     s = banked(at(new(profile="odogwu", seed="biz"), 9), 100_000)
     s["money"] = 0
     s["flags"]["seen"] = [e["id"] for e in C.EVENTS]
@@ -609,9 +609,9 @@ def test_business_pays_every_night_and_resells_for_60_percent():
     assert "Badge unlocked: Oga at the top!" in msgs
     names = [a["id"] for a in E.available_actions(s)]
     assert "buy_kiosk" not in names and "sell_kiosk" in names
-    s = at(s, 23, 50, where="staff")
-    s, msgs = later(s, 20)
-    assert any("business" in m.lower() for m in msgs)
+    s = at(s, 19, 50, where="staff")
+    s, msgs = later(s, 20)  # 8 PM: takings land
+    assert any("evening takings" in m.lower() for m in msgs)
     s = at(s, 10)
     s["needs"] = {k: 90.0 for k in s["needs"]}
     money = E.total_money(s)
@@ -1437,3 +1437,41 @@ def test_moving_money_between_your_accounts_and_spending_from_any_of_them():
     # paying draws from the main account first, then from the extra one
     E._bank_move(s, -6_500, "Shop")
     assert s["bank"]["balance"] == 0 and s["extra_banks"][0]["balance"] == 2_000 - 1_500
+
+
+def test_businesses_pay_at_eight_pm_not_midnight():
+    s = banked(at(new(profile="odogwu", seed="eve"), 9), 100_000)
+    s["money"] = 0
+    s, _ = E.act(s, "buy_puffpuff")
+    s = at(s, 12, where="staff")
+    s, msgs = later(s, 6 * 60)  # to 6 PM: nothing yet
+    assert not any("takings" in m.lower() for m in msgs)
+    s, msgs = later(s, 2 * 60)  # through 8 PM
+    assert any("evening takings" in m.lower() for m in msgs)
+
+
+def test_off_campus_shops_pay_rent_every_evening():
+    s = at(new(seed="rent"), 9)
+    s["money"] = 0
+    s["businesses"] = {"boutique": s["total_days"]}
+    s["flags"]["seen"] = [e["id"] for e in C.EVENTS]
+    s["stats"]["business_income"] = 0
+    rng_before = s["stats"]["business_income"]
+    s = at(s, 19, 59, where="staff")
+    s, msgs = later(s, 2)
+    shop = C.BUSINESSES["boutique"]
+    assert shop["rent"] == 1_500 and rng_before == 0
+    assert any("evening" in m.lower() for m in msgs)
+    assert E.total_money(s) >= -shop["rent"] - shop["bad_loss"]
+
+
+def test_businesses_app_shops_list_capital_place_and_reasons():
+    s = at(new(seed="shops"), 10)
+    shops = E.view(s)["shops"]
+    by = {x["id"]: x for x in shops}
+    assert by["perfume_stall"]["place"] == "campus" and by["perfume_stall"]["capital"] == 25_000
+    assert by["boutique"]["place"] == "off" and by["boutique"]["rent"] == 1_500
+    assert by["gadget_tray"]["cat"] == "gadgets" and by["shirts"]["cat"] == "fashion"
+    assert by["perfume_stall"]["start"]["id"] == "buy_perfume_stall" and not by["perfume_stall"]["owned"]
+    assert E.view(s)["payout_at"] == "8:00 PM"
+
