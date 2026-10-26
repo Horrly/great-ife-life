@@ -451,3 +451,9 @@ New students now choose from **60 real OAU courses across 11 faculties**: Techno
 - **Resting at the Health Centre:** when the nurse keeps you, you can't walk, enter buildings, move house or do anything in person. A small card shows your discharge time, and the **phone stays open**: apps, the bank app, deposits and transfers, OgaBet and calling home all work until you're discharged.
 - **Six new ways to get ready for exams (about +10 readiness each):** work through past questions on your phone, revise on your laptop, ask your lecturer in office hours, a past-questions drill with a senior, make a revision timetable at home, and a mock exam with your roommates. Your mood and tiredness still scale the gain, and the message shows the real amount.
 - **Six new ways to have fun and see people:** suya and cold drinks at the buka, cards with roommates, table tennis at the SUB, karaoke night at the SUB on Fridays and Saturdays, pepper soup night with hall friends, and a stroll round campus with a friend.
+
+## More than one bank account
+- **Open another account at any bank**, even if you already bank with one. Each bank gets one account, so you can hold a First Bank and a GTBank account at the same time (or any mix of banks).
+- **Pick your main account** with "Make main". The bank counter and the ATM use your main account. Any account can be used at a POS agent.
+- **Move money between your accounts** for free from the Banking Area or the Bank app. Spending (ATM, POS, Jiji, portal) draws from your accounts in order, main first.
+- **Limitation:** other students still send money to your main account by account number. Sending straight to a second account needs a database change, and is not in yet.

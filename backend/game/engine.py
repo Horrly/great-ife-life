@@ -430,8 +430,14 @@ def _add_money(state, amount: int):
 # data) come from the bank. Parents, allowances and freelance clients pay into your account.
 
 
+def bank_accounts(state) -> list[dict]:
+    """Every bank account you have. The first one is your main account (state["bank"]); the rest are extra accounts."""
+    out = [state["bank"]] if state.get("bank") else []
+    return out + list(state.get("extra_banks") or [])
+
+
 def bank_balance(state) -> int:
-    return (state.get("bank") or {}).get("balance", 0)
+    return sum(a["balance"] for a in bank_accounts(state))
 
 
 def total_money(state) -> int:
@@ -463,12 +469,28 @@ def pay_reason(state, amount: int, how: str = "any") -> str | None:
     return "Not enough money"
 
 
+def _record(state, acc: dict, amount: int, text: str):
+    """Change one account's balance and write it on that account's statement."""
+    acc["balance"] += amount
+    acc["history"] = ([{"day": state["total_days"], "time": clock_text(state["clock"]), "text": text,
+                        "amount": amount, "balance": acc["balance"]}] + acc.get("history", []))[:25]
+
+
 def _bank_move(state, amount: int, text: str):
-    """Money in (+) or out (-) of your account, written on your statement."""
-    b = state["bank"]
-    b["balance"] += amount
-    b["history"] = ([{"day": state["total_days"], "time": clock_text(state["clock"]), "text": text,
-                      "amount": amount, "balance": b["balance"]}] + b.get("history", []))[:25]
+    """Money in (+) goes to your main account. Money out (-) comes from the main account first, then your extra accounts."""
+    if amount >= 0:
+        _record(state, state["bank"], amount, text)
+        return
+    left = -amount
+    for acc in bank_accounts(state):
+        take = min(acc["balance"], left)
+        if take:
+            _record(state, acc, -take, text)
+            left -= take
+        if not left:
+            return
+    if left:
+        _record(state, state["bank"], -left, text)  # never reached when the payment was checked first
 
 
 def _spend(state, amount: int, how: str = "any", text: str = "Payment"):
@@ -2900,8 +2922,9 @@ def open_account(state: dict, bank_id: str, number: str, now: float | None = Non
     _bank_open_check(state)
     if bank_id not in C.BANKS:
         raise GameError("Pick a bank.")
-    if state.get("bank"):
-        raise GameError(f"You already have a {C.BANKS[state['bank']['bank']]['name']} account.")
+    held = {a["bank"] for a in bank_accounts(state)}
+    if bank_id in held:
+        raise GameError(f"You already have a {C.BANKS[bank_id]['name']} account.")
     b = C.BANKS[bank_id]
     if b["app"]:
         if not has_smartphone(state):
@@ -2918,9 +2941,15 @@ def open_account(state: dict, bank_id: str, number: str, now: float | None = Non
                         "your debit card.")
     state["money"] -= need
     state["stats"]["spent"] += C.CARD_FEE if need else 0
-    state["bank"] = {"bank": bank_id, "number": number, "balance": 0, "card": not b["app"], "history": []}
+    acc = {"bank": bank_id, "number": number, "balance": 0, "card": not b["app"], "history": []}
+    if not state.get("bank"):
+        state["bank"] = acc
+    else:
+        state.setdefault("extra_banks", []).append(acc)
     if need:
-        _bank_move(state, C.BANK_OPEN_DEPOSIT, "Opening deposit")
+        _record(state, acc, C.BANK_OPEN_DEPOSIT, "Opening deposit")
+    if state["bank"] is not acc:
+        messages.insert(0, f"Second account opened at {b['name']}, number {number}. Pick which one is your main account in the bank app.")
     messages.insert(0, f"Account opened! {b['name']}, account number {number}." +
                     (" Your debit card is ready: use it at ATMs and POS." if not b["app"]
                      else " Cash out at any POS agent by transfer."))
@@ -2931,6 +2960,42 @@ def open_account(state: dict, bank_id: str, number: str, now: float | None = Non
         _add_moodlet(state, "mummys_alert")
     _mission_progress(state, messages, visit="banks")
     return _finish(state, messages, now, 6)
+
+
+def set_main_account(state: dict, bank_id: str, now: float | None = None) -> tuple[dict, list[str]]:
+    """Make one of your accounts the main one: salaries, allowances, ATM and counter use the main account."""
+    state = upgrade(copy.deepcopy(state))
+    messages = _begin(state, now, phone=True)
+    if not state.get("phone") and not at_branch(state):
+        raise GameError("Use the bank app or a branch to change your main account.")
+    extras = state.get("extra_banks") or []
+    idx = next((i for i, a in enumerate(extras) if a["bank"] == bank_id), None)
+    if idx is None:
+        raise GameError("That's not one of your extra accounts.")
+    old = state["bank"]
+    state["bank"], extras[idx] = extras[idx], old
+    state["extra_banks"] = extras
+    messages.insert(0, f"{C.BANKS[bank_id]['name']} is now your main account.")
+    return _finish(state, messages, now, 2)
+
+
+def move_between_accounts(state: dict, from_bank: str, to_bank: str, amount: int,
+                          now: float | None = None) -> tuple[dict, list[str]]:
+    """Move money between your own accounts. Free, and instant."""
+    state = upgrade(copy.deepcopy(state))
+    messages = _begin(state, now, phone=True)
+    if not state.get("phone"):
+        raise GameError("You need a phone for the bank app.")
+    accounts = {a["bank"]: a for a in bank_accounts(state)}
+    if from_bank == to_bank or from_bank not in accounts or to_bank not in accounts:
+        raise GameError("Pick two different accounts you own.")
+    amount = _amount(amount, 1, 10**12, what="amount")
+    if amount > accounts[from_bank]["balance"]:
+        raise GameError(f"Not enough in your {C.BANKS[from_bank]['name']} account.")
+    _record(state, accounts[from_bank], -amount, f"Moved to your {C.BANKS[to_bank]['name']} account")
+    _record(state, accounts[to_bank], amount, f"Moved from your {C.BANKS[from_bank]['name']} account")
+    messages.insert(0, f"Moved ₦{amount:,} from {C.BANKS[from_bank]['name']} to {C.BANKS[to_bank]['name']}.")
+    return _finish(state, messages, now, 2)
 
 
 def bank_counter(state: dict, kind: str, amount: int, now: float | None = None, hall: str | None = None) -> tuple[dict, list[str]]:
@@ -3230,7 +3295,11 @@ def bank_view(state) -> dict | None:
     if not bank:
         return None
     b = C.BANKS[bank["bank"]]
-    return {"bank": bank["bank"], "name": b["name"], "color": b["color"], "fg": b["fg"], "app": b["app"],
+    accounts = [{"bank": a["bank"], "name": C.BANKS[a["bank"]]["name"], "number": a["number"], "balance": a["balance"],
+                 "main": a is bank, "color": C.BANKS[a["bank"]]["color"], "fg": C.BANKS[a["bank"]]["fg"]}
+                for a in bank_accounts(state)]
+    return {"accounts": accounts, "held": sorted(a["bank"] for a in accounts),
+            "bank": bank["bank"], "name": b["name"], "color": b["color"], "fg": b["fg"], "app": b["app"],
             "number": bank["number"], "balance": bank["balance"], "card": bank.get("card", False),
             "history": bank.get("history", [])[:15],
             "atm_left": C.ATM_DAILY - (bank.get("atm_today", 0) if bank.get("atm_day") == state["total_days"] else 0),

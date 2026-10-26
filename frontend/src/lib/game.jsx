@@ -112,6 +112,8 @@ export function GameProvider({ children }) {
   const pos = useCallback((kind, amount, method) => move("/game/bank/pos/", { kind, amount, method }), [move]);
   const appDeposit = useCallback((amount) => move("/game/bank/deposit/", { amount }), [move]);
   const furnish = useCallback((item, sell = false) => move("/game/furnish/", { item, sell }), [move]);
+  const setMain = useCallback((bank) => move("/game/bank/main/", { bank }), [move]);
+  const moveMoney = useCallback((from, to, amount) => move("/game/bank/move/", { from, to, amount }), [move]);
   const transfer = useCallback((number, bank, amount, note) => move("/game/bank/transfer/", { number, bank, amount, note }), [move]);
   const lookupAccount = useCallback((number, bank) => api(`/game/bank/lookup/?${new URLSearchParams({ number, bank })}`), []);
   // chat
@@ -216,7 +218,7 @@ export function GameProvider({ children }) {
     <GameContext.Provider
       value={{ game, loading, busy, error, setError, messages, setMessages, start, resume, act, skip, choose, next, quit,
         travel, enter, leave, setLook, sync, plan, askParents, bet, moveHome, joinRoom, housing, postNote,
-        openBank, bankCounter, atm, pos, appDeposit, furnish, transfer, lookupAccount, chat, social, transferTo, riddle, riddleSearch, sug, vote,
+        openBank, bankCounter, atm, pos, appDeposit, furnish, setMain, moveMoney, transfer, lookupAccount, chat, social, transferTo, riddle, riddleSearch, sug, vote,
         account, register, login, logout, resumeLife, refreshAccount }}
     >
       {children}

@@ -844,8 +844,26 @@ class BankOpenView(_MoveView):
             raise E.GameError("Pick a bank.")
         number = new_account_number(bank_id)
         state, messages = E.open_account(game.state, bank_id, number, t)
-        game.account_number, game.bank = number, bank_id
+        if state["bank"]["number"] == number:  # only your main account receives transfers by number
+            game.account_number, game.bank = number, bank_id
         return state, messages
+
+
+class BankMainView(_MoveView):
+    """Choose which of your accounts is the main one (the one that receives your money by number)."""
+
+    def move_game(self, game, data, t):
+        bank_id = str(data.get("bank", ""))
+        state, messages = E.set_main_account(game.state, bank_id, t)
+        game.account_number, game.bank = state["bank"]["number"], state["bank"]["bank"]
+        return state, messages
+
+
+class BankMoveView(_MoveView):
+    """Move money between your own accounts."""
+
+    def move(self, state, data, t):
+        return E.move_between_accounts(state, str(data.get("from", "")), str(data.get("to", "")), data.get("amount"), t)
 
 
 class BankCounterView(_MoveView):

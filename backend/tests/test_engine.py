@@ -954,7 +954,7 @@ def test_open_account_at_a_branch_in_banking_hours():
     assert s["bank"]["balance"] == C.BANK_OPEN_DEPOSIT and s["bank"]["card"]
     assert s["money"] == 5_000 - C.BANK_OPEN_DEPOSIT - C.CARD_FEE and "0111111111" in msgs[0]
     with pytest.raises(E.GameError, match="already have"):
-        E.open_account(s, "uba", "2000000000")
+        E.open_account(s, "gtbank", "0111111112")           # one account per bank
     late = at(new(seed="bank2"), 17, where="banks")
     with pytest.raises(E.GameError, match="8:00 AM to 4:00 PM"):
         E.open_account(late, "uba", "2000000000")
@@ -1390,3 +1390,50 @@ def test_new_readiness_and_fun_actions_exist_and_gain_readiness():
     assert s2["prep"] > before and any("readiness" in m for m in msgs)
     for aid in ("karaoke", "buka_drinks", "card_game", "pepper_soup"):
         assert aid in C.ACTIONS_BY_ID
+
+
+# --- More than one bank account ----------------------------------------------------------------------
+
+def test_you_can_open_a_second_account_at_another_bank():
+    s = at(new(profile="lapo_baby", seed="two-banks"), 10, where="banks")
+    s["money"] = 10_000
+    s, _ = E.open_account(s, "gtbank", "0111111111")
+    s, msgs = E.open_account(s, "uba", "2000000000")
+    assert s["bank"]["bank"] == "gtbank"                       # the first one stays main
+    assert [a["bank"] for a in s["extra_banks"]] == ["uba"]
+    assert s["extra_banks"][0]["balance"] == C.BANK_OPEN_DEPOSIT
+    assert E.bank_balance(s) == 2 * C.BANK_OPEN_DEPOSIT
+    assert E.bank_view(s)["held"] == ["gtbank", "uba"]
+    with pytest.raises(E.GameError, match="already have"):
+        E.open_account(s, "uba", "2000000001")
+
+
+def test_second_account_app_on_the_phone_and_main_switch():
+    s = at(new(seed="two-apps"), 12, where="staff")
+    s["phone"] = {"model": "tecno", "cracked": False}
+    s = banked(s, 30_000, bank="gtbank")
+    s, _ = E.open_account(s, "opay", "8012345678")
+    assert s["bank"]["bank"] == "gtbank" and s["extra_banks"][0]["bank"] == "opay"
+    s, msgs = E.set_main_account(s, "opay", t_of(s))
+    assert s["bank"]["bank"] == "opay" and s["extra_banks"][0]["bank"] == "gtbank"
+    assert "main account" in msgs[0]
+    with pytest.raises(E.GameError, match="extra"):
+        E.set_main_account(s, "uba", None)
+
+
+def test_moving_money_between_your_accounts_and_spending_from_any_of_them():
+    s = at(new(seed="move"), 12, where="staff")
+    s["phone"] = {"model": "tecno", "cracked": False}
+    s = banked(s, 2_000, bank="gtbank")
+    s["extra_banks"] = [{"bank": "opay", "number": "8011111111", "balance": 5_000, "card": False, "history": []}]
+    total = E.bank_balance(s)
+    s, msgs = E.move_between_accounts(s, "opay", "gtbank", 3_000, t_of(s))
+    assert s["bank"]["balance"] == 5_000 and s["extra_banks"][0]["balance"] == 2_000
+    assert E.bank_balance(s) == total
+    with pytest.raises(E.GameError, match="Not enough"):
+        E.move_between_accounts(s, "opay", "gtbank", 9_999, None)
+    with pytest.raises(E.GameError, match="different"):
+        E.move_between_accounts(s, "gtbank", "gtbank", 10, None)
+    # paying draws from the main account first, then from the extra one
+    E._bank_move(s, -6_500, "Shop")
+    assert s["bank"]["balance"] == 0 and s["extra_banks"][0]["balance"] == 2_000 - 1_500

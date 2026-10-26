@@ -29,6 +29,8 @@ urlpatterns = [
     path("api/game/housing/join/", g.JoinRoomView.as_view()),
     path("api/game/room/note/", g.RoomNoteView.as_view()),
     path("api/game/bank/open/", g.BankOpenView.as_view()),
+    path("api/game/bank/main/", g.BankMainView.as_view()),
+    path("api/game/bank/move/", g.BankMoveView.as_view()),
     path("api/game/bank/counter/", g.BankCounterView.as_view()),
     path("api/game/bank/atm/", g.AtmView.as_view()),
     path("api/game/bank/pos/", g.PosView.as_view()),

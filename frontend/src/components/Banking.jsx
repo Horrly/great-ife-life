@@ -86,12 +86,89 @@ export function AmountInput({ value, onChange, chips = [], max, step = 1, dark =
 
 const ngn = (n) => naira(n || 0);
 
+/** Every bank account you own: pick the main one, move money between them, or open another one. */
+export function AccountsCard({ game, run }) {
+  const { setMain, moveMoney, openBank, busy } = useGame();
+  const accounts = game.bank?.accounts || [];
+  const held = game.bank?.held || [];
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [amt, setAmt] = useState(0);
+  if (!accounts.length) return null;
+  const fromAcc = accounts.find((a) => a.bank === from) || accounts[0];
+  const toAcc = accounts.find((a) => a.bank === to && a.bank !== fromAcc.bank) || accounts.find((a) => a.bank !== fromAcc.bank);
+  const canMove = accounts.length > 1 && toAcc && amt >= 1 && amt <= fromAcc.balance;
+  const openable = game.banking.banks.filter((x) => x.app && !held.includes(x.id));
+  return (
+    <section className="rounded-2xl bg-white/95 p-3 text-ink">
+      <p className="font-black">Your accounts</p>
+      <ul className="mt-2 space-y-2">
+        {accounts.map((a) => (
+          <li key={a.bank} className="flex items-center justify-between gap-2 rounded-xl p-2.5" style={{ background: a.color, color: a.fg }}>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-black">{a.name}{a.main ? " · main" : ""}</span>
+              <span className="num text-xs opacity-85">{a.number}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="num text-sm font-black">{naira(a.balance)}</span>
+              {!a.main && (
+                <button disabled={busy} onClick={() => run(setMain(a.bank), `${a.name} is now your main account`)}
+                  className="rounded-full bg-black/25 px-2.5 py-1 text-xs font-bold disabled:opacity-50">Make main</button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {accounts.length > 1 && (
+        <div className="mt-3 space-y-2 border-t border-chip pt-3">
+          <p className="text-sm font-bold">Move money between your accounts</p>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <label className="font-semibold">From
+              <select className="mt-1 w-full rounded-lg border border-chip bg-white p-2" value={fromAcc.bank} onChange={(e) => setFrom(e.target.value)}>
+                {accounts.map((a) => <option key={a.bank} value={a.bank}>{a.name}</option>)}
+              </select>
+            </label>
+            <label className="font-semibold">To
+              <select className="mt-1 w-full rounded-lg border border-chip bg-white p-2" value={toAcc?.bank} onChange={(e) => setTo(e.target.value)}>
+                {accounts.filter((a) => a.bank !== fromAcc.bank).map((a) => <option key={a.bank} value={a.bank}>{a.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <AmountInput value={amt} onChange={setAmt} max={fromAcc.balance} label="Amount to move"
+            chips={[[1000, "₦1k"], [5000, "₦5k"], [fromAcc.balance, "All"]]} />
+          <button className="btn w-full rounded-full bg-ife-600 py-2.5 font-bold text-white disabled:opacity-40" disabled={busy || !canMove}
+            onClick={async () => {
+              const g = await run(moveMoney(fromAcc.bank, toAcc.bank, amt), `Moved ${naira(amt)}`);
+              if (g) setAmt(0);
+            }}>
+            Move {naira(amt || 0)} · free
+          </button>
+        </div>
+      )}
+      {openable.length > 0 && (
+        <div className="mt-3 space-y-2 border-t border-chip pt-3">
+          <p className="text-sm font-bold">Open another account on your phone</p>
+          {openable.map((x) => (
+            <button key={x.id} disabled={busy} onClick={() => run(openBank(x.id), `Signing up on ${x.name}`)}
+              className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-black disabled:opacity-50" style={{ background: x.color, color: x.fg }}>
+              Open a {x.name} account
+              <span className="block text-xs font-semibold opacity-90">Free, on your phone</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function BankHall({ game, bankId, run, onBack }) {
-  const { openBank, bankCounter, atm, busy } = useGame();
+  const { openBank, bankCounter, atm, busy, setMain } = useGame();
   const b = game.banking;
   const bank = b.banks.find((x) => x.id === bankId);
   const acct = game.bank;
-  const mine = acct?.bank === bankId;
+  const held = acct?.held || [];
+  const hasThis = held.includes(bankId);
+  const mine = acct?.bank === bankId; // the main account: the counter and the ATM use it
   const [kind, setKind] = useState("deposit");
   const [amt, setAmt] = useState(0);
   const [atmAmt, setAtmAmt] = useState(0);
@@ -109,14 +186,22 @@ function BankHall({ game, bankId, run, onBack }) {
         </div>
       </div>
       <Wallet game={game} />
-      {!acct && (
-        <Section title={`Open a ${bank.name} account`}
+      {!hasThis && (
+        <Section title={acct ? `Open a second ${bank.name} account` : `Open a ${bank.name} account`}
           subtitle={b.branch_open
             ? `Fill the form at the desk and bring ${naira(b.open_cost)} cash: ₦1,000 opening deposit and ₦1,000 for your debit card. Your card works at every ATM and POS.`
             : "Come back between 8:00 AM and 4:00 PM, Monday to Friday."}>
           <button className="btn w-full rounded-full bg-go py-3.5 text-white" disabled={busy || !b.branch_open || game.cash < b.open_cost}
             onClick={() => run(openBank(bankId), `Opening your ${bank.name} account`)}>
             {game.cash < b.open_cost ? `You need ${naira(b.open_cost)} cash` : `Open account · ${naira(b.open_cost)}`}
+          </button>
+        </Section>
+      )}
+      {hasThis && !mine && (
+        <Section title={`Your ${bank.name} account`} subtitle="The counter and the ATM use your main account. Make this one main to use them here.">
+          <button className="btn w-full rounded-full bg-ife-600 py-3 font-bold text-white" disabled={busy}
+            onClick={() => run(setMain(bankId), `${bank.name} is now your main account`)}>
+            Make {bank.name} my main account
           </button>
         </Section>
       )}
@@ -223,6 +308,7 @@ export function MoneyHere({ game, run, hall, setHall }) {
   return (
     <div className="mb-3">
       <Wallet game={game} />
+      <div className="mb-3"><AccountsCard game={game} run={run} /></div>
       {b.branch && (
         <Section title="Pick a bank to go in" subtitle={b.branch_open ? "Banking halls are open till 4:00 PM. ATMs work all day." : "Banking halls are closed (8 AM to 4 PM, Mon to Fri). The ATMs still work."}>
           <div className="grid grid-cols-2 gap-2">
@@ -352,6 +438,7 @@ export function BankApp({ game, run }) {
         </div>
       ) : tab === "home" ? (
         <ul className="space-y-1.5">
+          <li className="list-none"><AccountsCard game={game} run={run} /></li>
           {acct.history.length === 0 && <li className="text-sm opacity-80">No transactions yet.</li>}
           {acct.history.map((h, i) => (
             <li key={i} className="flex items-center justify-between gap-2 rounded-xl bg-white/95 px-3 py-2 text-ink">
