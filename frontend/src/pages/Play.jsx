@@ -14,7 +14,7 @@ import { Receipt, RiddleSheet, Spectacle } from "../components/Extras";
 import { nameFor, randomLook } from "../game3d/look";
 import PlacePanel from "../components/Place";
 import MeSheet, { InboxSheet } from "../components/MeSheet";
-import { HousingChooser, SleepingOverlay, SleepOverlay } from "../components/Home";
+import { HousingChooser, RestingBanner, SleepingOverlay, SleepOverlay } from "../components/Home";
 import Furnish from "../components/Furnish";
 import { BottomSheet, DecisionCard, Toast } from "../components/ui";
 import { setRain, sfx } from "../lib/sfx";
@@ -433,6 +433,12 @@ export default function Play() {
     return g;
   }
 
+  /** You can't walk, bus or move house while the nurse has you. */
+  function stayPut() {
+    setError(`You're resting at the Health Centre until ${game.asleep.until_text}. The nurse will let you go then.`);
+    setPanel("phone");
+  }
+
   async function onMoveHome(body) {
     const g = await (body.code ? joinRoom(body.code) : moveHome(body));
     if (g) setPanel(null);
@@ -800,9 +806,9 @@ export default function Play() {
       )}
       {panel === "phone" && !journey && game.phase === "play" && (
         <Phone game={game} minute={minute} onAct={onAct} busy={busy} onClose={close}
-          onMaps={() => setPanel("map")}
-          onMarket={() => goTo("market")}
-          onHousing={() => setPanel("housing")} onParents={onParents} onBet={onBet} run={runMove}
+          onMaps={() => (game.asleep?.until ? stayPut() : setPanel("map"))}
+          onMarket={() => (game.asleep?.until ? stayPut() : goTo("market"))}
+          onHousing={() => (game.asleep?.until ? stayPut() : setPanel("housing"))} onParents={onParents} onBet={onBet} run={runMove}
           extra={settingsProps} />
       )}
       {panel === "housing" && !overlayOpen && (
@@ -868,8 +874,14 @@ export default function Play() {
       {!journey && <Spectacle events={game.events} />}
 
       {journey && <JourneyBar journey={journey} progress={jp.p} segment={jp.seg} fromName={journey.fromName} onSkip={skipJourney} />}
-      {game.asleep && game.phase === "play" && !journey && (
+      {game.asleep && !game.asleep.until && game.phase === "play" && !journey && (
         <SleepOverlay game={game} minute={minute} busy={busy} onWake={() => act("wake")} />
+      )}
+      {game.asleep?.until && game.phase === "play" && !journey && panel !== "phone" && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <RestingBanner game={game} />
+          <PhoneButton game={game} onClick={() => setPanel("phone")} />
+        </div>
       )}
 
       {!journey && !lapse && game.phase === "event" && game.pending && <DecisionCard event={game.pending} onChoose={choose} busy={busy} />}

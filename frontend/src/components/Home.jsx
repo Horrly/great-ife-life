@@ -251,6 +251,19 @@ export function SleepingOverlay({ from, seconds, start, minute, onWake }) {
   );
 }
 
+/** While you rest at the Health Centre: a small card, not a full-screen block, so the phone and bank still work. */
+export function RestingBanner({ game }) {
+  return (
+    <div role="status" className="pointer-events-auto flex max-w-[270px] items-center gap-3 rounded-2xl bg-[#05100b]/85 p-3 text-white shadow-lg">
+      <span className="text-3xl" aria-hidden>🏥</span>
+      <div className="min-w-0 text-sm">
+        <p className="font-bold">Resting at the Health Centre</p>
+        <p className="text-white/80">Discharged at {game.asleep.until_text}. Rest, eat, and use your phone meanwhile.</p>
+      </div>
+    </div>
+  );
+}
+
 export function SleepOverlay({ game, minute, onWake, busy }) {
   const a = game.asleep;
   const energy = game.needs.energy;

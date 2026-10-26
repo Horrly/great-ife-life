@@ -1345,3 +1345,48 @@ def test_fetching_water_gives_needs_and_a_free_bath_when_taps_are_dry():
     assert E.action_cost(s, C.ACTIONS_BY_ID["bath"]) == 0
     s, msgs = E.act(s, "bath", t_of(s))
     assert s["flags"]["water"] == 1 and "bucket you fetched" in msgs[0]
+
+
+# --- Resting at the Health Centre: the phone still works -----------------------------------------------
+
+def _resting(seed):
+    s = banked(at(new(seed=seed), 14, where="staff"), 50_000)
+    s["items"] = []
+    s["phone"] = {"model": "samsung", "cracked": False}
+    s["needs"]["energy"] = 1
+    s, _ = E.act(s, "scroll")
+    assert s["at"] == "health" and s["asleep"]["until"]
+    return s
+
+
+def test_resting_blocks_moves_but_not_the_phone():
+    s = _resting("rest-phone")
+    acts = E.available_actions(s)
+    assert acts and all(a["at"] == "phone" for a in acts)           # only phone things are listed
+    assert "scroll" in {a["id"] for a in acts}
+    s2, msgs = E.act(s, "scroll", t_of(s))                          # a phone action works
+    assert s2["asleep"]["until"]                                    # still resting
+    with pytest.raises(E.GameError, match="Health Centre"):
+        E.act(s, "lt_read", t_of(s))                                # anything in person is refused
+    with pytest.raises(E.GameError, match="Health Centre"):
+        E.enter_building(s, "thousand", E._door("thousand"))
+
+
+def test_resting_bank_app_and_parents_still_work():
+    s = _resting("rest-bank")
+    s2, _ = E.app_deposit(s, 5_000, t_of(s))
+    assert E.bank_balance(s2) == 5_000 + E.bank_balance(s)
+    assert s2["asleep"]["until"]
+
+
+def test_new_readiness_and_fun_actions_exist_and_gain_readiness():
+    s = banked(at(new(seed="ready"), 12, where="staff"), 50_000)
+    s["items"].append("laptop")
+    s["phone"] = {"model": "samsung", "cracked": False}
+    for aid in ("past_qs_phone", "revise_laptop", "home_timetable"):
+        assert aid in C.ACTIONS_BY_ID and C.ACTIONS_BY_ID[aid]["effects"]["prep"] == 10
+    before = s["prep"]
+    s2, msgs = E.act(s, "home_timetable", t_of(s))
+    assert s2["prep"] > before and any("readiness" in m for m in msgs)
+    for aid in ("karaoke", "buka_drinks", "card_game", "pepper_soup"):
+        assert aid in C.ACTIONS_BY_ID

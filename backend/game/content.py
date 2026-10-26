@@ -1507,4 +1507,50 @@ ACTIONS += [
      "blurb": "Crunchy plantain with almost no oil. Needs a plantain.", "done": "Crunchy, golden and gone in 2 minutes."},
 ]
 ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
+# More ways to get ready for exams (about +10 readiness each, before your mood and tiredness scale it)
+# and more ways to have fun and see people.
+ACTIONS += [
+    {"id": "past_qs_phone", "at": "phone", "label": "Work through past questions on your phone", "hours": [(0, H(24))],
+     "minutes": 60, "cost": 300, "pay": "any", "requires": {"smartphone": True},
+     "effects": {"prep": 10, "energy": -6, "fun": -2}, "study": True,
+     "blurb": "Old exam papers with the answers explained. Your data bundle pays for it."},
+    {"id": "revise_laptop", "at": "laptop", "label": "Revise your course notes on your laptop", "hours": [(H(8), H(26))],
+     "minutes": 120, "effects": {"prep": 10, "energy": -8}, "study": True,
+     "blurb": "Typed notes, flashcards and a timer. Your laptop never gets tired."},
+    {"id": "office_hours", "at": "dept", "label": "Ask your lecturer in office hours", "hours": [(H(10), H(16))],
+     "minutes": 60, "effects": {"prep": 10, "social": 4, "energy": -5}, "study": True,
+     "blurb": "Bring the questions you couldn't answer in class. They'll answer, if you're polite."},
+    {"id": "senior_drill", "at": "dept", "label": "Past-questions drill with a senior", "hours": [(H(12), H(19))],
+     "minutes": 90, "effects": {"prep": 10, "social": 8, "energy": -8}, "study": True,
+     "blurb": "A 400-level student who scored an A shows you how the questions really come."},
+    {"id": "home_timetable", "at": "home", "label": "Make a revision timetable at home", "hours": [(0, H(24))],
+     "minutes": 45, "effects": {"prep": 10, "energy": -4, "fun": -3}, "study": True,
+     "blurb": "Plan each course, each day. A plan you can see is half the battle."},
+    {"id": "mock_exam", "at": "home", "label": "Mock exam with your roommates", "hours": [(H(18), H(24))],
+     "minutes": 90, "once_per_day": True, "effects": {"prep": 10, "energy": -10, "social": 6}, "study": True,
+     "blurb": "Timed questions, no notes, and whoever scores lowest buys the chin-chin.",
+     "done": "Timed and marked. You know exactly where you're weak now."},
+
+    {"id": "buka_drinks", "at": "buka", "label": "Suya and cold drinks with friends", "hours": [(H(17), H(23))],
+     "minutes": 90, "cost": 1_500, "effects": {"social": 20, "fun": 16, "hunger": 8, "energy": -4},
+     "blurb": "Suya, pepper, cold Chapman and everybody's gist at once.", "done": "The table was loud and the suya was perfect."},
+    {"id": "card_game", "at": "home", "label": "Play cards with roommates", "hours": [(H(18), H(25))],
+     "minutes": 45, "effects": {"social": 12, "fun": 14, "energy": -2},
+     "blurb": "Ludo, whot or cards. Somebody always cheats.", "done": "Cards, laughter and an argument about the last trick."},
+    {"id": "table_tennis", "at": "sub", "label": "Table tennis at the SUB", "hours": [(H(11), H(20))],
+     "minutes": 40, "cost": 200, "effects": {"fun": 14, "social": 10, "energy": -6, "hygiene": -4},
+     "blurb": "Two bats, one ball that's seen better days.", "done": "Winner stays on. You stayed on."},
+    {"id": "karaoke", "at": "sub", "label": "Karaoke night at the SUB", "hours": [(H(19), H(23))], "minutes": 120,
+     "days": FRI_SAT, "cost": 1_000, "effects": {"fun": 35, "social": 22, "energy": -10},
+     "blurb": "Everybody thinks they can sing. Some of them can.",
+     "done": "You sang with the whole SUB. Nobody will forget it."},
+    {"id": "pepper_soup", "at": "buka", "label": "Pepper soup night with your hall friends", "hours": [(H(19), H(24))],
+     "minutes": 60, "cost": 1_200, "effects": {"social": 18, "fun": 10, "hunger": 30},
+     "blurb": "Catfish or goat meat, hot enough to make you cry, and the gist that follows.",
+     "done": "Full stomach, full gist, and the soup was too hot to finish."},
+    {"id": "campus_stroll", "at": "sub", "label": "Stroll round campus with a friend", "hours": [(H(17), H(20))],
+     "minutes": 40, "effects": {"social": 10, "fun": 8, "energy": -4},
+     "blurb": "Cool evening air, a friend and the day's news.", "done": "A long walk and better mood."},
+]
+ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
 MOODLETS = globals().get("MOODLETS", {})

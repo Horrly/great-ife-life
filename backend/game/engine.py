@@ -1217,9 +1217,8 @@ def available_actions(state) -> list[dict]:
     if state["phase"] != "play" or state["status"] != "playing":
         return []
     asleep = state.get("asleep")
-    if asleep:
-        if asleep.get("until"):
-            return []
+    resting = bool(asleep and asleep.get("until"))
+    if asleep and not resting:
         return [{"id": "wake", "at": state["at"], "label": "Wake up", "cost": 0, "earn": 0, "effects": {},
                  "blurb": f"Energy {round(state['needs']['energy'])}. Your alarm is set for {clock_text(C.WAKE_UP)}.",
                  "hustle": False, "study": False, "skill": None, "xp": 0, "locked": False, "enabled": True,
@@ -1265,6 +1264,9 @@ def available_actions(state) -> list[dict]:
             "freelance": bool(action.get("freelance")),
             "station": station(action),
         })
+    if resting:
+        # the Health Centre: nothing in person, but the phone works
+        return [a for a in out if a["at"] == "phone"]
     return out
 
 
@@ -1291,8 +1293,11 @@ def station(action) -> str:
 # --- Doing things ---------------------------------------------------------------------------------
 
 
-def _begin(state, now, *, waking=False) -> list[str]:
-    """Every move starts by catching the clock up with real time."""
+def _begin(state, now, *, waking=False, phone=False) -> list[str]:
+    """Every move starts by catching the clock up with real time.
+
+    While you rest at the Health Centre you can't move or do anything in person, but your phone still works
+    (phone=True: apps, the bank app, OgaBet, calling home)."""
     if state["status"] != "playing":
         raise GameError("This game is over. Start a new one!")
     messages: list[str] = []
@@ -1304,8 +1309,11 @@ def _begin(state, now, *, waking=False) -> list[str]:
     asleep = state.get("asleep")
     if asleep and not waking:
         if asleep.get("until"):
-            raise GameError(f"You're resting at the Health Centre until {clock_text(asleep['until'])}.")
-        raise GameError("You're asleep. Wake up first.")
+            if not phone:
+                raise GameError(f"You're resting at the Health Centre until {clock_text(asleep['until'])}. "
+                                "You can still use your phone.")
+        else:
+            raise GameError("You're asleep. Wake up first.")
     return messages
 
 
@@ -1347,7 +1355,8 @@ def skip_playback(state: dict, now: float) -> tuple[dict, list[str]]:
 
 def act(state: dict, action_id: str, now: float | None = None) -> tuple[dict, list[str]]:
     state = upgrade(copy.deepcopy(state))
-    messages = _begin(state, now, waking=action_id == "wake")
+    action = C.ACTIONS_BY_ID.get(action_id)
+    messages = _begin(state, now, waking=action_id == "wake", phone=bool(action and action["at"] == "phone"))
     if state["phase"] != "play":
         raise GameError("Finish what's on screen first.")
     seconds = ACTION_SECONDS[0]
@@ -2680,7 +2689,7 @@ NO_MONEY = ["'Things are hard, my child. Next week, by God's grace.'",
 def ask_parents(state: dict, amount: int, now: float | None = None) -> tuple[dict, list[str]]:
     """Call home for money. Parents never send everything you ask for, and never more than their cap."""
     state = upgrade(copy.deepcopy(state))
-    messages = _begin(state, now)
+    messages = _begin(state, now, phone=True)
     if state["phase"] != "play":
         raise GameError("Finish what's on screen first.")
     if not state.get("phone"):
@@ -2760,7 +2769,7 @@ def place_bet(state: dict, match=None, pick: str = "", stake: int = 0, adult: bo
     """A bet slip on virtual matches: one pick, or several multiplied together (an accumulator). Every match on
     the slip kicks off at once and plays out in seconds. The odds are fair minus the bookie's cut."""
     state = upgrade(copy.deepcopy(state))
-    messages = _begin(state, now)
+    messages = _begin(state, now, phone=True)
     if state["phase"] != "play":
         raise GameError("Finish what's on screen first.")
     if not has_smartphone(state):
@@ -2999,7 +3008,7 @@ def atm_withdraw(state: dict, amount: int, now: float | None = None, machine: st
 def app_deposit(state: dict, amount: int, now: float | None = None) -> tuple[dict, list[str]]:
     """Put cash into your account from the bank app (a cash-in agent comes to you): any amount, any time, free."""
     state = upgrade(copy.deepcopy(state))
-    messages = _begin(state, now)
+    messages = _begin(state, now, phone=True)
     if not state.get("bank"):
         raise GameError("Open a bank account first.")
     try:
@@ -3181,7 +3190,7 @@ def pos_cash(state: dict, kind: str, amount: int, method: str = "card",
 def send_transfer(state: dict, amount: int, to_label: str, now: float | None = None, note: str = "") -> tuple[dict, list[str]]:
     """Send money from your account. The server credits the other student's account."""
     state = upgrade(copy.deepcopy(state))
-    messages = _begin(state, now)
+    messages = _begin(state, now, phone=True)
     _bank_open_check(state)
     bank = state.get("bank")
     if not bank:
@@ -3444,6 +3453,9 @@ def upcoming(state) -> list[str]:
         notes.insert(0, "No lectures today. They start on the next school day")
     if state.get("asleep") and not state["asleep"].get("until"):
         notes.insert(0, f"Asleep. Alarm at {clock_text(C.WAKE_UP)}")
+    if state.get("asleep") and state["asleep"].get("until"):
+        notes.insert(0, f"Resting at the Health Centre until {clock_text(state['asleep']['until'])}. "
+                        "You can use your phone until the nurse discharges you")
     if state["flags"].get("debt"):
         notes.append(f"Loan app debt: ₦{state['flags']['debt']:,}")
     if state["flags"].get("no_light"):
